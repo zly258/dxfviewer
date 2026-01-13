@@ -48,7 +48,8 @@ function App() {
 
      const zoomX = containerW / w;
      const zoomY = containerH / h;
-     const zoom = Math.min(zoomX, zoomY, 500) * 0.9;
+     // Support much higher zoom levels for small details and much lower for large coordinates
+     const zoom = Math.min(zoomX, zoomY) * 0.9;
      
      const screenCenterX = containerW / 2;
      const screenCenterY = containerH / 2;

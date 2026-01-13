@@ -64,23 +64,31 @@ const DxfViewer: React.FC<DxfViewerProps> = ({ entities, layers, blocks = {}, st
      renderEntitiesToCanvas(ctx, entities, layers, blocks, styles, lineTypes, ltScale, viewPort, selectedEntityIds, rect.width, rect.height);
   }, [entities, layers, blocks, styles, lineTypes, ltScale, viewPort, selectedEntityIds]);
 
-  const handleWheel = (e: WheelEvent) => {
-    e.preventDefault();
-    const scaleFactor = 1.2;
-    const newZoom = e.deltaY < 0 ? viewPort.zoom * scaleFactor : viewPort.zoom / scaleFactor;
-    
-    if (newZoom < 0.000001 || newZoom > 1000000) return;
+  // Handle Wheel Event with passive: false to allow preventDefault
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
 
-    if (containerRef.current) {
-      const rect = containerRef.current.getBoundingClientRect();
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const scaleFactor = 1.2;
+      const newZoom = e.deltaY < 0 ? viewPort.zoom * scaleFactor : viewPort.zoom / scaleFactor;
+      
+      // Loosen zoom limits to support extreme coordinates/scales
+      if (newZoom < 1e-12 || newZoom > 1e12) return;
+
+      const rect = container.getBoundingClientRect();
       const mouseX = e.clientX - rect.left;
       const mouseY = e.clientY - rect.top;
       
       const newX = mouseX - (mouseX - viewPort.x) * (newZoom / viewPort.zoom);
       const newY = mouseY - (mouseY - viewPort.y) * (newZoom / viewPort.zoom);
       onViewPortChange({ x: newX, y: newY, zoom: newZoom });
-    }
-  };
+    };
+
+    container.addEventListener('wheel', onWheel as any, { passive: false });
+    return () => container.removeEventListener('wheel', onWheel as any);
+  }, [viewPort, onViewPortChange]);
 
   const handleMouseDown = (e: MouseEvent) => {
     const rect = containerRef.current?.getBoundingClientRect();
@@ -170,7 +178,6 @@ const DxfViewer: React.FC<DxfViewerProps> = ({ entities, layers, blocks = {}, st
         <div 
         ref={containerRef}
         className="canvas-container"
-        onWheel={handleWheel}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}

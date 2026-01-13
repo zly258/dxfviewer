@@ -34,6 +34,7 @@ const LABEL_TRANSLATIONS: Record<string, string> = {
   "Color": "颜色 (Color)",
   "Linetype": "线型 (Linetype)",
   "Linetype Scale": "线型比例 (Linetype Scale)",
+  "Lineweight": "线宽 (Lineweight)",
   "Start X": "起点 X",
   "Start Y": "起点 Y",
   "End X": "终点 X",
@@ -118,7 +119,16 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, layers, sty
           renderPropertyRow("Color", renderColorValue(ent.color)),
           renderPropertyRow("Linetype", ent.lineType || 'ByLayer'),
           renderPropertyRow("Linetype Scale", (ent.lineTypeScale !== undefined ? ent.lineTypeScale : 1.0).toFixed(2)),
+          renderPropertyRow("Lineweight", renderLineweight(ent.lineweight)),
       ];
+
+  const renderLineweight = (lw: number | undefined) => {
+    if (lw === undefined || lw === -1) return <span className="text-gray-500">随层 (ByLayer)</span>;
+    if (lw === -2) return <span className="text-gray-500">随块 (ByBlock)</span>;
+    if (lw === -3) return <span className="text-gray-500">默认 (Default)</span>;
+    if (lw === 0) return "0.00 mm";
+    return `${(lw / 100).toFixed(2)} mm`;
+  };
 
       let specificRows: React.ReactNode[] = [];
 
@@ -174,10 +184,10 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, layers, sty
               
               // Extract a friendly name from the font stack
               let friendlyFont = "Sans-Serif";
-              if (fontFamily.includes("SimSun") || fontFamily.includes("宋体")) friendlyFont = "宋体 (SimSun)";
+              if (fontFamily.includes("FangSong") || fontFamily.includes("仿宋")) friendlyFont = "仿宋 (FangSong)";
+              else if (fontFamily.includes("SimSun") || fontFamily.includes("宋体")) friendlyFont = "宋体 (SimSun)";
               else if (fontFamily.includes("SimHei") || fontFamily.includes("黑体")) friendlyFont = "黑体 (SimHei)";
               else if (fontFamily.includes("SimKai") || fontFamily.includes("楷体")) friendlyFont = "楷体 (SimKai)";
-              else if (fontFamily.includes("FangSong") || fontFamily.includes("仿宋")) friendlyFont = "仿宋 (FangSong)";
               else if (fontFamily.includes("Microsoft YaHei")) friendlyFont = "微软雅黑 (YaHei)";
               else if (fontFamily.includes("Arial")) friendlyFont = "Arial";
               else if (fontFamily.includes("Times New Roman")) friendlyFont = "Times New Roman";

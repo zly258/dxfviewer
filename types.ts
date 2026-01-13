@@ -49,6 +49,7 @@ export interface DxfEntity {
   color?: number;
   lineType?: string;
   lineTypeScale?: number;
+  lineweight?: number;
   visible?: boolean;
   inPaperSpace?: boolean;
   extrusion?: Point3D;
@@ -246,6 +247,7 @@ export interface DxfLayer {
   name: string;
   color: number;
   lineType?: string;
+  lineweight?: number;
   isVisible?: boolean;
 }
 

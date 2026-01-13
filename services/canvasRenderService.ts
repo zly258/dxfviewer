@@ -24,6 +24,18 @@ const getCanvasFont = (ent: AnyEntity, styles: Record<string, DxfStyle> | undefi
         height = style?.height || 2.5;
     }
 
+    let fontFamily = getStyleFontFamily(styleName, styles);
+    let fontWeight = 'normal';
+    let fontStyle = 'normal';
+    
+    // Better TrueType detection: 
+    // 1. Style font name ends in .ttf/.otf
+    // 2. It's one of the standard web fonts
+    const styleFontLower = (style?.fontFileName || "").toLowerCase();
+    let isTrueType = styleFontLower.endsWith('.ttf') || styleFontLower.endsWith('.otf') || 
+                     styleFontLower.includes('simsun') || styleFontLower.includes('simhei') || 
+                     styleFontLower.includes('arial') || styleFontLower.includes('msyh');
+
     // Check for MTEXT inline height override \H...;
     if (ent.type === EntityType.MTEXT) {
         const hMatch = ent.value.match(/\\H([^;]+);/);
@@ -37,24 +49,35 @@ const getCanvasFont = (ent: AnyEntity, styles: Record<string, DxfStyle> | undefi
                 }
             }
         }
-    }
 
-    const correctedHeight = height * 1.43; 
-    let fontFamily = getStyleFontFamily(styleName, styles);
-
-    // MTEXT content can have complex formatting like {\fArial|b1|i1|c0|p34;Text}
-    if (ent.type === EntityType.MTEXT) {
+        // MTEXT content can have complex formatting like {\fArial|b1|i1|c0|p34;Text}
         // 1. Check for explicit font overrides in MTEXT value
         // \fFontName|...; or \fFontName;
-        const fMatch = ent.value.match(/\\f([^|;]+)([|;])/);
+        // Using a non-greedy match to avoid capturing multiple formatting blocks
+        const fMatch = ent.value.match(/\\f([^;|]+)(?:\|([^;]*))?;/);
         if (fMatch && fMatch[1]) {
             const inlineFont = fMatch[1].replace(/\"/g, '').trim();
+            const inlineParams = fMatch[2] || '';
+            
+            if (inlineParams) {
+                const parts = inlineParams.split('|');
+                parts.forEach(part => {
+                    if (part.startsWith('b') && part.length > 1) {
+                        fontWeight = part.substring(1) === '1' ? 'bold' : 'normal';
+                    } else if (part.startsWith('i') && part.length > 1) {
+                        fontStyle = part.substring(1) === '1' ? 'italic' : 'normal';
+                    }
+                });
+            }
+
             if (inlineFont) {
                 const inlineFontLower = inlineFont.toLowerCase();
+                isTrueType = true; // Inline \f fonts are usually TrueType
+
                 if (inlineFontLower.includes('仿宋') || inlineFontLower.includes('fangsong') || inlineFontLower === 'fs') {
                     fontFamily = FONT_STACKS.FANGSONG;
                 } else if (inlineFontLower.includes('宋体') || inlineFontLower.includes('simsun') || inlineFontLower.includes('song')) {
-                    fontFamily = FONT_STACKS.SONG;
+                    fontFamily = FONT_STACKS.FANGSONG; // Remap SimSun to FangSong even in \f overrides
                 } else if (inlineFontLower.includes('黑体') || inlineFontLower.includes('simhei') || inlineFontLower.includes('hei')) {
                     fontFamily = FONT_STACKS.HEI;
                 } else if (inlineFontLower.includes('楷体') || inlineFontLower.includes('simkai') || inlineFontLower.includes('kai')) {
@@ -71,12 +94,14 @@ const getCanvasFont = (ent: AnyEntity, styles: Record<string, DxfStyle> | undefi
                 }
             }
         }
-    } else {
-        // For TEXT/ATTRIB/ATTDEF, if the font is not correctly resolved from style,
-        // we might want to double check if the entity itself has any font hints (usually it doesn't in DXF)
     }
 
-    return `${correctedHeight}px ${fontFamily}`;
+    // Adjust height based on font type
+    // SHX fonts (mapped) usually need a larger multiplier than TrueType fonts
+    const scaleFactor = isTrueType ? 1.15 : 1.43;
+    const correctedHeight = height * scaleFactor; 
+
+    return `${fontStyle} ${fontWeight} ${correctedHeight}px ${fontFamily}`;
 };
 
 const cleanTextContent = (text: string): string => {
@@ -296,7 +321,23 @@ export const renderEntitiesToCanvas = (
         
         ctx.strokeStyle = color;
         ctx.fillStyle = color;
-        ctx.lineWidth = (isSelected ? 2 : 1) / Math.abs(currentScale);
+
+        // Calculate lineweight
+        // DXF lineweight is in hundredths of mm. e.g. 25 = 0.25mm.
+        // Standard default is usually 25 (0.25mm).
+        let lw = ent.lineweight;
+        if (lw === undefined || lw === -1) { // ByLayer
+            lw = layer?.lineweight !== undefined ? layer.lineweight : -3; // Default
+        }
+        if (lw === -3) lw = 25; // Default 0.25mm
+        if (lw === -2) lw = 25; // ByBlock -> treat as default for now
+
+        // Convert mm to screen pixels. 
+        // A simple heuristic: 0.25mm -> 1.0 pixel, 0.50mm -> 2.0 pixels, etc.
+        // Lineweight in DXF is fixed-width on screen/paper, not world units.
+        const lwInPixels = lw > 0 ? (lw / 25) : 0.5; // 0.5 for hairline/0
+        
+        ctx.lineWidth = (isSelected ? (lwInPixels + 1) : lwInPixels) / Math.abs(currentScale);
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
 
@@ -689,19 +730,33 @@ export const hitTest = (x: number, y: number, threshold: number, entities: AnyEn
 
         const p = tx ? tx : (pt: Point2D) => pt;
         
-        // Increase threshold for text selection
-        const isText = [EntityType.TEXT, EntityType.MTEXT, EntityType.ATTRIB, EntityType.ATTDEF].includes(ent.type);
-        const effectiveThreshold = isText ? threshold * 2 : threshold;
+        // Increase threshold for selection
+        const effectiveThreshold = threshold;
 
-        // Use precomputed extents for fast culling if available (and at top level)
-        if (depth === 0 && ent.extents) {
+        // Bounding Box Selection Optimization
+        // If entity has precomputed extents, use them for the primary hit test
+        if (ent.extents) {
             const { min, max } = ent.extents;
-            if (x < min.x - effectiveThreshold || x > max.x + effectiveThreshold || 
-                y < min.y - effectiveThreshold || y > max.y + effectiveThreshold) {
-                return false;
-            }
+            // Add a small buffer (threshold) to the bounding box
+            const insideBox = x >= min.x - effectiveThreshold && x <= max.x + effectiveThreshold && 
+                             y >= min.y - effectiveThreshold && y <= max.y + effectiveThreshold;
+            
+            if (!insideBox) return false;
+
+            // For Text, MText, and Blocks, bounding box hit is sufficient and preferred
+            const isContainerOrText = [
+                EntityType.TEXT, 
+                EntityType.MTEXT, 
+                EntityType.INSERT, 
+                EntityType.DIMENSION,
+                EntityType.HATCH,
+                EntityType.ACAD_TABLE
+            ].includes(ent.type);
+
+            if (isContainerOrText) return true;
         }
 
+        // Geometric precise checks for other entities (or if no extents)
         if (ent.type === EntityType.LINE) {
             const s = p(ent.start), e = p(ent.end);
             return distanceToLine(x, y, s.x, s.y, e.x, e.y) < effectiveThreshold;
@@ -802,54 +857,6 @@ export const hitTest = (x: number, y: number, threshold: number, entities: AnyEn
         } else if (ent.type === EntityType.POINT) {
             const pos = p(ent.position);
             return Math.sqrt(Math.pow(x - pos.x, 2) + Math.pow(y - pos.y, 2)) < effectiveThreshold;
-        } else if (isText) {
-            const textEnt = ent as DxfText;
-            const pos = p(textEnt.position);
-            const text = cleanTextContent(textEnt.value);
-            if (!text) return false;
-
-            const height = textEnt.height || 10;
-            const style = styles[textEnt.styleName || 'STANDARD'];
-            const widthFactor = (textEnt.widthFactor && textEnt.widthFactor > 0) ? textEnt.widthFactor : (style?.widthFactor || 1);
-            
-            // Heuristic for width calculation
-            const charCount = text.length;
-            const approxWidth = height * 0.7 * charCount * Math.abs(widthFactor);
-            
-            const rad = (textEnt.rotation || 0) * Math.PI / 180;
-            const cos = Math.cos(rad), sin = Math.sin(rad);
-            
-            // Alignment offsets (simplified)
-            let dx = 0, dy = 0;
-            const isMText = textEnt.type === EntityType.MTEXT;
-            if (isMText) {
-                const ap = textEnt.attachmentPoint || 1;
-                if ([2, 5, 8].includes(ap)) dx = -approxWidth / 2;
-                else if ([3, 6, 9].includes(ap)) dx = -approxWidth;
-                
-                if ([4, 5, 6].includes(ap)) dy = -height / 2;
-                else if ([7, 8, 9].includes(ap)) dy = -height;
-            } else {
-                const hAlign = textEnt.hAlign || 0;
-                const vAlign = textEnt.vAlign || 0;
-                if (hAlign === 1 || hAlign === 4) dx = -approxWidth / 2;
-                else if (hAlign === 2) dx = -approxWidth;
-                
-                if (vAlign === 1) dy = 0; // Baseline is bottom
-                else if (vAlign === 2) dy = -height / 2;
-                else if (vAlign === 3) dy = -height;
-            }
-
-            // Transform mouse point back to text local space
-            const lx = x - pos.x;
-            const ly = y - pos.y;
-            const localX = lx * cos + ly * sin;
-            const localY = -lx * sin + ly * cos;
-
-            // Check if within bounds with some padding
-            const pad = effectiveThreshold;
-            return localX >= dx - pad && localX <= dx + approxWidth + pad &&
-                   localY >= dy - pad && localY <= dy + height + pad;
         } else if (ent.type === EntityType.LEADER) {
             for (let j = 0; j < ent.points.length - 1; j++) {
                 const p1 = p(ent.points[j]), p2 = p(ent.points[j+1]);
@@ -860,10 +867,7 @@ export const hitTest = (x: number, y: number, threshold: number, entities: AnyEn
             const rx = Math.sqrt(ent.majorAxis.x ** 2 + ent.majorAxis.y ** 2);
             const ry = rx * ent.ratio;
             const isFlipped = (ent.extrusion?.z || 1) < 0;
-            // Simple bounding box check for ellipse hit test
-            if (Math.abs(x - c.x) > rx + effectiveThreshold || Math.abs(y - c.y) > ry + effectiveThreshold) return false;
             
-            // More accurate: transform point to ellipse local space and check distance
             const dx = x - c.x;
             const dy = y - c.y;
             const angle = Math.atan2(ent.majorAxis.y, ent.majorAxis.x);
@@ -879,119 +883,34 @@ export const hitTest = (x: number, y: number, threshold: number, entities: AnyEn
                 
                 let s = ent.startParam || 0;
                 let e = ent.endParam || (Math.PI * 2);
-                const normalize = (a: number) => {
-                    while (a < 0) a += Math.PI * 2;
-                    while (a >= Math.PI * 2) a -= Math.PI * 2;
-                    return a;
-                };
-                s = normalize(s);
-                e = normalize(e);
-                
-                if (Math.abs(s - e) < 1e-9 || Math.abs(Math.abs(s - e) - 2 * Math.PI) < 1e-4) return true; // Full ellipse
-                
                 if (isFlipped) {
-                    // For CW, swap start/end to use CCW logic
                     const temp = s;
                     s = e;
                     e = temp;
                 }
-                
                 return s > e ? (param >= s || param <= e) : (param >= s && param <= e);
             }
-            return false;
-        } else if (ent.type === EntityType.SOLID || ent.type === EntityType.THREEDFACE) {
-            // Check edges
-            for (let j = 0; j < ent.points.length; j++) {
-                const p1 = p(ent.points[j]), p2 = p(ent.points[(j + 1) % ent.points.length]);
-                if (distanceToLine(x, y, p1.x, p1.y, p2.x, p2.y) < effectiveThreshold) return true;
-            }
-            // Check if point is inside
-            let inside = false;
-            for (let i = 0, j = ent.points.length - 1; i < ent.points.length; j = i++) {
-                const pi = p(ent.points[i]), pj = p(ent.points[j]);
-                if (((pi.y > y) !== (pj.y > y)) &&
-                    (x < (pj.x - pi.x) * (y - pi.y) / (pj.y - pi.y) + pi.x)) {
-                    inside = !inside;
-                }
-            }
-            if (inside) return true;
-        } else if (ent.type === EntityType.INSERT || ent.type === EntityType.ACAD_TABLE) {
+        } else if (ent.type === EntityType.INSERT) {
             const block = blocks[ent.blockName];
-            if (block) {
-                const rotation = (ent as any).rotation || 0;
-                const scale = (ent as any).scale || {x:1, y:1, z:1};
-                const rad = rotation * Math.PI / 180;
-                const cos = Math.cos(rad), sin = Math.sin(rad);
-                const blockTransform = (pt: Point2D) => {
-                    const bx = (pt.x - block.basePoint.x) * scale.x;
-                    const by = (pt.y - block.basePoint.y) * scale.y;
-                    const rx = bx * cos - by * sin;
-                    const ry = bx * sin + by * cos;
-                    return p({ x: rx + ent.position.x, y: ry + ent.position.y });
+            if (!block) return false;
+            
+            const scale = ent.scale || { x: 1, y: 1, z: 1 };
+            const rotation = (ent.rotation || 0) * Math.PI / 180;
+            const cos = Math.cos(rotation), sin = Math.sin(rotation);
+            
+            const tx = (pt: Point2D) => {
+                const bx = pt.x - block.basePoint.x;
+                const by = pt.y - block.basePoint.y;
+                const sx = bx * scale.x;
+                const sy = by * scale.y;
+                return {
+                    x: ent.position.x + sx * cos - sy * sin,
+                    y: ent.position.y + sx * sin + sy * cos
                 };
-                return block.entities.some(child => checkEntity(child, blockTransform, depth + 1));
-            }
-        } else if (ent.type === EntityType.HATCH) {
-            // Check if mouse is inside any of the hatch loops
-            if (!ent.loops) return false;
+            };
             
-            let totalInside = false;
-            for (const loop of ent.loops) {
-                let points: Point2D[] = [];
-                if (loop.isPolyline && loop.points) {
-                    points = loop.points;
-                } else if (loop.edges) {
-                    // Extract points from edges (simplified for hit test)
-                    loop.edges.forEach(edge => {
-                        const edgeType = (edge.type as string).toLowerCase();
-                        if (edgeType === 'line' && edge.start && edge.end) {
-                            points.push(edge.start, edge.end);
-                        } else if (edgeType === 'arc' && edge.center && edge.radius) {
-                            // Approximate arc with few points
-                            const steps = 8;
-                            const s = (edge.startAngle || 0) * Math.PI / 180;
-                            const e = (edge.endAngle || 360) * Math.PI / 180;
-                            const sweep = e - s;
-                            for (let i = 0; i <= steps; i++) {
-                                const a = s + (sweep * i / steps);
-                                points.push({
-                                    x: edge.center.x + Math.cos(a) * edge.radius,
-                                    y: edge.center.y + Math.sin(a) * edge.radius
-                                });
-                            }
-                        }
-                    });
-                }
-                
-                if (points.length > 2) {
-                    let inside = false;
-                    for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
-                        const pi = p(points[i]), pj = p(points[j]);
-                        if (((pi.y > y) !== (pj.y > y)) &&
-                            (x < (pj.x - pi.x) * (y - pi.y) / (pj.y - pi.y) + pi.x)) {
-                            inside = !inside;
-                        }
-                    }
-                    if (inside) totalInside = !totalInside;
-                }
-            }
-            if (totalInside) return true;
-        } else if (ent.type === EntityType.DIMENSION) {
-            // Check definition points
-            const d1 = p(ent.definitionPoint);
-            if (Math.sqrt((x - d1.x)**2 + (y - d1.y)**2) < effectiveThreshold) return true;
-            if (ent.textMidPoint) {
-                const d2 = p(ent.textMidPoint);
-                if (Math.sqrt((x - d2.x)**2 + (y - d2.y)**2) < effectiveThreshold) return true;
-            }
-            
-            // DIMENSION hit test: if its block is hit, it is hit
-            if (ent.blockName) {
-                const block = blocks[ent.blockName];
-                if (block) {
-                    // Important: Pass the current transform 'p' to the block entities
-                    return block.entities.some(child => checkEntity(child, p, depth + 1));
-                }
+            for (const child of block.entities) {
+                if (checkEntity(child, tx, depth + 1)) return true;
             }
         }
         return false;

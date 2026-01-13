@@ -99,6 +99,7 @@ const parseLayer = (state: DxfParserState): DxfLayer => {
             case 2: layer.name = g.value; break;
             case 62: layer.color = parseInt(g.value); break;
             case 6: layer.lineType = g.value; break;
+            case 370: layer.lineweight = parseInt(g.value, 10); break;
             case 70: layer.isVisible = (parseInt(g.value) & 1) !== 1; break; 
         }
     }
@@ -424,14 +425,13 @@ export const parseDxf = async (dxfString: string, onProgress?: (percent: number)
           if ('start' in ent) applyOffset(ent.start);
           if ('end' in ent) applyOffset(ent.end);
           if ('center' in ent) applyOffset(ent.center);
+          if ('basePoint' in ent) applyOffset(ent.basePoint);
           if ('points' in ent && ent.points) ent.points.forEach(applyOffset);
-          // NOTE: We do NOT apply offset to block basePoint or entities inside blocks
-          // because they are in a local coordinate system. 
-          // We only shift the world positions (top-level entities and INSERT positions).
           
           if ('secondPosition' in ent && ent.secondPosition) applyOffset(ent.secondPosition);
           if ('definitionPoint' in ent) applyOffset(ent.definitionPoint);
           if ('textMidPoint' in ent) applyOffset(ent.textMidPoint);
+          if ('vertices' in ent && (ent as any).vertices) (ent as any).vertices.forEach((v: any) => applyOffset(v));
           
           if (ent.type === EntityType.HATCH) {
               ent.loops.forEach(loop => {
@@ -513,6 +513,7 @@ const applyCommonGroup = (common: any, code: number, value: string) => {
         case 62: common.color = parseInt(value, 10); break;
         case 6: common.lineType = value; break;
         case 48: common.lineTypeScale = parseFloat(value); break;
+        case 370: common.lineweight = parseInt(value, 10); break;
         case 60: common.visible = parseInt(value, 10) === 0; break;
         case 67: common.inPaperSpace = parseInt(value, 10) === 1; break;
         case 210: common.extrusion.x = parseFloat(value); break;
