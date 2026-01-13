@@ -1,0 +1,5 @@
+{
+  "name": "DXFViewer",
+  "description": "基于 React 和 TypeScript 的高性能 DXF 文件查看、编辑与生成工具。支持 AI 辅助绘图。",
+  "requestFramePermissions": []
+}
