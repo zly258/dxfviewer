@@ -77,6 +77,8 @@ export const EntityRenderer: React.FC<EntityRendererProps> = ({
     switch (ent.type) {
         case EntityType.LINE:
             return <line x1={ent.start.x} y1={ent.start.y} x2={ent.end.x} y2={ent.end.y} {...commonProps} />;
+        case EntityType.POINT:
+            return <circle cx={ent.position.x} cy={ent.position.y} r={0.5} fill={colorStr} stroke="none" vectorEffect="non-scaling-stroke" />;
         case EntityType.CIRCLE:
             return <circle cx={ent.center.x} cy={ent.center.y} r={ent.radius} fill="none" {...commonProps} />;
         case EntityType.ARC: {
@@ -97,6 +99,22 @@ export const EntityRenderer: React.FC<EntityRendererProps> = ({
             
             const d = `M ${x1} ${y1} A ${ent.radius} ${ent.radius} 0 ${largeArc} ${sweep} ${x2} ${y2}`;
             return <path d={d} fill="none" {...commonProps} />;
+        }
+        case EntityType.RAY: {
+            // Represent as a very long line
+            const length = 1000000;
+            const x2 = ent.basePoint.x + ent.direction.x * length;
+            const y2 = ent.basePoint.y + ent.direction.y * length;
+            return <line x1={ent.basePoint.x} y1={ent.basePoint.y} x2={x2} y2={y2} {...commonProps} />;
+        }
+        case EntityType.XLINE: {
+            // Represent as a very long line in both directions
+            const length = 1000000;
+            const x1 = ent.basePoint.x - ent.direction.x * length;
+            const y1 = ent.basePoint.y - ent.direction.y * length;
+            const x2 = ent.basePoint.x + ent.direction.x * length;
+            const y2 = ent.basePoint.y + ent.direction.y * length;
+            return <line x1={x1} y1={y1} x2={x2} y2={y2} {...commonProps} />;
         }
         case EntityType.LWPOLYLINE:
         case EntityType.POLYLINE: {
@@ -150,6 +168,21 @@ export const EntityRenderer: React.FC<EntityRendererProps> = ({
             const d = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ') + ' Z';
             return <path d={d} fill={colorStr} stroke="none" onClick={handleClick} className="hover:opacity-80 cursor-pointer"/>;
         }
+        case EntityType.THREEDFACE: {
+            const pts = ent.points;
+            if(pts.length < 3) return null;
+            const flags = ent.edgeFlags || 0;
+            const paths: string[] = [];
+            for (let i = 0; i < pts.length; i++) {
+                const isVisible = (flags & (1 << i)) === 0;
+                if (isVisible) {
+                    const p1 = pts[i];
+                    const p2 = pts[(i + 1) % pts.length];
+                    paths.push(`M ${p1.x} ${p1.y} L ${p2.x} ${p2.y}`);
+                }
+            }
+            return <path d={paths.join(' ')} fill="none" {...commonProps} />;
+        }
         case EntityType.ELLIPSE: {
             const startP = ent.startParam;
             const endP = ent.endParam;
@@ -200,7 +233,20 @@ export const EntityRenderer: React.FC<EntityRendererProps> = ({
         case EntityType.HATCH:
             return <HatchRenderer entity={ent} color={colorStr} onClick={handleClick} />;
         case EntityType.INSERT:
-            return <InsertRenderer entity={ent} blocks={blocks} layers={layers} styles={styles} color={colorStr} layerName={effectiveLayerName} onClick={handleClick} depth={depth} />;
+            return (
+                <InsertRenderer 
+                    entity={ent} 
+                    blocks={blocks} 
+                    layers={layers} 
+                    styles={styles} 
+                    color={colorStr} 
+                    layerName={effectiveLayerName} 
+                    selectedIds={selectedIds}
+                    onSelect={onSelect}
+                    onClick={handleClick} 
+                    depth={depth} 
+                />
+            );
         case EntityType.DIMENSION: {
             const block = blocks[ent.blockName];
             if (!block) {
@@ -223,6 +269,8 @@ export const EntityRenderer: React.FC<EntityRendererProps> = ({
                             layers={layers} 
                             blocks={blocks} 
                             styles={styles}
+                            selectedIds={selectedIds}
+                            onSelect={onSelect}
                             parentLayer={effectiveLayerName}
                             parentColor={colorStr}
                             depth={depth + 1}

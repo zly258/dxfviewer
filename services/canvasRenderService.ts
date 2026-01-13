@@ -163,8 +163,8 @@ const drawHatchLoop = (ctx: CanvasRenderingContext2D, loop: HatchLoop) => {
                 const end = edge.endAngle || 2*Math.PI;
                 const ccw = edge.ccw === undefined ? true : edge.ccw;
                 ctx.ellipse(edge.center.x, edge.center.y, rX, rY, rotation, start, end, !ccw);
-            } else if (edge.type === 'SPLINE' && edge.controlPoints) {
-                 const points = getBSplinePoints(edge.controlPoints, edge.degree || 3, edge.knots, edge.weights, 20);
+            } else if (edge.type === 'SPLINE' && (edge.calculatedPoints || edge.controlPoints)) {
+                 const points = edge.calculatedPoints || getBSplinePoints(edge.controlPoints!, edge.degree || 3, edge.knots, edge.weights, 20);
                  points.forEach(p => ctx.lineTo(p.x, p.y));
             }
         });
@@ -192,8 +192,18 @@ export const renderEntitiesToCanvas = (
     ctx.translate(viewPort.x, viewPort.y);
     ctx.scale(viewPort.zoom, -viewPort.zoom);
 
-    const drawEntity = (ent: AnyEntity, parentLayerName?: string, parentColor?: string, currentScale: number = viewPort.zoom, parentSelected: boolean = false) => {
-        if (ent.visible === false) return;
+    // Calculate viewport bounds in world coordinates for culling
+    const xMin = -viewPort.x / viewPort.zoom;
+    const xMax = (width - viewPort.x) / viewPort.zoom;
+    const yMin = (viewPort.y - height) / viewPort.zoom;
+    const yMax = viewPort.y / viewPort.zoom;
+
+    const drawEntity = (ent: AnyEntity, parentLayerName?: string, parentColor?: string, currentScale: number = viewPort.zoom, parentSelected: boolean = false, depth: number = 0) => {
+        if (ent.visible === false || depth > 20) return;
+
+        // Skip entities that are too small to be visible (LOD)
+        // For example, if an entity's size is less than 0.5 pixels on screen, skip it.
+        const pixelThreshold = 0.5 / viewPort.zoom;
 
         const layerName = (ent.layer === '0' && parentLayerName) ? parentLayerName : ent.layer;
         const layer = layers[layerName];
@@ -208,22 +218,72 @@ export const renderEntitiesToCanvas = (
 
         switch (ent.type) {
             case EntityType.LINE:
+                if (depth === 0 && !isSelected && (
+                    Math.max(ent.start.x, ent.end.x) < xMin ||
+                    Math.min(ent.start.x, ent.end.x) > xMax ||
+                    Math.max(ent.start.y, ent.end.y) < yMin ||
+                    Math.min(ent.start.y, ent.end.y) > yMax
+                )) return;
                 ctx.beginPath();
                 ctx.moveTo(ent.start.x, ent.start.y);
                 ctx.lineTo(ent.end.x, ent.end.y);
                 ctx.stroke();
                 break;
+            case EntityType.RAY: {
+                // Approximate culling: check if base point is within a huge distance from viewport
+                if (depth === 0 && !isSelected && (ent.basePoint.x < xMin - 1000000 || ent.basePoint.x > xMax + 1000000)) return;
+                const farPoint = {
+                    x: ent.basePoint.x + ent.direction.x * 1000000,
+                    y: ent.basePoint.y + ent.direction.y * 1000000
+                };
+                ctx.beginPath();
+                ctx.moveTo(ent.basePoint.x, ent.basePoint.y);
+                ctx.lineTo(farPoint.x, farPoint.y);
+                ctx.stroke();
+                break;
+            }
+            case EntityType.XLINE: {
+                if (depth === 0 && !isSelected && (ent.basePoint.x < xMin - 1000000 || ent.basePoint.x > xMax + 1000000)) return;
+                const p1 = {
+                    x: ent.basePoint.x - ent.direction.x * 1000000,
+                    y: ent.basePoint.y - ent.direction.y * 1000000
+                };
+                const p2 = {
+                    x: ent.basePoint.x + ent.direction.x * 1000000,
+                    y: ent.basePoint.y + ent.direction.y * 1000000
+                };
+                ctx.beginPath();
+                ctx.moveTo(p1.x, p1.y);
+                ctx.lineTo(p2.x, p2.y);
+                ctx.stroke();
+                break;
+            }
             case EntityType.POINT:
+                if (depth === 0 && !isSelected && (ent.position.x < xMin || ent.position.x > xMax || ent.position.y < yMin || ent.position.y > yMax)) return;
                 ctx.beginPath();
                 ctx.arc(ent.position.x, ent.position.y, 2/viewPort.zoom, 0, 2*Math.PI);
                 ctx.fill();
                 break;
             case EntityType.CIRCLE:
+                if (!isSelected && (ent.radius < pixelThreshold)) return;
+                if (depth === 0 && !isSelected && (
+                    ent.center.x + ent.radius < xMin ||
+                    ent.center.x - ent.radius > xMax ||
+                    ent.center.y + ent.radius < yMin ||
+                    ent.center.y - ent.radius > yMax
+                )) return;
                 ctx.beginPath();
                 ctx.arc(ent.center.x, ent.center.y, ent.radius, 0, 2 * Math.PI);
                 ctx.stroke();
                 break;
             case EntityType.ARC: {
+                if (!isSelected && (ent.radius < pixelThreshold)) return;
+                if (depth === 0 && !isSelected && (
+                    ent.center.x + ent.radius < xMin ||
+                    ent.center.x - ent.radius > xMax ||
+                    ent.center.y + ent.radius < yMin ||
+                    ent.center.y - ent.radius > yMax
+                )) return;
                 const startRad = ent.startAngle * Math.PI / 180;
                 const endRad = ent.endAngle * Math.PI / 180;
                 ctx.beginPath();
@@ -234,6 +294,17 @@ export const renderEntitiesToCanvas = (
             case EntityType.LWPOLYLINE:
             case EntityType.POLYLINE:
                 if (ent.points.length > 1) {
+                    // Simple culling for Polyline using bounding box
+                    if (depth === 0 && !isSelected) {
+                        let pMinX = Infinity, pMaxX = -Infinity, pMinY = Infinity, pMaxY = -Infinity;
+                        for (const p of ent.points) {
+                            if (p.x < pMinX) pMinX = p.x; if (p.x > pMaxX) pMaxX = p.x;
+                            if (p.y < pMinY) pMinY = p.y; if (p.y > pMaxY) pMaxY = p.y;
+                        }
+                        if (pMaxX < xMin || pMinX > xMax || pMaxY < yMin || pMinY > yMax) return;
+                        if (pMaxX - pMinX < pixelThreshold && pMaxY - pMinY < pixelThreshold) return;
+                    }
+
                     ctx.beginPath();
                     ctx.moveTo(ent.points[0].x, ent.points[0].y);
                     ent.points.forEach(p => ctx.lineTo(p.x, p.y));
@@ -242,8 +313,18 @@ export const renderEntitiesToCanvas = (
                 }
                 break;
             case EntityType.SPLINE:
-                const splinePoints = getBSplinePoints(ent.controlPoints, ent.degree, ent.knots, ent.weights);
+                const splinePoints = ent.calculatedPoints || getBSplinePoints(ent.controlPoints, ent.degree, ent.knots, ent.weights);
                 if (splinePoints.length > 1) {
+                    if (depth === 0 && !isSelected) {
+                        let pMinX = Infinity, pMaxX = -Infinity, pMinY = Infinity, pMaxY = -Infinity;
+                        for (const p of splinePoints) {
+                            if (p.x < pMinX) pMinX = p.x; if (p.x > pMaxX) pMaxX = p.x;
+                            if (p.y < pMinY) pMinY = p.y; if (p.y > pMaxY) pMaxY = p.y;
+                        }
+                        if (pMaxX < xMin || pMinX > xMax || pMaxY < yMin || pMinY > yMax) return;
+                        if (pMaxX - pMinX < pixelThreshold && pMaxY - pMinY < pixelThreshold) return;
+                    }
+
                     ctx.beginPath();
                     ctx.moveTo(splinePoints[0].x, splinePoints[0].y);
                     for(let i=1; i<splinePoints.length; i++) ctx.lineTo(splinePoints[i].x, splinePoints[i].y);
@@ -254,6 +335,11 @@ export const renderEntitiesToCanvas = (
             case EntityType.MTEXT:
                 const text = cleanTextContent(ent.value);
                 if (!text) break;
+                
+                // Culling for text (simplified). Skip culling if inside a block (depth > 0)
+                // because ent.position is in local coordinates.
+                if (depth === 0 && !isSelected && (ent.position.x < xMin - 500 || ent.position.x > xMax + 500 || ent.position.y < yMin - 500 || ent.position.y > yMax + 500)) return;
+
                 ctx.save();
                 
                 const hAlign = ent.hAlign || 0;
@@ -326,10 +412,10 @@ export const renderEntitiesToCanvas = (
                     ctx.rotate(ent.rotation * Math.PI / 180);
                     ctx.scale(ent.scale.x, ent.scale.y);
                     ctx.translate(-block.basePoint.x, -block.basePoint.y);
-                    block.entities.forEach(child => drawEntity(child, layerName, color, currentScale * ent.scale.x, isSelected));
+                    block.entities.forEach(child => drawEntity(child, layerName, color, currentScale * ent.scale.x, isSelected, depth + 1));
                     ctx.restore();
                     if (ent.attributes) {
-                        ent.attributes.forEach(attr => drawEntity(attr, layerName, color, currentScale, isSelected));
+                        ent.attributes.forEach(attr => drawEntity(attr, layerName, color, currentScale, isSelected, depth + 1));
                     }
                 }
                 break;
@@ -363,7 +449,7 @@ export const renderEntitiesToCanvas = (
                         if (child.color === undefined || child.color === 256 || child.color === 0) {
                              childEnt = { ...child, color: 0 }; 
                         }
-                        drawEntity(childEnt, layerName, color, currentScale, isSelected);
+                        drawEntity(childEnt, layerName, color, currentScale, isSelected, depth + 1);
                     });
                 } else {
                      if (ent.text || ent.measurement) {
@@ -377,8 +463,51 @@ export const renderEntitiesToCanvas = (
                              visible: true,
                              hAlign: 1, vAlign: 2 
                          };
-                         drawEntity(tempText, layerName, color, currentScale, isSelected);
+                         drawEntity(tempText, layerName, color, currentScale, isSelected, depth + 1);
                      }
+                }
+                break;
+            }
+            case EntityType.SOLID:
+            case EntityType.THREEDFACE: {
+                if (ent.points.length < 3) break;
+                
+                // Culling for SOLID/3DFACE
+                if (depth === 0 && !isSelected) {
+                    let pMinX = Infinity, pMaxX = -Infinity, pMinY = Infinity, pMaxY = -Infinity;
+                    for (const p of ent.points) {
+                        if (p.x < pMinX) pMinX = p.x; if (p.x > pMaxX) pMaxX = p.x;
+                        if (p.y < pMinY) pMinY = p.y; if (p.y > pMaxY) pMaxY = p.y;
+                    }
+                    if (pMaxX < xMin || pMinX > xMax || pMaxY < yMin || pMinY > yMax) return;
+                }
+
+                if (ent.type === EntityType.SOLID) {
+                    ctx.beginPath();
+                    ctx.moveTo(ent.points[0].x, ent.points[0].y);
+                    for (let i = 1; i < ent.points.length; i++) {
+                        ctx.lineTo(ent.points[i].x, ent.points[i].y);
+                    }
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.stroke();
+                } else {
+                    // 3DFACE: Handle invisible edges
+                    const flags = ent.edgeFlags || 0;
+                    const pts = ent.points;
+                    
+                    ctx.beginPath();
+                    for (let i = 0; i < pts.length; i++) {
+                        const p1 = pts[i];
+                        const p2 = pts[(i + 1) % pts.length];
+                        const isVisible = (flags & (1 << i)) === 0;
+                        
+                        if (isVisible) {
+                            ctx.moveTo(p1.x, p1.y);
+                            ctx.lineTo(p2.x, p2.y);
+                        }
+                    }
+                    ctx.stroke();
                 }
                 break;
             }
@@ -449,12 +578,22 @@ const distanceToLine = (px: number, py: number, x1: number, y1: number, x2: numb
 };
 
 export const hitTest = (x: number, y: number, threshold: number, entities: AnyEntity[], blocks: Record<string, DxfBlock>, layers: Record<string, DxfLayer>): string | null => {
-    const checkEntity = (ent: AnyEntity, tx?: (p: Point2D) => Point2D): boolean => {
+    const checkEntity = (ent: AnyEntity, tx?: (p: Point2D) => Point2D, depth: number = 0): boolean => {
+        if (depth > 20) return false;
         const p = tx ? tx : (pt: Point2D) => pt;
         
         if (ent.type === EntityType.LINE) {
             const s = p(ent.start), e = p(ent.end);
             return distanceToLine(x, y, s.x, s.y, e.x, e.y) < threshold;
+        } else if (ent.type === EntityType.RAY) {
+            const s = p(ent.basePoint);
+            const e = { x: s.x + ent.direction.x * 1000000, y: s.y + ent.direction.y * 1000000 };
+            return distanceToLine(x, y, s.x, s.y, e.x, e.y) < threshold;
+        } else if (ent.type === EntityType.XLINE) {
+            const s = p(ent.basePoint);
+            const p1 = { x: s.x - ent.direction.x * 1000000, y: s.y - ent.direction.y * 1000000 };
+            const p2 = { x: s.x + ent.direction.x * 1000000, y: s.y + ent.direction.y * 1000000 };
+            return distanceToLine(x, y, p1.x, p1.y, p2.x, p2.y) < threshold;
         } else if (ent.type === EntityType.CIRCLE) {
             const c = p(ent.center);
             const d = Math.sqrt(Math.pow(x - c.x, 2) + Math.pow(y - c.y, 2));
@@ -489,6 +628,32 @@ export const hitTest = (x: number, y: number, threshold: number, entities: AnyEn
         } else if (ent.type === EntityType.TEXT || ent.type === EntityType.MTEXT) {
             const pos = p(ent.position);
             return Math.abs(x - pos.x) < threshold * 2 && Math.abs(y - pos.y) < ent.height;
+        } else if (ent.type === EntityType.LEADER) {
+            for (let j = 0; j < ent.points.length - 1; j++) {
+                const p1 = p(ent.points[j]), p2 = p(ent.points[j+1]);
+                if (distanceToLine(x, y, p1.x, p1.y, p2.x, p2.y) < threshold) return true;
+            }
+        } else if (ent.type === EntityType.ELLIPSE) {
+            const c = p(ent.center);
+            const rx = Math.sqrt(ent.majorAxis.x ** 2 + ent.majorAxis.y ** 2);
+            const ry = rx * ent.ratio;
+            // Simple bounding box check for ellipse hit test
+            if (Math.abs(x - c.x) > rx + threshold || Math.abs(y - c.y) > ry + threshold) return false;
+            
+            // More accurate: transform point to ellipse local space and check distance
+            const dx = x - c.x;
+            const dy = y - c.y;
+            const angle = Math.atan2(ent.majorAxis.y, ent.majorAxis.x);
+            const cos = Math.cos(-angle), sin = Math.sin(-angle);
+            const localX = dx * cos - dy * sin;
+            const localY = dx * sin + dy * cos;
+            const normDist = (localX * localX) / (rx * rx) + (localY * localY) / (ry * ry);
+            return Math.abs(Math.sqrt(normDist) - 1) < threshold / Math.min(rx, ry);
+        } else if (ent.type === EntityType.SOLID || ent.type === EntityType.THREEDFACE) {
+            for (let j = 0; j < ent.points.length; j++) {
+                const p1 = p(ent.points[j]), p2 = p(ent.points[(j + 1) % ent.points.length]);
+                if (distanceToLine(x, y, p1.x, p1.y, p2.x, p2.y) < threshold) return true;
+            }
         } else if (ent.type === EntityType.INSERT) {
             const block = blocks[ent.blockName];
             if (block) {
@@ -501,14 +666,14 @@ export const hitTest = (x: number, y: number, threshold: number, entities: AnyEn
                     const ry = bx * sin + by * cos;
                     return p({ x: rx + ent.position.x, y: ry + ent.position.y });
                 };
-                return block.entities.some(child => checkEntity(child, blockTransform));
+                return block.entities.some(child => checkEntity(child, blockTransform, depth + 1));
             }
         } else if (ent.type === EntityType.HATCH) {
             return false;
         } else if (ent.type === EntityType.DIMENSION) {
              const block = blocks[ent.blockName];
              if (block) {
-                 return block.entities.some(child => checkEntity(child, p));
+                 return block.entities.some(child => checkEntity(child, p, depth + 1));
              }
         }
         return false;
@@ -532,9 +697,17 @@ export const hitTestBox = (box: {x1:number, y1:number, x2:number, y2:number}, en
         } else if (ent.type === EntityType.LINE) {
             inBox = (ent.start.x >= minX && ent.start.x <= maxX && ent.start.y >= minY && ent.start.y <= maxY) ||
                     (ent.end.x >= minX && ent.end.x <= maxX && ent.end.y >= minY && ent.end.y <= maxY);
+        } else if (ent.type === EntityType.RAY || ent.type === EntityType.XLINE) {
+            inBox = ent.basePoint.x >= minX && ent.basePoint.x <= maxX && ent.basePoint.y >= minY && ent.basePoint.y <= maxY;
         } else if (ent.type === EntityType.CIRCLE || ent.type === EntityType.ARC) {
             inBox = ent.center.x >= minX && ent.center.x <= maxX && ent.center.y >= minY && ent.center.y <= maxY;
         } else if (ent.type === EntityType.LWPOLYLINE || ent.type === EntityType.POLYLINE) {
+            inBox = ent.points.some(p => p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY);
+        } else if (ent.type === EntityType.LEADER) {
+            inBox = ent.points.some(p => p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY);
+        } else if (ent.type === EntityType.ELLIPSE) {
+            inBox = ent.center.x >= minX && ent.center.x <= maxX && ent.center.y >= minY && ent.center.y <= maxY;
+        } else if (ent.type === EntityType.SOLID || ent.type === EntityType.THREEDFACE) {
             inBox = ent.points.some(p => p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY);
         } else if (ent.type === EntityType.SPLINE && ent.controlPoints) {
             inBox = ent.controlPoints.some(p => p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY);

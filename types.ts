@@ -17,7 +17,17 @@ export enum EntityType {
   ATTDEF = 'ATTDEF',
   REGION = 'REGION',
   LEADER = 'LEADER',
-  ACAD_TABLE = 'ACAD_TABLE'
+  ACAD_TABLE = 'ACAD_TABLE',
+  THREEDFACE = '3DFACE',
+  RAY = 'RAY',
+  XLINE = 'XLINE',
+  MLINE = 'MLINE',
+  IMAGE = 'IMAGE',
+  WIPEOUT = 'WIPEOUT',
+  SOLID3D = '3DSOLID',
+  REGION_ENTITY = 'REGION',
+  BODY = 'BODY',
+  SURFACE = 'SURFACE'
 }
 
 export interface Point2D {
@@ -48,6 +58,18 @@ export interface DxfLine extends DxfEntity {
   type: EntityType.LINE;
   start: Point2D;
   end: Point2D;
+}
+
+export interface DxfRay extends DxfEntity {
+  type: EntityType.RAY;
+  basePoint: Point2D;
+  direction: Point2D;
+}
+
+export interface DxfXLine extends DxfEntity {
+  type: EntityType.XLINE;
+  basePoint: Point2D;
+  direction: Point2D;
 }
 
 export interface DxfPoint extends DxfEntity {
@@ -113,11 +135,18 @@ export interface DxfSpline extends DxfEntity {
   knots?: number[];
   weights?: number[];
   flags?: number;
+  calculatedPoints?: Point2D[];
 }
 
 export interface DxfSolid extends DxfEntity {
   type: EntityType.SOLID;
   points: Point2D[];
+}
+
+export interface Dxf3DFace extends DxfEntity {
+  type: EntityType.THREEDFACE;
+  points: Point2D[];
+  edgeFlags?: number;
 }
 
 export interface DxfInsert extends DxfEntity {
@@ -168,6 +197,7 @@ export interface HatchEdge {
   knots?: number[];
   weights?: number[];
   degree?: number;
+  calculatedPoints?: Point2D[];
 }
 
 export interface HatchLoop {
@@ -191,7 +221,7 @@ export interface DxfRegion extends DxfEntity {
   type: EntityType.REGION;
 }
 
-export type AnyEntity = DxfLine | DxfPoint | DxfCircle | DxfArc | DxfPolyline | DxfText | DxfEllipse | DxfSpline | DxfSolid | DxfInsert | DxfDimension | DxfHatch | DxfRegion | DxfLeader;
+export type AnyEntity = DxfLine | DxfRay | DxfXLine | DxfPoint | DxfCircle | DxfArc | DxfPolyline | DxfText | DxfEllipse | DxfSpline | DxfSolid | Dxf3DFace | DxfInsert | DxfDimension | DxfHatch | DxfRegion | DxfLeader;
 
 export interface DxfBlock {
   name: string;

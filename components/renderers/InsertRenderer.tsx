@@ -9,11 +9,15 @@ interface InsertRendererProps {
     styles: Record<string, DxfStyle>;
     color: string; // Parent color (if ByBlock)
     layerName: string; // Parent layer (if 0)
+    selectedIds?: Set<string>;
+    onSelect?: (id: string, multi: boolean) => void;
     onClick?: (e: React.MouseEvent) => void;
     depth?: number;
 }
 
-export const InsertRenderer: React.FC<InsertRendererProps> = ({ entity: ent, blocks, layers, styles, color, layerName, onClick, depth = 0 }) => {
+export const InsertRenderer: React.FC<InsertRendererProps> = ({ 
+    entity: ent, blocks, layers, styles, color, layerName, selectedIds, onSelect, onClick, depth = 0 
+}) => {
     // Limit recursion depth to prevent crashes on circular references
     if (depth > 20) return null;
 
@@ -57,6 +61,8 @@ export const InsertRenderer: React.FC<InsertRendererProps> = ({ entity: ent, blo
                                 layers={layers} 
                                 blocks={blocks} 
                                 styles={styles}
+                                selectedIds={selectedIds}
+                                onSelect={onSelect}
                                 parentLayer={layerName} 
                                 parentColor={color}
                                 depth={depth + 1}
@@ -77,6 +83,8 @@ export const InsertRenderer: React.FC<InsertRendererProps> = ({ entity: ent, blo
             layers={layers}
             blocks={blocks}
             styles={styles}
+            selectedIds={selectedIds}
+            onSelect={onSelect}
             parentLayer={layerName}
             parentColor={color}
             depth={depth + 1}

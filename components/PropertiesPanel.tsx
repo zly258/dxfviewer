@@ -51,6 +51,13 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ selectedEntities }) =
                   renderPropertyRow("End Angle", `${ent.endAngle.toFixed(1)}°`),
               ];
               break;
+          case EntityType.SOLID:
+          case EntityType.THREEDFACE:
+              specificRows = [
+                  renderPropertyRow("Vertices", ent.points.length),
+                  ...ent.points.map((p, i) => renderPropertyRow(`Vertex ${i+1}`, `${p.x.toFixed(3)}, ${p.y.toFixed(3)}`))
+              ];
+              break;
           case EntityType.LWPOLYLINE:
           case EntityType.POLYLINE:
               specificRows = [

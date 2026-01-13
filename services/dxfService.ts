@@ -32,16 +32,25 @@ class DxfParserState {
   peek() {
     if (this.groupLoaded) return this.currentGroup;
     
-    const codeStr = this.readLine();
+    let codeStr = this.readLine();
+    // Loop to skip empty lines that might cause infinite recursion in peek()
+    while (codeStr === "" && this.pos < this.len) {
+        codeStr = this.readLine();
+    }
+    
     if (codeStr === null) return null;
     
     const valueStr = this.readLine();
     if (valueStr === null) return null; 
 
-    // Robust parsing: if code is empty (e.g. extra newlines), try next
-    if (codeStr === "") return this.peek();
-
     const code = parseInt(codeStr, 10);
+    // Handle cases where parseInt might return NaN if the file is corrupted
+    if (isNaN(code)) {
+        // If we hit NaN, the file structure is likely broken. 
+        // We skip this "code" and return null to break out of parsing loops.
+        return null;
+    }
+
     this.currentGroup = { code, value: valueStr };
     this.groupLoaded = true;
     return this.currentGroup;
@@ -167,6 +176,7 @@ const parseBlock = (state: DxfParserState): DxfBlock | null => {
                 state.next();
                 break;
             }
+            state.next(); // Consume the entity type group (code 0)
             const entity = parseEntityDispatcher(p.value, state);
             if (entity) block.entities.push(entity);
         } else {
@@ -308,14 +318,13 @@ export const parseDxf = async (dxfString: string, onProgress?: (percent: number)
   let linesProcessed = 0;
 
   while (state.hasNext) {
-    if (state.linesRead > linesProcessed + 2000) {
+    // Yield to main thread more frequently (every 500 lines) to prevent UI freeze
+    if (state.linesRead > linesProcessed + 500) {
         linesProcessed = state.linesRead;
         const percent = Math.min(99, Math.round((state.linesRead / estimatedTotalLines) * 100));
-        if (percent !== lastReportedProgress) {
-            lastReportedProgress = percent;
-            if (onProgress) onProgress(percent);
-            await new Promise(resolve => setTimeout(resolve, 0));
-        }
+        if (onProgress) onProgress(percent);
+        // Force yield even if percentage hasn't changed to keep UI responsive
+        await new Promise(resolve => setTimeout(resolve, 0));
     }
 
     const group = state.next();
@@ -418,14 +427,18 @@ const parseEntityDispatcher = (type: string, state: DxfParserState, blockHandleM
         case 'ATTDEF': return parseText(state, common, EntityType.ATTDEF);
         case 'ATTRIB': return parseText(state, common, EntityType.ATTRIB);
         case 'POINT': return parsePointEntity(state, common);
-        case 'SOLID': case 'TRACE': case '3DFACE': return parseSolid(state, common);
+        case 'SOLID': case 'TRACE': case '3DFACE': return parseSolid(state, common, type);
         case 'SPLINE': return parseSpline(state, common);
         case 'ELLIPSE': return parseEllipse(state, common);
         case 'HATCH': return parseHatch(state, common);
         case 'DIMENSION': return parseDimension(state, common);
         case 'LEADER': return parseLeader(state, common);
         case 'ACAD_TABLE': return parseAcadTable(state, common, blockHandleMap);
+        case 'RAY':
+        case 'XLINE':
+            return parseRayXLine(state, common, type);
         default: 
+            // Crucial: Securely skip unknown entities by consuming all group codes until next entity (code 0)
             while (state.hasNext) {
                 const p = state.peek();
                 if (!p || p.code === 0) break;
@@ -577,6 +590,44 @@ const parseText = (state: DxfParserState, common: any, type: EntityType): DxfTex
         entity.rotation = getWcsRotation(entity.rotation, ocs);
     }
     entity.position = applyOcs(entity.position, ocs, z);
+    return entity;
+}
+
+const parseRayXLine = (state: DxfParserState, common: any, type: string): AnyEntity => {
+    const entity: any = { 
+        ...common, 
+        type: type === 'RAY' ? EntityType.RAY : EntityType.XLINE, 
+        basePoint: {x:0, y:0}, 
+        direction: {x:1, y:0} 
+    };
+    let z1 = 0, z2 = 0;
+    while(state.hasNext) {
+        const p = state.peek();
+        if (!p || p.code === 0) break;
+        const g = state.next()!;
+        applyCommonGroup(entity, g.code, g.value);
+        switch(g.code) {
+            case 10: entity.basePoint.x = parseFloat(g.value); break;
+            case 20: entity.basePoint.y = parseFloat(g.value); break;
+            case 30: z1 = parseFloat(g.value); break;
+            case 11: entity.direction.x = parseFloat(g.value); break;
+            case 21: entity.direction.y = parseFloat(g.value); break;
+            case 31: z2 = parseFloat(g.value); break;
+        }
+    }
+    const ocs = getOcsToWcsMatrix(entity.extrusion.x, entity.extrusion.y, entity.extrusion.z);
+    entity.basePoint = applyOcs(entity.basePoint, ocs, z1);
+    // Direction vector should also be rotated if OCS is used
+    if (ocs) {
+        const d = { x: entity.direction.x, y: entity.direction.y };
+        entity.direction = applyOcs(d, ocs, z2);
+        // Normalize direction
+        const len = Math.sqrt(entity.direction.x * entity.direction.x + entity.direction.y * entity.direction.y);
+        if (len > 0) {
+            entity.direction.x /= len;
+            entity.direction.y /= len;
+        }
+    }
     return entity;
 }
 
@@ -823,8 +874,8 @@ const parseLeader = (state: DxfParserState, common: any): DxfLeader => {
     return entity;
 }
 
-const parseSolid = (state: DxfParserState, common: any): AnyEntity => {
-    const entity: any = { ...common, type: EntityType.SOLID, points: [] };
+const parseSolid = (state: DxfParserState, common: any, type: string): AnyEntity => {
+    const entity: any = { ...common, type: type === '3DFACE' ? EntityType.THREEDFACE : EntityType.SOLID, points: [] };
     const pts: ({x:number, y:number, z:number} | null)[] = [null, null, null, null];
     
     while(state.hasNext) {
@@ -845,6 +896,7 @@ const parseSolid = (state: DxfParserState, common: any): AnyEntity => {
             case 13: if (!pts[3]) pts[3] = {x:0, y:0, z:0}; pts[3].x = parseFloat(g.value); break;
             case 23: if (!pts[3]) pts[3] = {x:0, y:0, z:0}; pts[3].y = parseFloat(g.value); break;
             case 33: if (!pts[3]) pts[3] = {x:0, y:0, z:0}; pts[3].z = parseFloat(g.value); break;
+            case 70: if (type === '3DFACE') entity.edgeFlags = parseInt(g.value); break;
         }
     }
     
@@ -858,7 +910,7 @@ const parseSolid = (state: DxfParserState, common: any): AnyEntity => {
     const ocs = getOcsToWcsMatrix(entity.extrusion.x, entity.extrusion.y, entity.extrusion.z);
     const transformed = pts.map(p => applyOcs(p!, ocs, p!.z));
     
-    if (common.type === 'SOLID' || common.type === 'TRACE') {
+    if (type === 'SOLID' || type === 'TRACE') {
          entity.points = [transformed[0], transformed[1], transformed[3], transformed[2]]; 
     } else {
          entity.points = [transformed[0], transformed[1], transformed[2], transformed[3]];
@@ -911,6 +963,12 @@ const parseSpline = (state: DxfParserState, common: any): DxfSpline => {
             case 21: if (entity.fitPoints.length > 0) entity.fitPoints[entity.fitPoints.length-1].y = parseFloat(g.value); break;
         }
     }
+    
+    // Pre-calculate spline points for faster rendering
+    if (entity.controlPoints.length > 0) {
+        entity.calculatedPoints = getBSplinePoints(entity.controlPoints, entity.degree, entity.knots, entity.weights);
+    }
+    
     return entity;
 }
 
@@ -1084,6 +1142,10 @@ const parseHatch = (state: DxfParserState, common: any): DxfHatch => {
                              const pt = readPoint(state, 10, 20); if(pt) edge.controlPoints!.push(pt);
                              if (rational) { const w = readVal(state, 42); if(w!==null) edge.weights!.push(w); }
                          }
+                         // Pre-calculate spline points for hatch edge
+                         if (edge.controlPoints.length > 0) {
+                             edge.calculatedPoints = getBSplinePoints(edge.controlPoints, edge.degree || 3, edge.knots, edge.weights, 20);
+                         }
                     }
                     currentLoop.edges.push(edge);
                     edgesToRead--;
@@ -1103,6 +1165,7 @@ const parseHatch = (state: DxfParserState, common: any): DxfHatch => {
                  if (edge.end) edge.end = transform(edge.end.x, edge.end.y);
                  if (edge.center) edge.center = transform(edge.center.x, edge.center.y);
                  if (edge.controlPoints) edge.controlPoints = edge.controlPoints.map(p => transform(p.x, p.y));
+                 if (edge.calculatedPoints) edge.calculatedPoints = edge.calculatedPoints.map(p => transform(p.x, p.y));
              });
         });
     }
@@ -1142,7 +1205,27 @@ export const calculateExtents = (entities: AnyEntity[], blocks: Record<string, D
         } else if (ent.type === EntityType.POINT || ent.type === EntityType.TEXT || ent.type === EntityType.MTEXT || ent.type === EntityType.ATTRIB || ent.type === EntityType.ATTDEF) {
              const p = apply(ent.position);
              updateExtents(p.x, p.y);
-        } else if (ent.type === EntityType.SOLID) {
+        } else if (ent.type === EntityType.RAY || ent.type === EntityType.XLINE) {
+             const p = apply(ent.basePoint);
+             updateExtents(p.x, p.y);
+        } else if (ent.type === EntityType.LEADER) {
+             ent.points.forEach(p => {
+                 const pt = apply(p);
+                 updateExtents(pt.x, pt.y);
+             });
+        } else if (ent.type === EntityType.ELLIPSE) {
+             const c = apply(ent.center);
+             const rx = Math.sqrt(ent.majorAxis.x**2 + ent.majorAxis.y**2);
+             const ry = rx * ent.ratio;
+             updateExtents(c.x - rx, c.y - rx);
+             updateExtents(c.x + rx, c.y + rx);
+        } else if (ent.type === EntityType.SPLINE) {
+             const pts = ent.calculatedPoints || ent.controlPoints || ent.fitPoints || [];
+             pts.forEach(p => {
+                 const pt = apply(p);
+                 updateExtents(pt.x, pt.y);
+             });
+        } else if (ent.type === EntityType.SOLID || ent.type === EntityType.THREEDFACE) {
             ent.points.forEach(p => {
                 const pt = apply(p);
                 updateExtents(pt.x, pt.y);
@@ -1165,6 +1248,32 @@ export const calculateExtents = (entities: AnyEntity[], blocks: Record<string, D
                 const p = apply(ent.position);
                 updateExtents(p.x, p.y);
             }
+        } else if (ent.type === EntityType.HATCH) {
+            ent.loops.forEach(loop => {
+                if (loop.points) {
+                    loop.points.forEach(p => {
+                        const pt = apply(p);
+                        updateExtents(pt.x, pt.y);
+                    });
+                }
+                loop.edges.forEach(edge => {
+                    if (edge.calculatedPoints) {
+                        edge.calculatedPoints.forEach(p => {
+                            const pt = apply(p);
+                            updateExtents(pt.x, pt.y);
+                        });
+                    } else if (edge.start && edge.end) {
+                        const p1 = apply(edge.start);
+                        const p2 = apply(edge.end);
+                        updateExtents(p1.x, p1.y);
+                        updateExtents(p2.x, p2.y);
+                    } else if (edge.center && edge.radius) {
+                        const c = apply(edge.center);
+                        updateExtents(c.x - edge.radius, c.y - edge.radius);
+                        updateExtents(c.x + edge.radius, c.y + edge.radius);
+                    }
+                });
+            });
         }
     };
 
