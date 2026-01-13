@@ -21,25 +21,22 @@ const ToolBar: React.FC<ToolBarProps> = ({
 }) => {
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
 
-  const menuClass = "px-4 h-full flex items-center hover:bg-gray-200 transition-colors text-sm text-gray-800 cursor-default select-none relative";
-  const dropdownItemClass = "px-4 py-2 hover:bg-[#2b579a] hover:text-white text-sm text-gray-700 cursor-pointer whitespace-nowrap transition-colors flex items-center gap-2";
-
   return (
-    <div className="h-10 bg-white border-b border-gray-300 flex items-center z-50 shrink-0 font-sans shadow-sm pl-2">
+    <div className="toolbar">
       {/* 文件 Menu */}
       <div 
-        className={menuClass}
+        className="menu-item"
         onMouseEnter={() => setActiveMenu('file')}
         onMouseLeave={() => setActiveMenu(null)}
       >
         <span>文件</span>
         {activeMenu === 'file' && (
-          <div className="absolute top-full left-0 bg-white border border-gray-300 shadow-xl py-1 min-w-[140px] z-[60]">
-            <label className={dropdownItemClass}>
+          <div className="dropdown-menu">
+            <label className="dropdown-item">
               <span>打开...</span>
               <input type="file" accept=".dxf" className="hidden" onChange={onImport} />
             </label>
-            <div onClick={onClear} className={dropdownItemClass}>
+            <div onClick={onClear} className="dropdown-item">
                <span>清空</span>
             </div>
           </div>
@@ -48,22 +45,22 @@ const ToolBar: React.FC<ToolBarProps> = ({
 
       {/* 视图 Menu */}
       <div 
-        className={menuClass}
+        className="menu-item"
         onMouseEnter={() => setActiveMenu('view')}
         onMouseLeave={() => setActiveMenu(null)}
       >
         <span>视图</span>
         {activeMenu === 'view' && (
-          <div className="absolute top-full left-0 bg-white border border-gray-300 shadow-xl py-1 min-w-[160px] z-[60]">
-            <div onClick={onFitView} className={dropdownItemClass}>
+          <div className="dropdown-menu" style={{ minWidth: '160px' }}>
+            <div onClick={onFitView} className="dropdown-item">
               <span>充满</span>
             </div>
-            <div className="h-px bg-gray-200 my-1"></div>
-            <div onClick={onToggleSidebar} className={dropdownItemClass}>
-              <span>结构</span>
+            <div className="divider"></div>
+            <div onClick={onToggleSidebar} className="dropdown-item">
+              <span>结构 ({showSidebar ? '显示' : '隐藏'})</span>
             </div>
-            <div onClick={onToggleProperties} className={dropdownItemClass}>
-               <span>属性</span>
+            <div onClick={onToggleProperties} className="dropdown-item">
+               <span>属性 ({showProperties ? '显示' : '隐藏'})</span>
             </div>
           </div>
         )}

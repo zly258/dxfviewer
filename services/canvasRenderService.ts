@@ -1,6 +1,7 @@
-import { AnyEntity, EntityType, DxfLayer, DxfBlock, DxfStyle, Point2D, DxfInsert, HatchLoop } from '../types';
+import { AnyEntity, EntityType, DxfLayer, DxfBlock, DxfStyle, Point2D, DxfInsert, HatchLoop, DxfText } from '../types';
 import { AUTO_CAD_COLORS, DEFAULT_COLOR, getAutoCadColor } from '../constants';
 import { getBSplinePoints } from './dxfService';
+import { getStyleFontFamily } from './fontService';
 
 const SELECTION_COLOR = '#0078d4'; 
 
@@ -12,56 +13,29 @@ const getColor = (entColor: number | undefined, layer: DxfLayer | undefined, par
     return getAutoCadColor(entColor);
 };
 
-const mapCadFontToWebFont = (fontFileName: string): string => {
-    if (!fontFileName) return 'Arial, sans-serif';
-    const f = fontFileName.toLowerCase();
-    
-    // Chinese / CJK fonts
-    if (f.includes('gb') || f.includes('hz') || f.includes('big') || f.includes('sim') || f.includes('song') || f.includes('kai') || f.includes('hei') || f.includes('fang')) {
-        return '"Microsoft YaHei", "微软雅黑", "SimSun", "宋体", "STSong", "SimKai", "SimHei", sans-serif';
-    }
-    // Technical / AutoCAD specific fonts (usually mapped to monospace or technical sans-serif)
-    if (f.includes('txt') || f.includes('mono') || f.includes('iso') || f.includes('simplex') || f.includes('romans') || f.includes('scripts') || f.includes('italic')) {
-        return '"Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
-    }
-    // Serif / Roman
-    if ((f.includes('times') || f.includes('roman')) && !f.includes('romans')) {
-        return '"Times New Roman", Times, serif';
-    }
-    // Arial / Helvetica / Swiss
-    if (f.includes('arial') || f.includes('helvetica') || f.includes('swiss')) {
-        return 'Arial, Helvetica, sans-serif';
-    }
-    
-    // If it's a TTF/OTF path, try to extract the font name
-    const lastSlash = Math.max(f.lastIndexOf('/'), f.lastIndexOf('\\'));
-    if (lastSlash !== -1) {
-        let name = f.substring(lastSlash + 1).replace(/\.(ttf|otf|shx)$/i, '');
-        if (name) {
-            // Capitalize first letter of each word for better font matching
-            name = name.split(/[\s-_]+/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-            return `"${name}", Arial, sans-serif`;
-        }
-    }
-
-    return 'Arial, sans-serif';
-}
-
-const getCanvasFont = (styleName: string | undefined, styles: Record<string, DxfStyle> | undefined, height: number): string => {
+const getCanvasFont = (ent: AnyEntity, styles: Record<string, DxfStyle> | undefined): string => {
+    const textEnt = (ent.type === EntityType.TEXT || ent.type === EntityType.MTEXT || ent.type === EntityType.ATTRIB || ent.type === EntityType.ATTDEF) ? (ent as DxfText) : null;
+    const height = textEnt ? (textEnt.height || 10) : 10;
     // DXF Height is Cap Height. CSS is Em Height.
     // Factor ~1.43 converts Cap Height to approx correct CSS px size for Arial-like fonts.
     const correctedHeight = height * 1.43; 
-    let fontFamily = '"Microsoft YaHei", "SimSun", Arial, sans-serif';
-    
-    if (styleName && styles && styles[styleName]) {
-        const style = styles[styleName];
-        if (style.fontFileName) {
-            fontFamily = mapCadFontToWebFont(style.fontFileName);
-        } else if (style.name) {
-            // Sometimes style name itself is a font name
-            fontFamily = `"${style.name}", ${fontFamily}`;
+    let fontFamily = getStyleFontFamily(textEnt?.styleName, styles);
+
+    // Check for MTEXT inline font override
+    if (ent.type === EntityType.MTEXT) {
+        const matches = ent.value.match(/\\f([^|;]+)[|;]/);
+        if (matches && matches[1]) {
+            const inlineFont = matches[1].replace(/\"/g, '');
+            if (inlineFont.toLowerCase().includes('song') || inlineFont.toLowerCase().includes('simsun')) {
+                fontFamily = '"SimSun", "宋体", "Microsoft YaHei", sans-serif';
+            } else if (inlineFont.toLowerCase().includes('arial')) {
+                fontFamily = 'Arial, Helvetica, sans-serif';
+            } else {
+                fontFamily = `"${inlineFont}", ${fontFamily}`;
+            }
         }
     }
+
     return `${correctedHeight}px ${fontFamily}`;
 };
 
@@ -120,7 +94,7 @@ const createHatchPattern = (ctx: CanvasRenderingContext2D, color: string) => {
     return ctx.createPattern(canvas, 'repeat');
 };
 
-const drawHatchLoop = (ctx: CanvasRenderingContext2D, loop: HatchLoop) => {
+const drawHatchLoop = (ctx: CanvasRenderingContext2D, loop: HatchLoop, isFlipped: boolean = false) => {
     if (loop.isPolyline && loop.points && loop.points.length > 0) {
         const points = loop.points;
         const bulges = loop.bulges || [];
@@ -136,17 +110,16 @@ const drawHatchLoop = (ctx: CanvasRenderingContext2D, loop: HatchLoop) => {
                 const dist = Math.sqrt((p2.x - p1.x)**2 + (p2.y - p1.y)**2);
                 if (dist > 1e-9) {
                     const radius = Math.abs(dist / (2 * Math.sin(theta / 2)));
-                    const chordAngle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
-                    const angleOffset = (Math.PI - Math.abs(theta)) / 2 * (bulge > 0 ? -1 : 1);
-                    const centerAngle = chordAngle + angleOffset + (bulge > 0 ? -Math.PI/2 : Math.PI/2);
                     
-                    const alpha = Math.atan2(p2.y - p1.y, p2.x - p1.x);
                     const cx = (p1.x + p2.x)/2 - (p2.y - p1.y)/2 * (1/Math.tan(2*Math.atan(bulge)));
                     const cy = (p1.y + p2.y)/2 + (p2.x - p1.x)/2 * (1/Math.tan(2*Math.atan(bulge)));
                     
                     const startAngle = Math.atan2(p1.y - cy, p1.x - cx);
                     const endAngle = Math.atan2(p2.y - cy, p2.x - cx);
-                    const ccw = bulge > 0;
+                    
+                    let ccw = bulge > 0;
+                    if (isFlipped) ccw = !ccw;
+                    
                     ctx.arc(cx, cy, radius, startAngle, endAngle, !ccw); 
                 } else {
                     ctx.lineTo(p2.x, p2.y);
@@ -163,7 +136,8 @@ const drawHatchLoop = (ctx: CanvasRenderingContext2D, loop: HatchLoop) => {
             } else if (edge.type === 'ARC' && edge.center && edge.radius) {
                 const start = (edge.startAngle || 0) * Math.PI / 180;
                 let end = (edge.endAngle || 0) * Math.PI / 180;
-                const ccw = edge.ccw === undefined ? true : edge.ccw; 
+                let ccw = edge.ccw === undefined ? true : edge.ccw; 
+                if (isFlipped) ccw = !ccw;
                 ctx.arc(edge.center.x, edge.center.y, edge.radius, start, end, !ccw); 
             } else if (edge.type === 'ELLIPSE' && edge.center && edge.majorAxis) {
                 const majX = edge.majorAxis.x;
@@ -173,7 +147,8 @@ const drawHatchLoop = (ctx: CanvasRenderingContext2D, loop: HatchLoop) => {
                 const rotation = Math.atan2(majY, majX);
                 const start = edge.startAngle || 0;
                 const end = edge.endAngle || 2*Math.PI;
-                const ccw = edge.ccw === undefined ? true : edge.ccw;
+                let ccw = edge.ccw === undefined ? true : edge.ccw;
+                if (isFlipped) ccw = !ccw;
                 ctx.ellipse(edge.center.x, edge.center.y, rX, rY, rotation, start, end, !ccw);
             } else if (edge.type === 'SPLINE' && (edge.calculatedPoints || edge.controlPoints)) {
                  const points = edge.calculatedPoints || getBSplinePoints(edge.controlPoints!, edge.degree || 3, edge.knots, edge.weights, 20);
@@ -183,6 +158,43 @@ const drawHatchLoop = (ctx: CanvasRenderingContext2D, loop: HatchLoop) => {
     }
     ctx.closePath();
 }
+
+const drawPolyline = (ctx: CanvasRenderingContext2D, points: Point2D[], bulges: number[] | undefined, closed: boolean, isFlipped: boolean = false) => {
+    if (points.length < 1) return;
+    ctx.moveTo(points[0].x, points[0].y);
+    for (let i = 0; i < (closed ? points.length : points.length - 1); i++) {
+        const p1 = points[i];
+        const p2 = points[(i + 1) % points.length];
+        const bulge = bulges ? (bulges[i] || 0) : 0;
+        
+        if (Math.abs(bulge) < 1e-6) {
+            ctx.lineTo(p2.x, p2.y);
+        } else {
+            const theta = 4 * Math.atan(bulge);
+            const dist = Math.sqrt((p2.x - p1.x)**2 + (p2.y - p1.y)**2);
+            if (dist > 1e-9) {
+                const radius = Math.abs(dist / (2 * Math.sin(theta / 2)));
+                // Center calculation for bulge arc
+                const a = (p2.x - p1.x) / 2;
+                const b = (p2.y - p1.y) / 2;
+                const h = (dist / 2) * (1 / bulge - bulge) / 2;
+                const cx = p1.x + a - h * (p2.y - p1.y) / dist;
+                const cy = p1.y + b + h * (p2.x - p1.x) / dist;
+                
+                const startAngle = Math.atan2(p1.y - cy, p1.x - cx);
+                const endAngle = Math.atan2(p2.y - cy, p2.x - cx);
+                
+                let ccw = bulge > 0;
+                if (isFlipped) ccw = !ccw;
+                
+                ctx.arc(cx, cy, radius, startAngle, endAngle, !ccw);
+            } else {
+                ctx.lineTo(p2.x, p2.y);
+            }
+        }
+    }
+    if (closed) ctx.closePath();
+};
 
 export const renderEntitiesToCanvas = (
     ctx: CanvasRenderingContext2D,
@@ -296,10 +308,30 @@ export const renderEntitiesToCanvas = (
                     ent.center.y + ent.radius < yMin ||
                     ent.center.y - ent.radius > yMax
                 )) return;
-                const startRad = ent.startAngle * Math.PI / 180;
-                const endRad = ent.endAngle * Math.PI / 180;
+
+                const isFlipped = (ent.extrusion?.z || 1) < 0;
+                let startRad = ent.startAngle * Math.PI / 180;
+                let endRad = ent.endAngle * Math.PI / 180;
+                
                 ctx.beginPath();
-                ctx.arc(ent.center.x, ent.center.y, ent.radius, startRad, endRad, false);
+                if (isFlipped) {
+                    // When Nz = -1, the sweep direction is CW (anticlockwise = true in Y-up)
+                    ctx.arc(ent.center.x, ent.center.y, ent.radius, startRad, endRad, true);
+                } else {
+                    ctx.arc(ent.center.x, ent.center.y, ent.radius, startRad, endRad, false);
+                }
+                ctx.stroke();
+                break;
+            }
+            case EntityType.ELLIPSE: {
+                if (!isSelected && (Math.max(Math.abs(ent.majorAxis.x), Math.abs(ent.majorAxis.y)) < pixelThreshold)) return;
+                const rx = Math.sqrt(ent.majorAxis.x ** 2 + ent.majorAxis.y ** 2);
+                const ry = rx * ent.ratio;
+                const rotation = Math.atan2(ent.majorAxis.y, ent.majorAxis.x);
+                const isFlipped = (ent.extrusion?.z || 1) < 0;
+                
+                ctx.beginPath();
+                ctx.ellipse(ent.center.x, ent.center.y, rx, ry, rotation, ent.startParam || 0, ent.endParam || (Math.PI * 2), isFlipped);
                 ctx.stroke();
                 break;
             }
@@ -318,9 +350,7 @@ export const renderEntitiesToCanvas = (
                     }
 
                     ctx.beginPath();
-                    ctx.moveTo(ent.points[0].x, ent.points[0].y);
-                    ent.points.forEach(p => ctx.lineTo(p.x, p.y));
-                    if (ent.closed) ctx.closePath();
+                    drawPolyline(ctx, ent.points, ent.bulges, ent.closed, (ent.extrusion?.z || 1) < 0);
                     ctx.stroke();
                 }
                 break;
@@ -365,12 +395,20 @@ export const renderEntitiesToCanvas = (
                 
                 let widthFactor = 1;
                 const style = styles[ent.styleName || 'STANDARD'];
-                if (isMText) widthFactor = style?.widthFactor || 1;
-                else widthFactor = (ent.widthFactor && ent.widthFactor > 0) ? ent.widthFactor : (style?.widthFactor || 1);
+                if (isMText) {
+                    const matches = ent.value.match(/\\W(\d+(\.\d+)?);/);
+                    if (matches && matches[1]) {
+                        widthFactor = parseFloat(matches[1]);
+                    } else {
+                        widthFactor = style?.widthFactor || 1;
+                    }
+                } else {
+                    widthFactor = (ent.widthFactor && ent.widthFactor > 0) ? ent.widthFactor : (style?.widthFactor || 1);
+                }
                 
                 ctx.scale(widthFactor, -1); 
                 
-                ctx.font = getCanvasFont(ent.styleName, styles, ent.height);
+                ctx.font = getCanvasFont(ent, styles);
                 
                 let align: CanvasTextAlign = 'left';
                 let baseline: CanvasTextBaseline = 'alphabetic';
@@ -417,24 +455,25 @@ export const renderEntitiesToCanvas = (
                 ctx.restore();
                 break;
             case EntityType.INSERT:
+            case EntityType.ACAD_TABLE:
                 const block = blocks[ent.blockName];
                 if (block) {
                     ctx.save();
                     ctx.translate(ent.position.x, ent.position.y);
-                    ctx.rotate(ent.rotation * Math.PI / 180);
-                    ctx.scale(ent.scale.x, ent.scale.y);
+                    if ('rotation' in ent) ctx.rotate((ent as any).rotation * Math.PI / 180);
+                    if ('scale' in ent) ctx.scale((ent as any).scale.x, (ent as any).scale.y);
                     ctx.translate(-block.basePoint.x, -block.basePoint.y);
-                    block.entities.forEach(child => drawEntity(child, layerName, color, currentScale * ent.scale.x, isSelected, depth + 1));
+                    block.entities.forEach(child => drawEntity(child, layerName, color, currentScale * ((ent as any).scale?.x || 1), isSelected, depth + 1));
                     ctx.restore();
-                    if (ent.attributes) {
-                        ent.attributes.forEach(attr => drawEntity(attr, layerName, color, currentScale, isSelected, depth + 1));
+                    if ('attributes' in ent && (ent as any).attributes) {
+                        (ent as any).attributes.forEach((attr: any) => drawEntity(attr, layerName, color, currentScale, isSelected, depth + 1));
                     }
                 }
                 break;
             case EntityType.HATCH:
                 ctx.save();
                 ctx.beginPath();
-                ent.loops.forEach(loop => drawHatchLoop(ctx, loop));
+                ent.loops.forEach(loop => drawHatchLoop(ctx, loop, (ent.extrusion?.z || 1) < 0));
                 ctx.closePath();
                 
                 if (ent.solid) {
@@ -615,18 +654,76 @@ export const hitTest = (x: number, y: number, threshold: number, entities: AnyEn
             const d = Math.sqrt(Math.pow(x - c.x, 2) + Math.pow(y - c.y, 2));
             if (Math.abs(d - ent.radius) < threshold) {
                 let angle = Math.atan2(y - c.y, x - c.x) * 180 / Math.PI;
-                if (angle < 0) angle += 360;
-                const start = ent.startAngle, end = ent.endAngle;
-                return start > end ? (angle >= start || angle <= end) : (angle >= start && angle <= end);
+                while (angle < 0) angle += 360;
+                while (angle >= 360) angle -= 360;
+                
+                const isFlipped = (ent.extrusion?.z || 1) < 0;
+                let s = ent.startAngle;
+                let e = ent.endAngle;
+                while (s < 0) s += 360;
+                while (s >= 360) s -= 360;
+                while (e < 0) e += 360;
+                while (e >= 360) e -= 360;
+
+                if (isFlipped) {
+                    // For CW arc, swap start/end to use CCW logic
+                    const temp = s;
+                    s = e;
+                    e = temp;
+                }
+                
+                return s > e ? (angle >= s || angle <= e) : (angle >= s && angle <= e);
             }
         } else if (ent.type === EntityType.LWPOLYLINE || ent.type === EntityType.POLYLINE) {
-            for (let j = 0; j < ent.points.length - 1; j++) {
-                const p1 = p(ent.points[j]), p2 = p(ent.points[j+1]);
-                if (distanceToLine(x, y, p1.x, p1.y, p2.x, p2.y) < threshold) return true;
-            }
-            if (ent.closed && ent.points.length > 2) {
-                const p1 = p(ent.points[ent.points.length-1]), p2 = p(ent.points[0]);
-                if (distanceToLine(x, y, p1.x, p1.y, p2.x, p2.y) < threshold) return true;
+            const isFlipped = (ent.extrusion?.z || 1) < 0;
+            for (let j = 0; j < (ent.closed ? ent.points.length : ent.points.length - 1); j++) {
+                const p1 = p(ent.points[j]);
+                const p2 = p(ent.points[(j + 1) % ent.points.length]);
+                const bulge = ent.bulges ? (ent.bulges[j] || 0) : 0;
+                
+                if (Math.abs(bulge) < 1e-6) {
+                    if (distanceToLine(x, y, p1.x, p1.y, p2.x, p2.y) < threshold) return true;
+                } else {
+                    const dist = Math.sqrt((p2.x - p1.x)**2 + (p2.y - p1.y)**2);
+                    if (dist > 1e-9) {
+                        const theta = 4 * Math.atan(bulge);
+                        const radius = Math.abs(dist / (2 * Math.sin(theta / 2)));
+                        const cx = (p1.x + p2.x)/2 - (p2.y - p1.y)/2 * (1/Math.tan(2*Math.atan(bulge)));
+                        const cy = (p1.y + p2.y)/2 + (p2.x - p1.x)/2 * (1/Math.tan(2*Math.atan(bulge)));
+                        
+                        const d = Math.sqrt(Math.pow(x - cx, 2) + Math.pow(y - cy, 2));
+                        if (Math.abs(d - radius) < threshold) {
+                            let angle = Math.atan2(y - cy, x - cx);
+                            let s = Math.atan2(p1.y - cy, p1.x - cx);
+                            let e = Math.atan2(p2.y - cy, p2.x - cx);
+                            
+                            // Normalize angles to [0, 2PI)
+                            const normalize = (a: number) => {
+                                while (a < 0) a += Math.PI * 2;
+                                while (a >= Math.PI * 2) a -= Math.PI * 2;
+                                return a;
+                            };
+                            
+                            angle = normalize(angle);
+                            s = normalize(s);
+                            e = normalize(e);
+                            
+                            let ccw = bulge > 0;
+                            if (isFlipped) ccw = !ccw;
+                            
+                            if (!ccw) {
+                                // For CW, swap start/end to use CCW logic
+                                const temp = s;
+                                s = e;
+                                e = temp;
+                            }
+                            
+                            if (s > e ? (angle >= s || angle <= e) : (angle >= s && angle <= e)) return true;
+                        }
+                    } else {
+                        if (Math.sqrt((x - p1.x)**2 + (y - p1.y)**2) < threshold) return true;
+                    }
+                }
             }
         } else if (ent.type === EntityType.SPLINE) {
              const points = getBSplinePoints(ent.controlPoints, ent.degree, ent.knots, ent.weights, 20); // Low res for hit test
@@ -638,34 +735,35 @@ export const hitTest = (x: number, y: number, threshold: number, entities: AnyEn
             const pos = p(ent.position);
             return Math.sqrt(Math.pow(x - pos.x, 2) + Math.pow(y - pos.y, 2)) < threshold;
         } else if (ent.type === EntityType.TEXT || ent.type === EntityType.MTEXT || ent.type === EntityType.ATTRIB || ent.type === EntityType.ATTDEF) {
-            const pos = p(ent.position);
-            const text = cleanTextContent(ent.value);
+            const textEnt = ent as DxfText;
+            const pos = p(textEnt.position);
+            const text = cleanTextContent(textEnt.value);
             if (!text) return false;
 
-            const height = ent.height || 10;
-            const style = styles[ent.styleName || 'STANDARD'];
-            const widthFactor = (ent.widthFactor && ent.widthFactor > 0) ? ent.widthFactor : (style?.widthFactor || 1);
+            const height = textEnt.height || 10;
+            const style = styles[textEnt.styleName || 'STANDARD'];
+            const widthFactor = (textEnt.widthFactor && textEnt.widthFactor > 0) ? textEnt.widthFactor : (style?.widthFactor || 1);
             
             // Heuristic for width calculation
             const charCount = text.length;
             const approxWidth = height * 0.7 * charCount * widthFactor;
             
-            const rad = (ent.rotation || 0) * Math.PI / 180;
+            const rad = (textEnt.rotation || 0) * Math.PI / 180;
             const cos = Math.cos(rad), sin = Math.sin(rad);
             
             // Alignment offsets (simplified)
             let dx = 0, dy = 0;
-            const isMText = ent.type === EntityType.MTEXT;
+            const isMText = textEnt.type === EntityType.MTEXT;
             if (isMText) {
-                const ap = ent.attachmentPoint || 1;
+                const ap = textEnt.attachmentPoint || 1;
                 if ([2, 5, 8].includes(ap)) dx = -approxWidth / 2;
                 else if ([3, 6, 9].includes(ap)) dx = -approxWidth;
                 
                 if ([4, 5, 6].includes(ap)) dy = -height / 2;
                 else if ([7, 8, 9].includes(ap)) dy = -height;
             } else {
-                const hAlign = ent.hAlign || 0;
-                const vAlign = ent.vAlign || 0;
+                const hAlign = textEnt.hAlign || 0;
+                const vAlign = textEnt.vAlign || 0;
                 if (hAlign === 1 || hAlign === 4) dx = -approxWidth / 2;
                 else if (hAlign === 2) dx = -approxWidth;
                 
@@ -693,6 +791,7 @@ export const hitTest = (x: number, y: number, threshold: number, entities: AnyEn
             const c = p(ent.center);
             const rx = Math.sqrt(ent.majorAxis.x ** 2 + ent.majorAxis.y ** 2);
             const ry = rx * ent.ratio;
+            const isFlipped = (ent.extrusion?.z || 1) < 0;
             // Simple bounding box check for ellipse hit test
             if (Math.abs(x - c.x) > rx + threshold || Math.abs(y - c.y) > ry + threshold) return false;
             
@@ -704,20 +803,60 @@ export const hitTest = (x: number, y: number, threshold: number, entities: AnyEn
             const localX = dx * cos - dy * sin;
             const localY = dx * sin + dy * cos;
             const normDist = (localX * localX) / (rx * rx) + (localY * localY) / (ry * ry);
-            return Math.abs(Math.sqrt(normDist) - 1) < threshold / Math.min(rx, ry);
+            
+            if (Math.abs(Math.sqrt(normDist) - 1) < threshold / Math.min(rx, ry)) {
+                let param = Math.atan2(localY / ry, localX / rx);
+                while (param < 0) param += Math.PI * 2;
+                while (param >= Math.PI * 2) param -= Math.PI * 2;
+                
+                let s = ent.startParam || 0;
+                let e = ent.endParam || (Math.PI * 2);
+                const normalize = (a: number) => {
+                    while (a < 0) a += Math.PI * 2;
+                    while (a >= Math.PI * 2) a -= Math.PI * 2;
+                    return a;
+                };
+                s = normalize(s);
+                e = normalize(e);
+                
+                if (Math.abs(s - e) < 1e-9 || Math.abs(Math.abs(s - e) - 2 * Math.PI) < 1e-4) return true; // Full ellipse
+                
+                if (isFlipped) {
+                    // For CW, swap start/end to use CCW logic
+                    const temp = s;
+                    s = e;
+                    e = temp;
+                }
+                
+                return s > e ? (param >= s || param <= e) : (param >= s && param <= e);
+            }
+            return false;
         } else if (ent.type === EntityType.SOLID || ent.type === EntityType.THREEDFACE) {
+            // Check edges
             for (let j = 0; j < ent.points.length; j++) {
                 const p1 = p(ent.points[j]), p2 = p(ent.points[(j + 1) % ent.points.length]);
                 if (distanceToLine(x, y, p1.x, p1.y, p2.x, p2.y) < threshold) return true;
             }
-        } else if (ent.type === EntityType.INSERT) {
+            // Check if point is inside
+            let inside = false;
+            for (let i = 0, j = ent.points.length - 1; i < ent.points.length; j = i++) {
+                const pi = p(ent.points[i]), pj = p(ent.points[j]);
+                if (((pi.y > y) !== (pj.y > y)) &&
+                    (x < (pj.x - pi.x) * (y - pi.y) / (pj.y - pi.y) + pi.x)) {
+                    inside = !inside;
+                }
+            }
+            if (inside) return true;
+        } else if (ent.type === EntityType.INSERT || ent.type === EntityType.ACAD_TABLE) {
             const block = blocks[ent.blockName];
             if (block) {
-                const rad = ent.rotation * Math.PI / 180;
+                const rotation = (ent as any).rotation || 0;
+                const scale = (ent as any).scale || {x:1, y:1, z:1};
+                const rad = rotation * Math.PI / 180;
                 const cos = Math.cos(rad), sin = Math.sin(rad);
                 const blockTransform = (pt: Point2D) => {
-                    const bx = (pt.x - block.basePoint.x) * ent.scale.x;
-                    const by = (pt.y - block.basePoint.y) * ent.scale.y;
+                    const bx = (pt.x - block.basePoint.x) * scale.x;
+                    const by = (pt.y - block.basePoint.y) * scale.y;
                     const rx = bx * cos - by * sin;
                     const ry = bx * sin + by * cos;
                     return p({ x: rx + ent.position.x, y: ry + ent.position.y });
@@ -725,7 +864,50 @@ export const hitTest = (x: number, y: number, threshold: number, entities: AnyEn
                 return block.entities.some(child => checkEntity(child, blockTransform, depth + 1));
             }
         } else if (ent.type === EntityType.HATCH) {
-            return false;
+            // Check if mouse is inside any of the hatch loops
+            if (!ent.loops) return false;
+            
+            let totalInside = false;
+            for (const loop of ent.loops) {
+                let points: Point2D[] = [];
+                if (loop.isPolyline && loop.points) {
+                    points = loop.points;
+                } else if (loop.edges) {
+                    // Extract points from edges (simplified for hit test)
+                    loop.edges.forEach(edge => {
+                        const edgeType = (edge.type as string).toLowerCase();
+                        if (edgeType === 'line' && edge.start && edge.end) {
+                            points.push(edge.start, edge.end);
+                        } else if (edgeType === 'arc' && edge.center && edge.radius) {
+                            // Approximate arc with few points
+                            const steps = 8;
+                            const s = edge.startAngle * Math.PI / 180;
+                            const e = edge.endAngle * Math.PI / 180;
+                            const sweep = e - s;
+                            for (let i = 0; i <= steps; i++) {
+                                const a = s + (sweep * i / steps);
+                                points.push({
+                                    x: edge.center.x + Math.cos(a) * edge.radius,
+                                    y: edge.center.y + Math.sin(a) * edge.radius
+                                });
+                            }
+                        }
+                    });
+                }
+
+                if (points.length < 3) continue;
+
+                let inside = false;
+                for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+                    const pi = p(points[i]), pj = p(points[j]);
+                    if (((pi.y > y) !== (pj.y > y)) &&
+                        (x < (pj.x - pi.x) * (y - pi.y) / (pj.y - pi.y) + pi.x)) {
+                        inside = !inside;
+                    }
+                }
+                if (inside) totalInside = !totalInside; // XOR for holes
+            }
+            return totalInside;
         } else if (ent.type === EntityType.DIMENSION) {
              const block = blocks[ent.blockName];
              if (block) {
@@ -767,7 +949,7 @@ export const hitTestBox = (box: {x1:number, y1:number, x2:number, y2:number}, en
             inBox = ent.points.some(p => p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY);
         } else if (ent.type === EntityType.SPLINE && ent.controlPoints) {
             inBox = ent.controlPoints.some(p => p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY);
-        } else if (ent.type === EntityType.TEXT || ent.type === EntityType.MTEXT || ent.type === EntityType.ATTRIB || ent.type === EntityType.ATTDEF || ent.type === EntityType.INSERT) {
+        } else if (ent.type === EntityType.TEXT || ent.type === EntityType.MTEXT || ent.type === EntityType.ATTRIB || ent.type === EntityType.ATTDEF || ent.type === EntityType.INSERT || ent.type === EntityType.ACAD_TABLE) {
             inBox = ent.position.x >= minX && ent.position.x <= maxX && ent.position.y >= minY && ent.position.y <= maxY;
         } else if (ent.type === EntityType.DIMENSION) {
             const p = ent.textMidPoint || ent.definitionPoint;

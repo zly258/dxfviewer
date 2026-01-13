@@ -23,6 +23,7 @@ export const ENTITY_TYPE_TRANSLATIONS: Record<string, string> = {
   [EntityType.XLINE]: "构造线 (XLINE)",
   [EntityType.ATTDEF]: "属性定义 (ATTDEF)",
   [EntityType.ATTRIB]: "属性 (ATTRIB)",
+  [EntityType.ACAD_TABLE]: "表格 (TABLE)",
 };
 
 const LABEL_TRANSLATIONS: Record<string, string> = {
@@ -59,17 +60,18 @@ const LABEL_TRANSLATIONS: Record<string, string> = {
 };
 
 interface PropertiesPanelProps {
-  selectedEntities: AnyEntity[];
+  entities: AnyEntity[];
+  layers?: any[];
 }
 
-const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ selectedEntities }) => {
+const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, layers }) => {
   
   const renderPropertyRow = (label: string, value: React.ReactNode) => {
     const translatedLabel = LABEL_TRANSLATIONS[label] || label;
     return (
-      <tr key={label} className="border-b border-gray-100 hover:bg-gray-50">
-        <td className="py-2.5 pl-3 text-gray-500 w-32 align-top font-medium text-sm bg-gray-50/50">{translatedLabel}</td>
-        <td className="py-2.5 pr-3 font-mono text-gray-800 break-all text-right text-sm">{value}</td>
+      <tr key={label} className="property-row">
+        <td className="property-label-cell">{translatedLabel}</td>
+        <td className="property-value-cell">{value}</td>
       </tr>
     );
   };
@@ -89,11 +91,11 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ selectedEntities }) =
     
     const hex = getAutoCadColor(color || 7);
     return (
-      <div className="flex items-center justify-end gap-2">
+      <div className="color-preview-container">
         <span className="text-gray-400 text-xs">({color})</span>
-        <span className="font-mono uppercase">{hex}</span>
+        <span className="color-hex">{hex}</span>
         <div 
-          className="w-4 h-4 rounded-sm border border-gray-300 shadow-sm" 
+          className="color-swatch" 
           style={{ backgroundColor: hex }}
         />
       </div>
@@ -167,13 +169,14 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ selectedEntities }) =
               ].filter(Boolean);
               break;
           case EntityType.INSERT:
+          case EntityType.ACAD_TABLE:
               specificRows = [
                   renderPropertyRow("Block", ent.blockName),
                   renderPropertyRow("Pos X", ent.position.x.toFixed(3)),
                   renderPropertyRow("Pos Y", ent.position.y.toFixed(3)),
-                  renderPropertyRow("Scale", `${ent.scale.x.toFixed(2)}, ${ent.scale.y.toFixed(2)}`),
-                  renderPropertyRow("Rotation", `${ent.rotation.toFixed(1)}°`),
-              ];
+                  ent.type === EntityType.INSERT && renderPropertyRow("Scale", `${ent.scale.x.toFixed(2)}, ${ent.scale.y.toFixed(2)}`),
+                  ent.type === EntityType.INSERT && renderPropertyRow("Rotation", `${ent.rotation.toFixed(1)}°`),
+              ].filter(Boolean);
               break;
            case EntityType.HATCH:
               specificRows = [
@@ -191,7 +194,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ selectedEntities }) =
       }
 
       return (
-          <table className="w-full text-sm border-collapse bg-white">
+          <table className="properties-table">
               <tbody>
                   {commonRows}
                   {specificRows}
@@ -201,21 +204,21 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ selectedEntities }) =
   };
 
   return (
-      <div className="w-80 bg-white border-l border-gray-300 flex flex-col h-full shrink-0 z-20">
-        <div className="h-10 bg-gray-100 border-b border-gray-300 flex items-center px-4 text-xs font-bold text-gray-700 uppercase tracking-wider shrink-0">
+      <div className="properties-panel">
+        <div className="properties-header">
            属性面板
         </div>
-        <div className="flex-1 overflow-y-auto custom-scrollbar p-0 bg-white">
-          {selectedEntities.length === 1 ? (
-             renderEntityProperties(selectedEntities[0])
-          ) : selectedEntities.length > 1 ? (
-             <div className="flex flex-col items-center justify-center h-40 text-gray-400 gap-3 p-6 text-center">
-               <span className="font-medium text-gray-500 text-sm">已选择 {selectedEntities.length} 个对象</span>
-               <span className="text-xs text-gray-400">选择单个对象以查看详细属性</span>
+        <div className="properties-content">
+          {entities.length === 1 ? (
+             renderEntityProperties(entities[0])
+          ) : entities.length > 1 ? (
+             <div className="empty-state">
+               <div style={{ fontWeight: 500, color: '#6b7280' }}>已选择 {entities.length} 个对象</div>
+               <div style={{ fontSize: '12px', marginTop: '4px' }}>选择单个对象以查看详细属性</div>
              </div>
           ) : (
-             <div className="flex flex-col items-center justify-center h-40 text-gray-400 italic gap-3 p-6">
-               <span className="text-sm">未选择对象</span>
+             <div className="empty-state">
+               未选择对象
              </div>
           )}
         </div>

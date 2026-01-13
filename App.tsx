@@ -4,7 +4,7 @@ import Sidebar from './components/Sidebar';
 import PropertiesPanel from './components/PropertiesPanel';
 import ToolBar from './components/ToolBar';
 import { parseDxf, calculateExtents } from './services/dxfService';
-import { AnyEntity, ViewPort, DxfLayer, DxfBlock, EntityType, DxfStyle } from './types';
+import { AnyEntity, ViewPort, DxfLayer, DxfBlock, EntityType, DxfStyle, Point2D } from './types';
 import { DEFAULT_VIEWPORT } from './constants';
 
 function App() {
@@ -12,6 +12,7 @@ function App() {
   const [layers, setLayers] = useState<Record<string, DxfLayer>>({ '0': { name: '0', color: 7 }});
   const [blocks, setBlocks] = useState<Record<string, DxfBlock>>({});
   const [styles, setStyles] = useState<Record<string, DxfStyle>>({});
+  const [worldOffset, setWorldOffset] = useState<Point2D | undefined>();
   
   const [isLoading, setIsLoading] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState(0);
@@ -135,6 +136,7 @@ function App() {
                 setLayers(data.layers);
                 setBlocks(data.blocks);
                 setStyles(data.styles);
+                setWorldOffset(data.offset);
                 requestAnimationFrame(() => fitView(data.entities, data.blocks));
             } catch (err) {
                 alert("DXF Parse Error: " + (err as any).message);
@@ -155,20 +157,20 @@ function App() {
   const selectedEntities = entities.filter(e => selectedEntityIds.has(e.id));
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-gray-100 text-gray-900 overflow-hidden relative font-sans">
+    <div className="app-container">
       {isLoading && (
-          <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-50 flex flex-col items-center justify-center">
-              <div className="w-64 space-y-4 text-center">
-                  <div className="text-xl font-semibold text-blue-600">正在解析 DXF...</div>
-                  <div className="h-1 w-full bg-gray-200 overflow-hidden">
-                      <div 
-                        className="h-full bg-blue-600 transition-all duration-100 ease-out"
-                        style={{ width: `${loadingProgress}%` }}
-                      ></div>
-                  </div>
-                  <div className="text-xs text-gray-500 font-mono">{loadingProgress}%</div>
-              </div>
+        <div className="loading-overlay">
+          <div className="loading-box">
+            <div className="loading-text">正在解析 DXF...</div>
+            <div className="progress-bar-container">
+              <div 
+                className="progress-bar"
+                style={{ width: `${loadingProgress}%` }}
+              ></div>
+            </div>
+            <div className="progress-text">{loadingProgress}%</div>
           </div>
+        </div>
       )}
 
       <ToolBar 
@@ -181,7 +183,7 @@ function App() {
         onToggleProperties={() => setShowProperties(!showProperties)}
       />
       
-      <div className="flex flex-1 overflow-hidden">
+      <div className="main-content">
         {showSidebar && (
             <Sidebar 
             layers={layers} 
@@ -191,7 +193,7 @@ function App() {
             />
         )}
         
-        <main className="flex-1 relative bg-[#212121] shadow-inner overflow-hidden flex flex-col border-l border-r border-gray-300">
+        <main className="viewer-container">
           <DxfViewer 
             entities={entities} 
             layers={layers}
@@ -202,12 +204,14 @@ function App() {
             selectedEntityIds={selectedEntityIds}
             onSelectIds={setSelectedEntityIds}
             onFitView={handleFitView}
+            worldOffset={worldOffset}
           />
         </main>
 
         {showProperties && (
             <PropertiesPanel 
-                selectedEntities={selectedEntities} 
+                entities={selectedEntities} 
+                layers={layers}
             />
         )}
       </div>

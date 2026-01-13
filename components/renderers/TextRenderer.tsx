@@ -1,6 +1,7 @@
 import React from 'react';
 import { DxfStyle, DxfText, EntityType } from '../../types';
 import { AUTO_CAD_COLORS, DEFAULT_COLOR } from '../../constants';
+import { getStyleFontFamily } from '../../services/fontService';
 
 /**
  * Strips AutoCAD MTEXT formatting codes and handles special characters and Unicode escapes.
@@ -32,49 +33,14 @@ const extractContentWidthFactor = (text: string): number | null => {
 }
 
 /**
- * Returns a CSS font stack optimized for Chinese and standard CAD fonts.
+ * Extracts the first font name from MTEXT formatting codes (e.g., \fArial|...;)
  */
-export const getFontFamily = (styleName: string | undefined, styles: Record<string, DxfStyle> | undefined): string => {
-    const CHINESE_FONTS = '"Microsoft YaHei", "微软雅黑", "SimSun", "宋体", "STSong", "SimKai", "SimHei"';
-    const FALLBACK = `${CHINESE_FONTS}, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif`;
-
-    if (!styleName || !styles || !styles[styleName]) return FALLBACK;
-    
-    const style = styles[styleName];
-    const fontFileName = (style.fontFileName || "").toLowerCase();
-
-    // Chinese / CJK fonts
-    if (fontFileName.includes('gb') || fontFileName.includes('hz') || fontFileName.includes('big') || fontFileName.includes('sim') || fontFileName.includes('song') || fontFileName.includes('kai') || fontFileName.includes('hei') || fontFileName.includes('fang')) {
-        return CHINESE_FONTS;
+const extractMTextFont = (text: string): string | null => {
+    const matches = text.match(/\\f([^|;]+)[|;]/);
+    if (matches && matches[1]) {
+        return matches[1].replace(/\"/g, ''); // Remove quotes if present
     }
-    // Technical / AutoCAD specific fonts
-    if (fontFileName.includes('txt') || fontFileName.includes('mono') || fontFileName.includes('iso') || fontFileName.includes('simplex') || fontFileName.includes('romans') || fontFileName.includes('scripts') || fontFileName.includes('italic')) {
-        return `"Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif`;
-    }
-    // Serif / Roman
-    if ((fontFileName.includes('times') || fontFileName.includes('roman')) && !fontFileName.includes('romans')) {
-        return `"Times New Roman", Times, serif`;
-    }
-    // Arial / Helvetica / Swiss
-    if (fontFileName.includes('arial') || fontFileName.includes('helvetica') || fontFileName.includes('swiss')) {
-        return `Arial, Helvetica, sans-serif`;
-    }
-    
-    // If it's a TTF/OTF path, try to extract the font name
-    const lastSlash = Math.max(fontFileName.lastIndexOf('/'), fontFileName.lastIndexOf('\\'));
-    if (lastSlash !== -1) {
-        let name = fontFileName.substring(lastSlash + 1).replace(/\.(ttf|otf|shx)$/i, '');
-        if (name) {
-            name = name.split(/[\s-_]+/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-            return `"${name}", ${FALLBACK}`;
-        }
-    }
-
-    if (style.name) {
-        return `"${style.name}", ${FALLBACK}`;
-    }
-
-    return FALLBACK;
+    return null;
 };
 
 interface TextRendererProps {
@@ -87,7 +53,23 @@ interface TextRendererProps {
 
 export const TextRenderer: React.FC<TextRendererProps> = ({ entity: ent, color, styles, onClick, isSelected }) => {
     const isMText = ent.type === EntityType.MTEXT;
-    const fontFamily = getFontFamily(ent.styleName, styles);
+    let fontFamily = getStyleFontFamily(ent.styleName, styles);
+    
+    // Check for MTEXT inline font override
+    if (isMText) {
+        const inlineFont = extractMTextFont(ent.value);
+        if (inlineFont) {
+            // Map the inline font name to a web font stack
+            if (inlineFont.toLowerCase().includes('song') || inlineFont.toLowerCase().includes('simsun')) {
+                fontFamily = '"SimSun", "宋体", "Microsoft YaHei", sans-serif';
+            } else if (inlineFont.toLowerCase().includes('arial')) {
+                fontFamily = 'Arial, Helvetica, sans-serif';
+            } else {
+                fontFamily = `"${inlineFont}", ${fontFamily}`;
+            }
+        }
+    }
+
     const content = cleanText(ent.value);
 
     // Resolve Style Props

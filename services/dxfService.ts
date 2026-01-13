@@ -1,4 +1,4 @@
-import { AnyEntity, DxfData, EntityType, DxfLayer, DxfBlock, Point2D, Point3D, DxfHatch, HatchLoop, HatchEdge, DxfStyle, DxfPolyline, DxfInsert, DxfHeader, DxfSpline, DxfText, DxfLeader } from '../types';
+import { AnyEntity, DxfData, EntityType, DxfLayer, DxfBlock, Point2D, Point3D, DxfHatch, HatchLoop, HatchEdge, DxfStyle, DxfPolyline, DxfInsert, DxfHeader, DxfSpline, DxfText, DxfLeader, DxfTable } from '../types';
 
 class DxfParserState {
   private text: string;
@@ -370,7 +370,77 @@ export const parseDxf = async (dxfString: string, onProgress?: (percent: number)
   }
 
   if (onProgress) onProgress(100);
-  return { header, entities, layers, blocks, styles };
+
+  // Calculate extents to determine if we need an offset for large coordinates
+  const extents = calculateExtents(entities, blocks);
+  let offset: Point2D | undefined;
+
+  // If coordinates are very large (e.g. > 1,000,000), apply an offset to bring them closer to origin
+  // This helps with precision issues in browser rendering (Canvas/SVG)
+  const LARGE_COORD_THRESHOLD = 1000000;
+  if (Math.abs(extents.min.x) > LARGE_COORD_THRESHOLD || Math.abs(extents.min.y) > LARGE_COORD_THRESHOLD) {
+      offset = { x: Math.floor(extents.min.x), y: Math.floor(extents.min.y) };
+      
+      // Post-process all entities to apply offset
+      const applyOffset = (p: Point2D) => {
+          if (!p) return;
+          p.x -= offset!.x;
+          p.y -= offset!.y;
+      };
+
+      const processEntityOffset = (ent: AnyEntity) => {
+          if ('position' in ent) applyOffset(ent.position);
+          if ('start' in ent) applyOffset(ent.start);
+          if ('end' in ent) applyOffset(ent.end);
+          if ('center' in ent) applyOffset(ent.center);
+          if ('points' in ent && ent.points) ent.points.forEach(applyOffset);
+          if ('basePoint' in ent) applyOffset(ent.basePoint);
+          if ('secondPosition' in ent && ent.secondPosition) applyOffset(ent.secondPosition);
+          if ('definitionPoint' in ent) applyOffset(ent.definitionPoint);
+          if ('textMidPoint' in ent) applyOffset(ent.textMidPoint);
+          
+          if (ent.type === EntityType.HATCH) {
+              ent.loops.forEach(loop => {
+                  if (loop.points) loop.points.forEach(applyOffset);
+                  loop.edges.forEach(edge => {
+                      if (edge.start) applyOffset(edge.start);
+                      if (edge.end) applyOffset(edge.end);
+                      if (edge.center) applyOffset(edge.center);
+                      if (edge.controlPoints) edge.controlPoints.forEach(applyOffset);
+                      if (edge.calculatedPoints) edge.calculatedPoints.forEach(applyOffset);
+                  });
+              });
+          }
+
+          if (ent.type === EntityType.SPLINE) {
+              if (ent.controlPoints) ent.controlPoints.forEach(applyOffset);
+              if (ent.fitPoints) ent.fitPoints.forEach(applyOffset);
+              if (ent.calculatedPoints) ent.calculatedPoints.forEach(applyOffset);
+          }
+
+          if ((ent.type === EntityType.INSERT || ent.type === EntityType.ACAD_TABLE) && (ent as any).attributes) {
+              (ent as any).attributes.forEach(processEntityOffset);
+          }
+      };
+
+      entities.forEach(processEntityOffset);
+      
+      // Also offset block base points and entities within blocks if they are not relative
+      // Note: Usually block entities are relative to (0,0), but some DXFs might have them absolute.
+      // However, we only offset top-level entities for now. If blocks are reused, 
+      // offsetting their entities would be wrong.
+      // But we MUST offset block basePoint.
+      Object.values(blocks).forEach(block => {
+          applyOffset(block.basePoint);
+      });
+
+      if (header) {
+          applyOffset(header.extMin);
+          applyOffset(header.extMax);
+      }
+  }
+
+  return { header, entities, layers, blocks, styles, offset };
 };
 
 const parsePoint = (state: DxfParserState): Point2D => {
@@ -448,15 +518,12 @@ const parseEntityDispatcher = (type: string, state: DxfParserState, blockHandleM
     }
 }
 
-const parseAcadTable = (state: DxfParserState, common: any, blockHandleMap?: Record<string, string>): AnyEntity | null => {
-    const entity: any = { 
+const parseAcadTable = (state: DxfParserState, common: any, blockHandleMap?: Record<string, string>): DxfTable | null => {
+    const entity: DxfTable = { 
         ...common, 
-        type: EntityType.INSERT, 
+        type: EntityType.ACAD_TABLE, 
         blockName: '', 
-        position: {x:0, y:0}, 
-        scale: {x:1, y:1, z:1}, 
-        rotation: 0,
-        rowCount: 1, colCount: 1, rowSpacing: 0, colSpacing: 0
+        position: {x:0, y:0}
     };
     
     let z = 0;
@@ -483,12 +550,8 @@ const parseAcadTable = (state: DxfParserState, common: any, blockHandleMap?: Rec
         entity.blockName = blockHandleMap[blockHandle] || '';
     }
 
-    const angle = Math.atan2(direction.y, direction.x) * 180 / Math.PI;
-    entity.rotation = angle;
-
-    const ocs = getOcsToWcsMatrix(entity.extrusion.x, entity.extrusion.y, entity.extrusion.z);
+    const ocs = getOcsToWcsMatrix(entity.extrusion!.x, entity.extrusion!.y, entity.extrusion!.z);
     entity.position = applyOcs(entity.position, ocs, z);
-    entity.rotation = getWcsRotation(entity.rotation, ocs);
 
     if (!entity.blockName) return null; 
     return entity;
@@ -577,6 +640,7 @@ const parseText = (state: DxfParserState, common: any, type: EntityType): DxfTex
     
     if (type === EntityType.MTEXT) {
         if (direction && (Math.abs(direction.x) > 1e-6 || Math.abs(direction.y) > 1e-6)) {
+             // MTEXT direction vector (11, 21, 31) is already in WCS according to DXF spec
              entity.rotation = Math.atan2(direction.y, direction.x) * 180 / Math.PI;
         } else {
              const rad = entity.rotation; 
@@ -648,9 +712,7 @@ const parseLine = (state: DxfParserState, common: any): AnyEntity => {
             case 31: z2 = parseFloat(g.value); break;
         }
     }
-    const ocs = getOcsToWcsMatrix(entity.extrusion.x, entity.extrusion.y, entity.extrusion.z);
-    entity.start = applyOcs(entity.start, ocs, z1);
-    entity.end = applyOcs(entity.end, ocs, z2);
+    // LINE and POINT coordinates are already in WCS according to DXF spec
     return entity;
 }
 
@@ -693,6 +755,10 @@ const parseArc = (state: DxfParserState, common: any): AnyEntity => {
     }
     const ocs = getOcsToWcsMatrix(entity.extrusion.x, entity.extrusion.y, entity.extrusion.z);
     entity.center = applyOcs(entity.center, ocs, z);
+    if (ocs) {
+        entity.startAngle = getWcsRotation(entity.startAngle, ocs);
+        entity.endAngle = getWcsRotation(entity.endAngle, ocs);
+    }
     return entity;
 }
 
@@ -741,6 +807,7 @@ const parseLwPolyline = (state: DxfParserState, common: any): DxfPolyline => {
 const parsePolyline = (state: DxfParserState, common: any): DxfPolyline => {
     let closed = false;
     let is3DPolyline = false;
+    let elevation = 0;
     while(state.hasNext) {
         const p = state.peek();
         if (!p || p.code === 0) break;
@@ -751,9 +818,11 @@ const parsePolyline = (state: DxfParserState, common: any): DxfPolyline => {
              closed = (flags & 1) === 1;
              is3DPolyline = (flags & 8) === 8;
         }
+        if (g.code === 30) elevation = parseFloat(g.value);
     }
 
     const points: Point2D[] = [];
+    const bulges: number[] = [];
     while(state.hasNext) {
         const p = state.peek();
         if (!p) break;
@@ -761,7 +830,7 @@ const parsePolyline = (state: DxfParserState, common: any): DxfPolyline => {
             if (p.value === 'SEQEND') { state.next(); break; }
             if (p.value === 'VERTEX') {
                 state.next();
-                let x=0, y=0, z=0, valid = false;
+                let x=0, y=0, z=0, b=0, valid = false;
                 while(state.hasNext) {
                     const vp = state.peek();
                     if (!vp || vp.code === 0) break;
@@ -769,15 +838,26 @@ const parsePolyline = (state: DxfParserState, common: any): DxfPolyline => {
                     if (vg.code === 10) { x = parseFloat(vg.value); valid = true; }
                     if (vg.code === 20) y = parseFloat(vg.value);
                     if (vg.code === 30) z = parseFloat(vg.value);
+                    if (vg.code === 42) b = parseFloat(vg.value);
                 }
-                if (valid) points.push({x, y}); 
+                if (valid) {
+                    points.push({x, y});
+                    bulges.push(b);
+                }
                 continue;
             }
             break; 
         }
         state.next();
     }
-    return { ...common, type: EntityType.POLYLINE, points, closed };
+
+    const ocs = getOcsToWcsMatrix(common.extrusion.x, common.extrusion.y, common.extrusion.z);
+    if (ocs && !is3DPolyline) {
+        for(let i=0; i<points.length; i++) {
+            points[i] = applyOcs(points[i], ocs, elevation);
+        }
+    }
+    return { ...common, type: EntityType.POLYLINE, points, bulges, closed };
 }
 
 const parseInsert = (state: DxfParserState, common: any): DxfInsert => {
@@ -908,7 +988,10 @@ const parseSolid = (state: DxfParserState, common: any, type: string): AnyEntity
     if (!pts[3]) pts[3] = { ...pts[2] };
 
     const ocs = getOcsToWcsMatrix(entity.extrusion.x, entity.extrusion.y, entity.extrusion.z);
-    const transformed = pts.map(p => applyOcs(p!, ocs, p!.z));
+    // SOLID and TRACE are in OCS, but 3DFACE is in WCS
+    const transformed = (type === 'SOLID' || type === 'TRACE') 
+        ? pts.map(p => applyOcs(p!, ocs, p!.z))
+        : pts.map(p => ({ x: p!.x, y: p!.y }));
     
     if (type === 'SOLID' || type === 'TRACE') {
          entity.points = [transformed[0], transformed[1], transformed[3], transformed[2]]; 
@@ -931,8 +1014,7 @@ const parsePointEntity = (state: DxfParserState, common: any): AnyEntity => {
         if (g.code === 20) entity.position.y = parseFloat(g.value);
         if (g.code === 30) z = parseFloat(g.value);
     }
-    const ocs = getOcsToWcsMatrix(entity.extrusion.x, entity.extrusion.y, entity.extrusion.z);
-    entity.position = applyOcs(entity.position, ocs, z);
+    // POINT coordinates are already in WCS according to DXF spec
     return entity;
 }
 
@@ -959,11 +1041,20 @@ const parseSpline = (state: DxfParserState, common: any): DxfSpline => {
             case 41: entity.weights.push(parseFloat(g.value)); break;
             case 10: entity.controlPoints.push({x: parseFloat(g.value), y: 0}); break; 
             case 20: if (entity.controlPoints.length > 0) entity.controlPoints[entity.controlPoints.length-1].y = parseFloat(g.value); break;
+            case 30: if (entity.controlPoints.length > 0) (entity.controlPoints[entity.controlPoints.length-1] as any).z = parseFloat(g.value); break;
             case 11: entity.fitPoints.push({x: parseFloat(g.value), y: 0}); break;
             case 21: if (entity.fitPoints.length > 0) entity.fitPoints[entity.fitPoints.length-1].y = parseFloat(g.value); break;
+            case 31: if (entity.fitPoints.length > 0) (entity.fitPoints[entity.fitPoints.length-1] as any).z = parseFloat(g.value); break;
         }
     }
     
+    const ocs = getOcsToWcsMatrix(entity.extrusion.x, entity.extrusion.y, entity.extrusion.z);
+    if (ocs) {
+        const transform = (p: Point2D) => applyOcs(p, ocs, (p as any).z || 0);
+        entity.controlPoints = entity.controlPoints.map(transform);
+        entity.fitPoints = entity.fitPoints.map(transform);
+    }
+
     // Pre-calculate spline points for faster rendering
     if (entity.controlPoints.length > 0) {
         entity.calculatedPoints = getBSplinePoints(entity.controlPoints, entity.degree, entity.knots, entity.weights);
@@ -1164,6 +1255,15 @@ const parseHatch = (state: DxfParserState, common: any): DxfHatch => {
                  if (edge.start) edge.start = transform(edge.start.x, edge.start.y);
                  if (edge.end) edge.end = transform(edge.end.x, edge.end.y);
                  if (edge.center) edge.center = transform(edge.center.x, edge.center.y);
+                 if (edge.type === 'ARC' && edge.startAngle !== undefined && edge.endAngle !== undefined) {
+                     edge.startAngle = getWcsRotation(edge.startAngle, ocs);
+                     edge.endAngle = getWcsRotation(edge.endAngle, ocs);
+                 }
+                 if (edge.type === 'ELLIPSE' && edge.majorAxis) {
+                     const tx = edge.majorAxis.x * ocs.Ax.x + edge.majorAxis.y * ocs.Ay.x;
+                     const ty = edge.majorAxis.x * ocs.Ax.y + edge.majorAxis.y * ocs.Ay.y;
+                     edge.majorAxis = { x: tx, y: ty };
+                 }
                  if (edge.controlPoints) edge.controlPoints = edge.controlPoints.map(p => transform(p.x, p.y));
                  if (edge.calculatedPoints) edge.calculatedPoints = edge.calculatedPoints.map(p => transform(p.x, p.y));
              });
@@ -1230,14 +1330,16 @@ export const calculateExtents = (entities: AnyEntity[], blocks: Record<string, D
                 const pt = apply(p);
                 updateExtents(pt.x, pt.y);
             });
-        } else if (ent.type === EntityType.INSERT) {
+        } else if (ent.type === EntityType.INSERT || ent.type === EntityType.ACAD_TABLE) {
             const block = blocks[ent.blockName];
             if (block) {
-                const cos = Math.cos(ent.rotation * Math.PI / 180);
-                const sin = Math.sin(ent.rotation * Math.PI / 180);
+                const rotation = (ent as any).rotation || 0;
+                const scale = (ent as any).scale || {x:1, y:1, z:1};
+                const cos = Math.cos(rotation * Math.PI / 180);
+                const sin = Math.sin(rotation * Math.PI / 180);
                 const newTransform = (p: Point2D) => {
-                     const bx = (p.x - block.basePoint.x) * ent.scale.x;
-                     const by = (p.y - block.basePoint.y) * ent.scale.y;
+                     const bx = (p.x - block.basePoint.x) * scale.x;
+                     const by = (p.y - block.basePoint.y) * scale.y;
                      const rx = bx * cos - by * sin;
                      const ry = bx * sin + by * cos;
                      const final = { x: rx + ent.position.x, y: ry + ent.position.y };

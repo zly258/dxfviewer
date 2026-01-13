@@ -101,12 +101,12 @@ const Sidebar: React.FC<SidebarProps> = ({ layers, entities, selectedEntityIds, 
       }
   };
 
-  const getEntityIcon = (type: EntityType) => <span className="text-xs font-bold text-gray-400 w-6 text-center inline-block">{type.substring(0, 1)}</span>;
+  const getEntityIcon = (type: EntityType) => <span className="entity-icon">{type.substring(0, 1)}</span>;
   const getLayerColorHex = (layer: DxfLayer) => AUTO_CAD_COLORS[layer.color] || '#000000';
 
   const ChevronIcon = ({ expanded }: { expanded: boolean }) => (
     <svg 
-      className={`w-3.5 h-3.5 text-gray-400 transition-transform duration-200 mr-1 ${expanded ? 'rotate-90' : ''}`} 
+      className={`chevron ${expanded ? 'expanded' : ''}`} 
       viewBox="0 0 24 24" 
       fill="none" 
       stroke="currentColor" 
@@ -119,14 +119,14 @@ const Sidebar: React.FC<SidebarProps> = ({ layers, entities, selectedEntityIds, 
   );
 
   return (
-    <div className="w-64 bg-white border-r border-gray-300 flex flex-col h-full shrink-0 z-20 font-sans text-sm">
-      <div className="h-10 bg-gray-50 border-b border-gray-200 flex items-center px-3 text-xs font-bold text-gray-500 uppercase tracking-widest shrink-0">
+    <div className="sidebar">
+      <div className="sidebar-header">
         图层与实体
       </div>
       
       <div 
         ref={containerRef}
-        className="flex-1 overflow-y-auto overflow-x-hidden bg-white"
+        className="sidebar-content"
         onScroll={handleScroll}
       >
         <div style={{ height: totalHeight, position: 'relative' }}>
@@ -139,13 +139,13 @@ const Sidebar: React.FC<SidebarProps> = ({ layers, entities, selectedEntityIds, 
                         return (
                             <div 
                                 key={key}
-                                className="flex items-center px-2 hover:bg-gray-100 cursor-pointer select-none group border-b border-gray-50 h-[36px]"
+                                className="layer-row"
                                 onClick={() => toggleLayer(item.name)}
                             >
                                 <ChevronIcon expanded={item.expanded} />
-                                <div className="w-3.5 h-3.5 rounded-full mr-2 border border-gray-200 shrink-0" style={{ backgroundColor: colorHex }}></div>
-                                <span className="font-medium text-gray-700 truncate">{item.name}</span>
-                                <span className="ml-auto text-xs text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity pr-1">{item.count}</span>
+                                <div className="layer-icon" style={{ backgroundColor: colorHex }}></div>
+                                <span className="layer-name">{item.name}</span>
+                                <span className="layer-count">{item.count}</span>
                             </div>
                         );
                     } else {
@@ -154,13 +154,13 @@ const Sidebar: React.FC<SidebarProps> = ({ layers, entities, selectedEntityIds, 
                             <div 
                                 key={key}
                                 onClick={(e) => handleItemClick(item.id, e.ctrlKey || e.metaKey)}
-                                className={`flex items-center pl-8 pr-2 cursor-pointer h-[36px] border-b border-gray-50 ${isSelected ? 'bg-blue-50 text-blue-700' : 'text-gray-500 hover:bg-gray-50'}`}
+                                className={`entity-row ${isSelected ? 'selected' : ''}`}
                             >
                                 {getEntityIcon(item.entity.type)}
-                                <span className="truncate flex-1 font-mono text-xs">
+                                <span className="entity-name">
                                     {ENTITY_TYPE_TRANSLATIONS[item.entity.type] || item.entity.type}
                                 </span>
-                                {isSelected && <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>}
+                                {isSelected && <div className="selection-dot"></div>}
                             </div>
                         );
                     }

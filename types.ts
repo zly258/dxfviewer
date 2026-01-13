@@ -221,7 +221,13 @@ export interface DxfRegion extends DxfEntity {
   type: EntityType.REGION;
 }
 
-export type AnyEntity = DxfLine | DxfRay | DxfXLine | DxfPoint | DxfCircle | DxfArc | DxfPolyline | DxfText | DxfEllipse | DxfSpline | DxfSolid | Dxf3DFace | DxfInsert | DxfDimension | DxfHatch | DxfRegion | DxfLeader;
+export interface DxfTable extends DxfEntity {
+  type: EntityType.ACAD_TABLE;
+  blockName: string;
+  position: Point2D;
+}
+
+export type AnyEntity = DxfLine | DxfRay | DxfXLine | DxfPoint | DxfCircle | DxfArc | DxfPolyline | DxfText | DxfEllipse | DxfSpline | DxfSolid | Dxf3DFace | DxfInsert | DxfDimension | DxfHatch | DxfRegion | DxfLeader | DxfTable;
 
 export interface DxfBlock {
   name: string;
@@ -257,6 +263,7 @@ export interface DxfData {
   layers: Record<string, DxfLayer>;
   blocks: Record<string, DxfBlock>;
   styles: Record<string, DxfStyle>;
+  offset?: Point2D;
 }
 
 export interface ViewPort {

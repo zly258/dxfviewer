@@ -30,6 +30,41 @@ const getEllipsePoint = (cx: number, cy: number, majorX: number, majorY: number,
     };
 };
 
+// Helper to generate path data for polylines with bulges
+const getPolylinePathData = (points: Point2D[], bulges: number[] | undefined, closed: boolean, isFlipped: boolean = false) => {
+    if (points.length < 1) return "";
+    let d = `M ${points[0].x} ${points[0].y}`;
+    
+    for (let i = 0; i < (closed ? points.length : points.length - 1); i++) {
+        const p1 = points[i];
+        const p2 = points[(i + 1) % points.length];
+        const bulge = bulges ? (bulges[i] || 0) : 0;
+        
+        if (Math.abs(bulge) < 1e-6) {
+            d += ` L ${p2.x} ${p2.y}`;
+        } else {
+            const dist = Math.sqrt((p2.x - p1.x)**2 + (p2.y - p1.y)**2);
+            if (dist > 1e-9) {
+                const theta = 4 * Math.atan(bulge);
+                const radius = Math.abs(dist / (2 * Math.sin(theta / 2)));
+                const largeArc = Math.abs(theta) > Math.PI ? 1 : 0;
+                
+                // If N.z = -1, CCW in OCS becomes CW in WCS.
+                // bulge > 0 is CCW in OCS.
+                // sweep 1 is CCW, sweep 0 is CW in SVG.
+                let sweep = bulge > 0 ? 1 : 0;
+                if (isFlipped) sweep = sweep === 1 ? 0 : 1;
+                
+                d += ` A ${radius} ${radius} 0 ${largeArc} ${sweep} ${p2.x} ${p2.y}`;
+            } else {
+                d += ` L ${p2.x} ${p2.y}`;
+            }
+        }
+    }
+    if (closed) d += " Z";
+    return d;
+};
+
 export const EntityRenderer: React.FC<EntityRendererProps> = ({ 
     entity: ent, layers, blocks, styles, selectedIds, onSelect, parentLayer, parentColor, depth = 0
 }) => {
@@ -83,6 +118,7 @@ export const EntityRenderer: React.FC<EntityRendererProps> = ({
             return <circle cx={ent.center.x} cy={ent.center.y} r={ent.radius} fill="none" {...commonProps} />;
         case EntityType.ARC: {
             const isFlipped = (ent.extrusion?.z || 1) < 0;
+            
             const startRad = ent.startAngle * Math.PI / 180;
             const endRad = ent.endAngle * Math.PI / 180;
             
@@ -91,8 +127,10 @@ export const EntityRenderer: React.FC<EntityRendererProps> = ({
             const x2 = ent.center.x + ent.radius * Math.cos(endRad);
             const y2 = ent.center.y + ent.radius * Math.sin(endRad);
             
-            let diff = endRad - startRad;
-            if (diff < 0) diff += 2 * Math.PI;
+            // If isFlipped is true, sweep direction is CW (0 in SVG)
+            let diff = isFlipped ? (startRad - endRad) : (endRad - startRad);
+            while (diff < 0) diff += 2 * Math.PI;
+            while (diff > 2 * Math.PI) diff -= 2 * Math.PI;
             
             const largeArc = diff > Math.PI ? 1 : 0;
             const sweep = isFlipped ? 0 : 1; 
@@ -119,7 +157,7 @@ export const EntityRenderer: React.FC<EntityRendererProps> = ({
         case EntityType.LWPOLYLINE:
         case EntityType.POLYLINE: {
             if (ent.points.length < 2) return null;
-            const d = ent.points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ') + (ent.closed ? ' Z' : '');
+            const d = getPolylinePathData(ent.points, ent.bulges, ent.closed, (ent.extrusion?.z || 1) < 0);
             return <path d={d} fill="none" {...commonProps} />;
         }
         case EntityType.LEADER: {
@@ -166,7 +204,7 @@ export const EntityRenderer: React.FC<EntityRendererProps> = ({
             const pts = ent.points;
             if(pts.length < 3) return null;
             const d = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ') + ' Z';
-            return <path d={d} fill={colorStr} stroke="none" onClick={handleClick} className="hover:opacity-80 cursor-pointer"/>;
+            return <path d={d} fill={colorStr} stroke="none" onClick={handleClick} className="hover-opacity cursor-pointer"/>;
         }
         case EntityType.THREEDFACE: {
             const pts = ent.points;
@@ -184,6 +222,7 @@ export const EntityRenderer: React.FC<EntityRendererProps> = ({
             return <path d={paths.join(' ')} fill="none" {...commonProps} />;
         }
         case EntityType.ELLIPSE: {
+            const isFlipped = (ent.extrusion?.z || 1) < 0;
             const startP = ent.startParam;
             const endP = ent.endParam;
             const isFull = Math.abs(Math.abs(endP - startP) - 2 * Math.PI) < 1e-4 || (startP === 0 && endP === 0);
@@ -198,13 +237,14 @@ export const EntityRenderer: React.FC<EntityRendererProps> = ({
                 const p1 = getEllipsePoint(ent.center.x, ent.center.y, ent.majorAxis.x, ent.majorAxis.y, ent.ratio, startP);
                 const p2 = getEllipsePoint(ent.center.x, ent.center.y, ent.majorAxis.x, ent.majorAxis.y, ent.ratio, endP);
                 
-                let diff = endP - startP;
-                if (diff < 0) diff += 2 * Math.PI;
+                let diff = isFlipped ? (startP - endP) : (endP - startP);
+                while (diff < 0) diff += 2 * Math.PI;
                 const largeArc = diff > Math.PI ? 1 : 0;
+                const sweep = isFlipped ? 0 : 1;
                 
                 return (
                     <path 
-                        d={`M ${p1.x} ${p1.y} A ${rx} ${ry} ${rotationDeg} ${largeArc} 1 ${p2.x} ${p2.y}`} 
+                        d={`M ${p1.x} ${p1.y} A ${rx} ${ry} ${rotationDeg} ${largeArc} ${sweep} ${p2.x} ${p2.y}`} 
                         fill="none" 
                         {...commonProps} 
                     />
@@ -233,9 +273,10 @@ export const EntityRenderer: React.FC<EntityRendererProps> = ({
         case EntityType.HATCH:
             return <HatchRenderer entity={ent} color={colorStr} onClick={handleClick} />;
         case EntityType.INSERT:
+        case EntityType.ACAD_TABLE:
             return (
                 <InsertRenderer 
-                    entity={ent} 
+                    entity={ent as any} 
                     blocks={blocks} 
                     layers={layers} 
                     styles={styles} 

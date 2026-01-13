@@ -1,5 +1,5 @@
 import React, { useRef, useState, WheelEvent, MouseEvent, useEffect, useLayoutEffect } from 'react';
-import { AnyEntity, ViewPort, DxfLayer, DxfBlock, DxfStyle, EntityType } from '../types';
+import { AnyEntity, ViewPort, DxfLayer, DxfBlock, DxfStyle, EntityType, Point2D } from '../types';
 import { GRID_SIZE } from '../constants';
 import { renderEntitiesToCanvas, hitTest, hitTestBox } from '../services/canvasRenderService';
 
@@ -13,9 +13,10 @@ interface DxfViewerProps {
   selectedEntityIds: Set<string>;
   onSelectIds: (ids: Set<string>) => void;
   onFitView: () => void;
+  worldOffset?: Point2D;
 }
 
-const DxfViewer: React.FC<DxfViewerProps> = ({ entities, layers, blocks = {}, styles = {}, viewPort, onViewPortChange, selectedEntityIds, onSelectIds }) => {
+const DxfViewer: React.FC<DxfViewerProps> = ({ entities, layers, blocks = {}, styles = {}, viewPort, onViewPortChange, selectedEntityIds, onSelectIds, worldOffset }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   
@@ -162,10 +163,10 @@ const DxfViewer: React.FC<DxfViewerProps> = ({ entities, layers, blocks = {}, st
   const visibleCount = entities.filter(e => e.visible !== false).length;
 
   return (
-    <div className="flex flex-col flex-1 h-full relative overflow-hidden bg-gray-200">
+    <div className="viewer-wrapper">
         <div 
         ref={containerRef}
-        className={`flex-1 relative cursor-default select-none group overflow-hidden bg-[#212121]`}
+        className="canvas-container"
         onWheel={handleWheel}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
@@ -173,7 +174,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({ entities, layers, blocks = {}, st
         onMouseLeave={handleMouseUp}
         onContextMenu={(e) => e.preventDefault()}
         >
-        <svg className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-20 z-0">
+        <svg className="grid-svg">
             <defs>
             <pattern id="grid" width={Math.max(GRID_SIZE * viewPort.zoom, 10)} height={Math.max(GRID_SIZE * viewPort.zoom, 10)} patternUnits="userSpaceOnUse">
                 <path d={`M ${Math.max(GRID_SIZE * viewPort.zoom, 10)} 0 L 0 0 0 ${Math.max(GRID_SIZE * viewPort.zoom, 10)}`} fill="none" stroke="#444" strokeWidth="1"/>
@@ -184,12 +185,12 @@ const DxfViewer: React.FC<DxfViewerProps> = ({ entities, layers, blocks = {}, st
         
         <canvas 
             ref={canvasRef}
-            className="block w-full h-full z-10"
+            className="main-canvas"
         />
 
         {isBoxSelecting && (
             <div 
-            className="absolute border border-blue-400 bg-blue-500/20 z-30 pointer-events-none"
+            className="selection-box"
             style={{
                 left: Math.min(dragStart.x, currentMousePos.x),
                 top: Math.min(dragStart.y, currentMousePos.y),
@@ -201,14 +202,14 @@ const DxfViewer: React.FC<DxfViewerProps> = ({ entities, layers, blocks = {}, st
         </div>
 
         {/* Status Bar */}
-        <div className="h-8 bg-white border-t border-blue-600 flex items-center px-4 text-sm text-gray-600 select-none z-40 shrink-0">
-            <div className="flex gap-6">
-                <span>X: <span className="font-mono text-black">{mouseWorldPos.x.toFixed(2)}</span></span>
-                <span>Y: <span className="font-mono text-black">{mouseWorldPos.y.toFixed(2)}</span></span>
+        <div className="status-bar">
+            <div className="status-coords">
+                <span>X: <span className="status-value">{(mouseWorldPos.x + (worldOffset?.x || 0)).toFixed(3)}</span></span>
+                <span>Y: <span className="status-value">{(mouseWorldPos.y + (worldOffset?.y || 0)).toFixed(3)}</span></span>
             </div>
-            <div className="flex-1"></div>
+            <div className="status-spacer"></div>
             <div>
-                实体数: <span className="font-mono text-black">{visibleCount}</span>
+                实体数: <span className="status-value">{visibleCount}</span>
             </div>
         </div>
     </div>

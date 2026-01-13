@@ -91,7 +91,7 @@ export const HatchRenderer: React.FC<HatchRendererProps> = ({ entity: ent, color
     const patternId = `hatchPattern_${uniqueId}`;
 
     return (
-        <g onClick={onClick} className="hover:opacity-80 cursor-pointer">
+        <g onClick={onClick} className="hover-opacity cursor-pointer">
             {!ent.solid && (
                 <defs>
                     <pattern id={patternId} patternUnits="userSpaceOnUse" width="5" height="5" patternTransform={`rotate(${ent.angle || 45}) scale(${ent.scale || 1})`}>
