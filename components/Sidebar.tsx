@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { AnyEntity, EntityType, DxfLayer } from '../types';
 import { AUTO_CAD_COLORS, DEFAULT_COLOR } from '../constants';
+import { ENTITY_TYPE_TRANSLATIONS } from './PropertiesPanel';
 
 interface SidebarProps {
   layers: Record<string, DxfLayer>;
@@ -156,7 +157,9 @@ const Sidebar: React.FC<SidebarProps> = ({ layers, entities, selectedEntityIds, 
                                 className={`flex items-center pl-8 pr-2 cursor-pointer h-[36px] border-b border-gray-50 ${isSelected ? 'bg-blue-50 text-blue-700' : 'text-gray-500 hover:bg-gray-50'}`}
                             >
                                 {getEntityIcon(item.entity.type)}
-                                <span className="truncate flex-1 font-mono text-xs">{item.entity.type}</span>
+                                <span className="truncate flex-1 font-mono text-xs">
+                                    {ENTITY_TYPE_TRANSLATIONS[item.entity.type] || item.entity.type}
+                                </span>
                                 {isSelected && <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>}
                             </div>
                         );

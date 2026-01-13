@@ -1,5 +1,62 @@
 import React from 'react';
 import { AnyEntity, EntityType } from '../types';
+import { getAutoCadColor } from '../constants';
+
+export const ENTITY_TYPE_TRANSLATIONS: Record<string, string> = {
+  [EntityType.LINE]: "线 (LINE)",
+  [EntityType.ARC]: "弧 (ARC)",
+  [EntityType.CIRCLE]: "圆 (CIRCLE)",
+  [EntityType.LWPOLYLINE]: "多段线 (LWPOLYLINE)",
+  [EntityType.POLYLINE]: "多段线 (POLYLINE)",
+  [EntityType.TEXT]: "单行文字 (TEXT)",
+  [EntityType.MTEXT]: "多行文字 (MTEXT)",
+  [EntityType.INSERT]: "块参照 (INSERT)",
+  [EntityType.HATCH]: "填充 (HATCH)",
+  [EntityType.DIMENSION]: "标注 (DIMENSION)",
+  [EntityType.SPLINE]: "样条曲线 (SPLINE)",
+  [EntityType.ELLIPSE]: "椭圆 (ELLIPSE)",
+  [EntityType.SOLID]: "二维填充 (SOLID)",
+  [EntityType.THREEDFACE]: "三维面 (3DFACE)",
+  [EntityType.POINT]: "点 (POINT)",
+  [EntityType.LEADER]: "引线 (LEADER)",
+  [EntityType.RAY]: "射线 (RAY)",
+  [EntityType.XLINE]: "构造线 (XLINE)",
+  [EntityType.ATTDEF]: "属性定义 (ATTDEF)",
+  [EntityType.ATTRIB]: "属性 (ATTRIB)",
+};
+
+const LABEL_TRANSLATIONS: Record<string, string> = {
+  "Type": "类型 (Type)",
+  "Handle": "句柄 (Handle)",
+  "Layer": "图层 (Layer)",
+  "Color": "颜色 (Color)",
+  "Start X": "起点 X",
+  "Start Y": "起点 Y",
+  "End X": "终点 X",
+  "End Y": "终点 Y",
+  "Length": "长度",
+  "Center X": "中心 X",
+  "Center Y": "中心 Y",
+  "Radius": "半径",
+  "Area": "面积",
+  "Start Angle": "起始角度",
+  "End Angle": "终止角度",
+  "Vertices": "顶点数",
+  "Closed": "是否闭合",
+  "Content": "文字内容",
+  "Height": "高度",
+  "Pos X": "位置 X",
+  "Pos Y": "位置 Y",
+  "Rotation": "旋转角度",
+  "Width": "宽度",
+  "Block": "块名",
+  "Scale": "缩放比例",
+  "Pattern": "填充图案",
+  "Style": "填充样式",
+  "Loops": "边界环数",
+  "Value": "测量值",
+  "Text": "显示文字",
+};
 
 interface PropertiesPanelProps {
   selectedEntities: AnyEntity[];
@@ -7,19 +64,50 @@ interface PropertiesPanelProps {
 
 const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ selectedEntities }) => {
   
-  const renderPropertyRow = (label: string, value: React.ReactNode) => (
+  const renderPropertyRow = (label: string, value: React.ReactNode) => {
+    const translatedLabel = LABEL_TRANSLATIONS[label] || label;
+    return (
       <tr key={label} className="border-b border-gray-100 hover:bg-gray-50">
-        <td className="py-2.5 pl-3 text-gray-500 w-28 align-top font-medium text-sm bg-gray-50/50">{label}</td>
+        <td className="py-2.5 pl-3 text-gray-500 w-32 align-top font-medium text-sm bg-gray-50/50">{translatedLabel}</td>
         <td className="py-2.5 pr-3 font-mono text-gray-800 break-all text-right text-sm">{value}</td>
       </tr>
-  );
+    );
+  };
+
+  const formatHandle = (handle: string | undefined) => {
+    if (!handle) return "N/A";
+    try {
+      return parseInt(handle, 16).toString();
+    } catch (e) {
+      return handle;
+    }
+  };
+
+  const renderColorValue = (color: number | undefined) => {
+    if (color === 256) return <span className="text-gray-500">随层 (ByLayer)</span>;
+    if (color === 0) return <span className="text-gray-500">随块 (ByBlock)</span>;
+    
+    const hex = getAutoCadColor(color || 7);
+    return (
+      <div className="flex items-center justify-end gap-2">
+        <span className="text-gray-400 text-xs">({color})</span>
+        <span className="font-mono uppercase">{hex}</span>
+        <div 
+          className="w-4 h-4 rounded-sm border border-gray-300 shadow-sm" 
+          style={{ backgroundColor: hex }}
+        />
+      </div>
+    );
+  };
 
   const renderEntityProperties = (ent: AnyEntity) => {
+      const typeDisplay = ENTITY_TYPE_TRANSLATIONS[ent.type] || ent.type;
+      
       const commonRows = [
-          renderPropertyRow("Type", <span className="text-blue-600 font-bold">{ent.type}</span>),
-          renderPropertyRow("Handle", ent.handle || "N/A"),
+          renderPropertyRow("Type", <span className="text-blue-600 font-bold">{typeDisplay}</span>),
+          renderPropertyRow("Handle", formatHandle(ent.handle)),
           renderPropertyRow("Layer", ent.layer),
-          renderPropertyRow("Color", ent.color === 256 ? "ByLayer" : (ent.color === 0 ? "ByBlock" : ent.color)),
+          renderPropertyRow("Color", renderColorValue(ent.color)),
       ];
 
       let specificRows: React.ReactNode[] = [];
@@ -61,7 +149,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ selectedEntities }) =
           case EntityType.LWPOLYLINE:
           case EntityType.POLYLINE:
               specificRows = [
-                  renderPropertyRow("Closed", ent.closed ? "Yes" : "No"),
+                  renderPropertyRow("Closed", ent.closed ? "是 (Yes)" : "否 (No)"),
                   renderPropertyRow("Vertices", ent.points.length),
               ];
               break;
@@ -75,7 +163,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ selectedEntities }) =
                   renderPropertyRow("Pos X", ent.position.x.toFixed(3)),
                   renderPropertyRow("Pos Y", ent.position.y.toFixed(3)),
                   renderPropertyRow("Rotation", `${ent.rotation?.toFixed(1)}°`),
-                  ent.type === EntityType.MTEXT && renderPropertyRow("Width", ent.width ? ent.width.toFixed(3) : "Auto")
+                  ent.type === EntityType.MTEXT && renderPropertyRow("Width", ent.width ? ent.width.toFixed(3) : "自动 (Auto)")
               ].filter(Boolean);
               break;
           case EntityType.INSERT:
@@ -90,14 +178,14 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ selectedEntities }) =
            case EntityType.HATCH:
               specificRows = [
                   renderPropertyRow("Pattern", ent.patternName),
-                  renderPropertyRow("Style", ent.solid ? "Solid" : "Pattern"),
+                  renderPropertyRow("Style", ent.solid ? "实体填充 (Solid)" : "图案填充 (Pattern)"),
                   renderPropertyRow("Loops", ent.loops.length),
               ];
               break;
            case EntityType.DIMENSION:
               specificRows = [
                   renderPropertyRow("Value", ent.measurement?.toFixed(4)),
-                  renderPropertyRow("Text", ent.text || "(Auto)"),
+                  renderPropertyRow("Text", ent.text || "自动 (Auto)"),
               ];
               break;
       }

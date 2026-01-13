@@ -35,28 +35,45 @@ const extractContentWidthFactor = (text: string): number | null => {
  * Returns a CSS font stack optimized for Chinese and standard CAD fonts.
  */
 export const getFontFamily = (styleName: string | undefined, styles: Record<string, DxfStyle> | undefined): string => {
-    const CHINESE_FONTS = '"Microsoft YaHei", "微软雅黑", "SimSun", "宋体"';
-    // Fallback hierarchy: specific fonts -> generic sans/serif -> system fallback
-    const FALLBACK = `sans-serif, ${CHINESE_FONTS}, "Segoe UI", Arial`;
+    const CHINESE_FONTS = '"Microsoft YaHei", "微软雅黑", "SimSun", "宋体", "STSong", "SimKai", "SimHei"';
+    const FALLBACK = `${CHINESE_FONTS}, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif`;
 
     if (!styleName || !styles || !styles[styleName]) return FALLBACK;
     
     const style = styles[styleName];
-    const fontName = (style.fontFileName || "").toLowerCase();
+    const fontFileName = (style.fontFileName || "").toLowerCase();
 
-    // Map common AutoCAD SHX/TTF names to web-safe equivalents
-    // Romans, Simplex are vector stroke fonts, often look like thin sans-serif
-    if (fontName.includes('roman') || fontName.includes('simplex') || fontName.includes('complex')) 
-        return `"Times New Roman", "SimSun", serif`; // Use serif for Roman, but Simplex is usually sans... stick to simple mappings
-    
-    // Txt.shx is very blocky/ugly, Courier is a common fallback for "tech" look
-    if (fontName.includes('txt') || fontName.includes('mono')) 
-        return '"Courier New", monospace';
-        
-    if (fontName.includes('arial')) return `Arial, ${FALLBACK}`;
-    if (fontName.includes('hz') || fontName.includes('gb') || fontName.includes('bigfont')) 
+    // Chinese / CJK fonts
+    if (fontFileName.includes('gb') || fontFileName.includes('hz') || fontFileName.includes('big') || fontFileName.includes('sim') || fontFileName.includes('song') || fontFileName.includes('kai') || fontFileName.includes('hei') || fontFileName.includes('fang')) {
         return CHINESE_FONTS;
+    }
+    // Technical / AutoCAD specific fonts
+    if (fontFileName.includes('txt') || fontFileName.includes('mono') || fontFileName.includes('iso') || fontFileName.includes('simplex') || fontFileName.includes('romans') || fontFileName.includes('scripts') || fontFileName.includes('italic')) {
+        return `"Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif`;
+    }
+    // Serif / Roman
+    if ((fontFileName.includes('times') || fontFileName.includes('roman')) && !fontFileName.includes('romans')) {
+        return `"Times New Roman", Times, serif`;
+    }
+    // Arial / Helvetica / Swiss
+    if (fontFileName.includes('arial') || fontFileName.includes('helvetica') || fontFileName.includes('swiss')) {
+        return `Arial, Helvetica, sans-serif`;
+    }
     
+    // If it's a TTF/OTF path, try to extract the font name
+    const lastSlash = Math.max(fontFileName.lastIndexOf('/'), fontFileName.lastIndexOf('\\'));
+    if (lastSlash !== -1) {
+        let name = fontFileName.substring(lastSlash + 1).replace(/\.(ttf|otf|shx)$/i, '');
+        if (name) {
+            name = name.split(/[\s-_]+/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+            return `"${name}", ${FALLBACK}`;
+        }
+    }
+
+    if (style.name) {
+        return `"${style.name}", ${FALLBACK}`;
+    }
+
     return FALLBACK;
 };
 

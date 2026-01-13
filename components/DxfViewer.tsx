@@ -131,7 +131,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({ entities, layers, blocks = {}, st
 
       if (dist < 5) {
          const threshold = 10 / viewPort.zoom;
-         const hitId = hitTest(wPos.x, wPos.y, threshold, entities, blocks, layers);
+         const hitId = hitTest(wPos.x, wPos.y, threshold, entities, blocks, layers, styles);
          
          if (hitId) {
              const newSet = new Set(e.ctrlKey || e.shiftKey ? selectedEntityIds : []);

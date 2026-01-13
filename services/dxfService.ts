@@ -1274,6 +1274,16 @@ export const calculateExtents = (entities: AnyEntity[], blocks: Record<string, D
                     }
                 });
             });
+        } else if (ent.type === EntityType.DIMENSION) {
+            const block = blocks[ent.blockName];
+            if (block) {
+                block.entities.forEach(child => processEntity(child, apply, depth + 1));
+            } else {
+                const p1 = apply(ent.definitionPoint);
+                const p2 = apply(ent.textMidPoint);
+                updateExtents(p1.x, p1.y);
+                updateExtents(p2.x, p2.y);
+            }
         }
     };
 

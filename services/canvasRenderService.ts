@@ -16,22 +16,34 @@ const mapCadFontToWebFont = (fontFileName: string): string => {
     if (!fontFileName) return 'Arial, sans-serif';
     const f = fontFileName.toLowerCase();
     
-    // Chinese / CJK
-    if (f.includes('gb') || f.includes('hz') || f.includes('big') || f.includes('sim') || f.includes('song')) {
-        return '"Microsoft YaHei", "微软雅黑", "SimSun", "宋体", sans-serif';
+    // Chinese / CJK fonts
+    if (f.includes('gb') || f.includes('hz') || f.includes('big') || f.includes('sim') || f.includes('song') || f.includes('kai') || f.includes('hei') || f.includes('fang')) {
+        return '"Microsoft YaHei", "微软雅黑", "SimSun", "宋体", "STSong", "SimKai", "SimHei", sans-serif';
     }
-    // Monospace / Technical
-    if (f.includes('txt') || f.includes('mono') || f.includes('iso')) {
-        return '"Courier New", monospace';
+    // Technical / AutoCAD specific fonts (usually mapped to monospace or technical sans-serif)
+    if (f.includes('txt') || f.includes('mono') || f.includes('iso') || f.includes('simplex') || f.includes('romans') || f.includes('scripts') || f.includes('italic')) {
+        return '"Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
     }
     // Serif / Roman
     if ((f.includes('times') || f.includes('roman')) && !f.includes('romans')) {
-        return '"Times New Roman", serif';
+        return '"Times New Roman", Times, serif';
     }
-    // Sans-Serif / Swiss / Arial / Simplex (RomanS)
-    if (f.includes('arial') || f.includes('helvetica') || f.includes('simplex') || f.includes('romans') || f.includes('sans')) {
-        return 'Arial, sans-serif';
+    // Arial / Helvetica / Swiss
+    if (f.includes('arial') || f.includes('helvetica') || f.includes('swiss')) {
+        return 'Arial, Helvetica, sans-serif';
     }
+    
+    // If it's a TTF/OTF path, try to extract the font name
+    const lastSlash = Math.max(f.lastIndexOf('/'), f.lastIndexOf('\\'));
+    if (lastSlash !== -1) {
+        let name = f.substring(lastSlash + 1).replace(/\.(ttf|otf|shx)$/i, '');
+        if (name) {
+            // Capitalize first letter of each word for better font matching
+            name = name.split(/[\s-_]+/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+            return `"${name}", Arial, sans-serif`;
+        }
+    }
+
     return 'Arial, sans-serif';
 }
 
@@ -39,16 +51,16 @@ const getCanvasFont = (styleName: string | undefined, styles: Record<string, Dxf
     // DXF Height is Cap Height. CSS is Em Height.
     // Factor ~1.43 converts Cap Height to approx correct CSS px size for Arial-like fonts.
     const correctedHeight = height * 1.43; 
-    let fontFamily = 'Arial, sans-serif';
+    let fontFamily = '"Microsoft YaHei", "SimSun", Arial, sans-serif';
     
     if (styleName && styles && styles[styleName]) {
         const style = styles[styleName];
         if (style.fontFileName) {
             fontFamily = mapCadFontToWebFont(style.fontFileName);
+        } else if (style.name) {
+            // Sometimes style name itself is a font name
+            fontFamily = `"${style.name}", ${fontFamily}`;
         }
-    } else {
-        // Fallback for non-styled text, prefer unicode capable fonts
-        fontFamily = '"Microsoft YaHei", "SimSun", Arial, sans-serif';
     }
     return `${correctedHeight}px ${fontFamily}`;
 };
@@ -577,7 +589,7 @@ const distanceToLine = (px: number, py: number, x1: number, y1: number, x2: numb
     return Math.sqrt(dx * dx + dy * dy);
 };
 
-export const hitTest = (x: number, y: number, threshold: number, entities: AnyEntity[], blocks: Record<string, DxfBlock>, layers: Record<string, DxfLayer>): string | null => {
+export const hitTest = (x: number, y: number, threshold: number, entities: AnyEntity[], blocks: Record<string, DxfBlock>, layers: Record<string, DxfLayer>, styles: Record<string, DxfStyle>): string | null => {
     const checkEntity = (ent: AnyEntity, tx?: (p: Point2D) => Point2D, depth: number = 0): boolean => {
         if (depth > 20) return false;
         const p = tx ? tx : (pt: Point2D) => pt;
@@ -625,9 +637,53 @@ export const hitTest = (x: number, y: number, threshold: number, entities: AnyEn
         } else if (ent.type === EntityType.POINT) {
             const pos = p(ent.position);
             return Math.sqrt(Math.pow(x - pos.x, 2) + Math.pow(y - pos.y, 2)) < threshold;
-        } else if (ent.type === EntityType.TEXT || ent.type === EntityType.MTEXT) {
+        } else if (ent.type === EntityType.TEXT || ent.type === EntityType.MTEXT || ent.type === EntityType.ATTRIB || ent.type === EntityType.ATTDEF) {
             const pos = p(ent.position);
-            return Math.abs(x - pos.x) < threshold * 2 && Math.abs(y - pos.y) < ent.height;
+            const text = cleanTextContent(ent.value);
+            if (!text) return false;
+
+            const height = ent.height || 10;
+            const style = styles[ent.styleName || 'STANDARD'];
+            const widthFactor = (ent.widthFactor && ent.widthFactor > 0) ? ent.widthFactor : (style?.widthFactor || 1);
+            
+            // Heuristic for width calculation
+            const charCount = text.length;
+            const approxWidth = height * 0.7 * charCount * widthFactor;
+            
+            const rad = (ent.rotation || 0) * Math.PI / 180;
+            const cos = Math.cos(rad), sin = Math.sin(rad);
+            
+            // Alignment offsets (simplified)
+            let dx = 0, dy = 0;
+            const isMText = ent.type === EntityType.MTEXT;
+            if (isMText) {
+                const ap = ent.attachmentPoint || 1;
+                if ([2, 5, 8].includes(ap)) dx = -approxWidth / 2;
+                else if ([3, 6, 9].includes(ap)) dx = -approxWidth;
+                
+                if ([4, 5, 6].includes(ap)) dy = -height / 2;
+                else if ([7, 8, 9].includes(ap)) dy = -height;
+            } else {
+                const hAlign = ent.hAlign || 0;
+                const vAlign = ent.vAlign || 0;
+                if (hAlign === 1 || hAlign === 4) dx = -approxWidth / 2;
+                else if (hAlign === 2) dx = -approxWidth;
+                
+                if (vAlign === 1) dy = 0; // Baseline is bottom
+                else if (vAlign === 2) dy = -height / 2;
+                else if (vAlign === 3) dy = -height;
+            }
+
+            // Transform mouse point back to text local space
+            const lx = x - pos.x;
+            const ly = y - pos.y;
+            const localX = lx * cos + ly * sin;
+            const localY = -lx * sin + ly * cos;
+
+            // Check if within bounds with some padding
+            const pad = threshold;
+            return localX >= dx - pad && localX <= dx + approxWidth + pad &&
+                   localY >= dy - pad && localY <= dy + height + pad;
         } else if (ent.type === EntityType.LEADER) {
             for (let j = 0; j < ent.points.length - 1; j++) {
                 const p1 = p(ent.points[j]), p2 = p(ent.points[j+1]);
@@ -711,8 +767,11 @@ export const hitTestBox = (box: {x1:number, y1:number, x2:number, y2:number}, en
             inBox = ent.points.some(p => p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY);
         } else if (ent.type === EntityType.SPLINE && ent.controlPoints) {
             inBox = ent.controlPoints.some(p => p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY);
-        } else if (ent.type === EntityType.TEXT || ent.type === EntityType.MTEXT || ent.type === EntityType.INSERT) {
+        } else if (ent.type === EntityType.TEXT || ent.type === EntityType.MTEXT || ent.type === EntityType.ATTRIB || ent.type === EntityType.ATTDEF || ent.type === EntityType.INSERT) {
             inBox = ent.position.x >= minX && ent.position.x <= maxX && ent.position.y >= minY && ent.position.y <= maxY;
+        } else if (ent.type === EntityType.DIMENSION) {
+            const p = ent.textMidPoint || ent.definitionPoint;
+            inBox = p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY;
         }
         if (inBox) results.add(ent.id);
     });
