@@ -48,6 +48,7 @@ export interface DxfEntity {
   layer: string;
   color?: number;
   lineType?: string;
+  lineTypeScale?: number;
   visible?: boolean;
   inPaperSpace?: boolean;
   extrusion?: Point3D;
@@ -216,6 +217,7 @@ export interface DxfHatch extends DxfEntity {
   scale?: number;
   angle?: number;
   loops: HatchLoop[];
+  isFlipped?: boolean;
 }
 
 export interface DxfRegion extends DxfEntity {
@@ -266,6 +268,7 @@ export interface DxfHeader {
     extMin: Point2D;
     extMax: Point2D;
     insUnits: number;
+    ltScale?: number;
 }
 
 export interface DxfData {

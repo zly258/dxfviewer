@@ -1,6 +1,7 @@
 import React from 'react';
-import { AnyEntity, EntityType } from '../types';
+import { AnyEntity, EntityType, DxfStyle } from '../types';
 import { getAutoCadColor } from '../constants';
+import { getStyleFontFamily } from '../services/fontService';
 
 export const ENTITY_TYPE_TRANSLATIONS: Record<string, string> = {
   [EntityType.LINE]: "线 (LINE)",
@@ -31,6 +32,8 @@ const LABEL_TRANSLATIONS: Record<string, string> = {
   "Handle": "句柄 (Handle)",
   "Layer": "图层 (Layer)",
   "Color": "颜色 (Color)",
+  "Linetype": "线型 (Linetype)",
+  "Linetype Scale": "线型比例 (Linetype Scale)",
   "Start X": "起点 X",
   "Start Y": "起点 Y",
   "End X": "终点 X",
@@ -57,14 +60,17 @@ const LABEL_TRANSLATIONS: Record<string, string> = {
   "Loops": "边界环数",
   "Value": "测量值",
   "Text": "显示文字",
+  "Font": "字体 (Font)",
+  "StyleName": "文字样式",
 };
 
 interface PropertiesPanelProps {
   entities: AnyEntity[];
   layers?: any[];
+  styles?: Record<string, DxfStyle>;
 }
 
-const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, layers }) => {
+const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, layers, styles = {} }) => {
   
   const renderPropertyRow = (label: string, value: React.ReactNode) => {
     const translatedLabel = LABEL_TRANSLATIONS[label] || label;
@@ -110,6 +116,8 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, layers }) =
           renderPropertyRow("Handle", formatHandle(ent.handle)),
           renderPropertyRow("Layer", ent.layer),
           renderPropertyRow("Color", renderColorValue(ent.color)),
+          renderPropertyRow("Linetype", ent.lineType || 'ByLayer'),
+          renderPropertyRow("Linetype Scale", (ent.lineTypeScale !== undefined ? ent.lineTypeScale : 1.0).toFixed(2)),
       ];
 
       let specificRows: React.ReactNode[] = [];
@@ -158,16 +166,37 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, layers }) =
           case EntityType.TEXT:
           case EntityType.MTEXT:
           case EntityType.ATTRIB:
-          case EntityType.ATTDEF:
+          case EntityType.ATTDEF: {
+              const textEnt = ent;
+              const styleName = textEnt.styleName || 'STANDARD';
+              const style = styles[styleName] || styles[styleName.toUpperCase()];
+              const fontFamily = getStyleFontFamily(styleName, styles);
+              
+              // Extract a friendly name from the font stack
+              let friendlyFont = "Sans-Serif";
+              if (fontFamily.includes("SimSun") || fontFamily.includes("宋体")) friendlyFont = "宋体 (SimSun)";
+              else if (fontFamily.includes("SimHei") || fontFamily.includes("黑体")) friendlyFont = "黑体 (SimHei)";
+              else if (fontFamily.includes("SimKai") || fontFamily.includes("楷体")) friendlyFont = "楷体 (SimKai)";
+              else if (fontFamily.includes("FangSong") || fontFamily.includes("仿宋")) friendlyFont = "仿宋 (FangSong)";
+              else if (fontFamily.includes("Microsoft YaHei")) friendlyFont = "微软雅黑 (YaHei)";
+              else if (fontFamily.includes("Arial")) friendlyFont = "Arial";
+              else if (fontFamily.includes("Times New Roman")) friendlyFont = "Times New Roman";
+
               specificRows = [
                   renderPropertyRow("Content", <span className="text-xs">{ent.value.substring(0, 50)}{ent.value.length > 50 && "..."}</span>),
                   renderPropertyRow("Height", ent.height.toFixed(4)),
+                  renderPropertyRow("StyleName", styleName),
+                  renderPropertyRow("Font", <div>
+                      <div className="font-semibold">{friendlyFont}</div>
+                      {style && <div className="text-[10px] text-gray-400">{style.fontFileName}{style.bigFontFileName ? ` | ${style.bigFontFileName}` : ''}</div>}
+                  </div>),
                   renderPropertyRow("Pos X", ent.position.x.toFixed(3)),
                   renderPropertyRow("Pos Y", ent.position.y.toFixed(3)),
                   renderPropertyRow("Rotation", `${ent.rotation?.toFixed(1)}°`),
                   ent.type === EntityType.MTEXT && renderPropertyRow("Width", ent.width ? ent.width.toFixed(3) : "自动 (Auto)")
               ].filter(Boolean);
               break;
+          }
           case EntityType.INSERT:
           case EntityType.ACAD_TABLE:
               specificRows = [

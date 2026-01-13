@@ -15,9 +15,10 @@ interface DxfViewerProps {
   onSelectIds: (ids: Set<string>) => void;
   onFitView: () => void;
   worldOffset?: Point2D;
+  ltScale?: number;
 }
 
-const DxfViewer: React.FC<DxfViewerProps> = ({ entities, layers, blocks = {}, styles = {}, lineTypes = {}, viewPort, onViewPortChange, selectedEntityIds, onSelectIds, worldOffset }) => {
+const DxfViewer: React.FC<DxfViewerProps> = ({ entities, layers, blocks = {}, styles = {}, lineTypes = {}, viewPort, onViewPortChange, selectedEntityIds, onSelectIds, worldOffset, ltScale = 1.0 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   
@@ -60,8 +61,8 @@ const DxfViewer: React.FC<DxfViewerProps> = ({ entities, layers, blocks = {}, st
      ctx.setTransform(1, 0, 0, 1, 0, 0);
      ctx.scale(dpr, dpr);
 
-     renderEntitiesToCanvas(ctx, entities, layers, blocks, styles, lineTypes, viewPort, selectedEntityIds, rect.width, rect.height);
-  }, [entities, layers, blocks, styles, lineTypes, viewPort, selectedEntityIds]);
+     renderEntitiesToCanvas(ctx, entities, layers, blocks, styles, lineTypes, ltScale, viewPort, selectedEntityIds, rect.width, rect.height);
+  }, [entities, layers, blocks, styles, lineTypes, ltScale, viewPort, selectedEntityIds]);
 
   const handleWheel = (e: WheelEvent) => {
     e.preventDefault();

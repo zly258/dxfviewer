@@ -1,4 +1,4 @@
-import { AnyEntity, DxfData, EntityType, DxfLayer, DxfBlock, Point2D, Point3D, DxfHatch, HatchLoop, HatchEdge, DxfStyle, DxfPolyline, DxfInsert, DxfHeader, DxfSpline, DxfText, DxfLeader, DxfTable } from '../types';
+import { AnyEntity, DxfData, EntityType, DxfLayer, DxfBlock, Point2D, Point3D, DxfHatch, HatchLoop, HatchEdge, DxfStyle, DxfPolyline, DxfInsert, DxfHeader, DxfSpline, DxfText, DxfLeader, DxfTable, DxfLineType } from '../types';
 
 class DxfParserState {
   private text: string;
@@ -128,6 +128,7 @@ const parseStyle = (state: DxfParserState): DxfStyle => {
 
 const parseLineType = (state: DxfParserState): DxfLineType => {
     const ltype: DxfLineType = { name: '', pattern: [], totalLength: 0 };
+    let parsedTotalLength = 0;
     while(state.hasNext) {
         const p = state.peek();
         if (!p || p.code === 0) break;
@@ -135,9 +136,15 @@ const parseLineType = (state: DxfParserState): DxfLineType => {
         switch(g.code) {
             case 2: ltype.name = g.value; break;
             case 3: ltype.description = g.value; break;
-            case 40: ltype.totalLength = parseFloat(g.value); break;
+            case 40: parsedTotalLength = parseFloat(g.value); break;
             case 49: ltype.pattern.push(parseFloat(g.value)); break;
         }
+    }
+    // Calculate total length from pattern for accuracy
+    if (ltype.pattern.length > 0) {
+        ltype.totalLength = ltype.pattern.reduce((acc, val) => acc + Math.abs(val), 0);
+    } else {
+        ltype.totalLength = parsedTotalLength;
     }
     return ltype;
 };
@@ -359,7 +366,7 @@ export const parseDxf = async (dxfString: string, onProgress?: (percent: number)
       currentSection = '';
     } else {
       if (currentSection === 'HEADER') {
-         if (!header) header = { extMin: {x:0, y:0}, extMax: {x:0, y:0}, insUnits: 0 };
+         if (!header) header = { extMin: {x:0, y:0}, extMax: {x:0, y:0}, insUnits: 0, ltScale: 1.0 };
          if (group.code === 9) {
              const v = group.value;
              if (v === '$EXTMIN') header.extMin = parsePoint(state);
@@ -367,6 +374,9 @@ export const parseDxf = async (dxfString: string, onProgress?: (percent: number)
              else if (v === '$INSUNITS') {
                  const n = state.next();
                  if (n && n.code === 70) header.insUnits = parseInt(n.value);
+             } else if (v === '$LTSCALE') {
+                 const n = state.next();
+                 if (n && n.code === 40) header.ltScale = parseFloat(n.value);
              }
          }
       } else if (currentSection === 'TABLES') {
@@ -489,6 +499,7 @@ const parseCommon = (state: DxfParserState): any => {
         layer: '0',
         color: 256,
         lineType: 'ByLayer',
+        lineTypeScale: 1.0,
         visible: true,
         extrusion: { x: 0, y: 0, z: 1 },
         inPaperSpace: false
@@ -501,6 +512,7 @@ const applyCommonGroup = (common: any, code: number, value: string) => {
         case 8: common.layer = value; break;
         case 62: common.color = parseInt(value, 10); break;
         case 6: common.lineType = value; break;
+        case 48: common.lineTypeScale = parseFloat(value); break;
         case 60: common.visible = parseInt(value, 10) === 0; break;
         case 67: common.inPaperSpace = parseInt(value, 10) === 1; break;
         case 210: common.extrusion.x = parseFloat(value); break;

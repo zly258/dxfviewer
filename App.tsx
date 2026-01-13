@@ -13,6 +13,7 @@ function App() {
   const [blocks, setBlocks] = useState<Record<string, DxfBlock>>({});
   const [styles, setStyles] = useState<Record<string, DxfStyle>>({});
   const [lineTypes, setLineTypes] = useState<Record<string, DxfLineType>>({});
+  const [ltScale, setLtScale] = useState(1.0);
   const [worldOffset, setWorldOffset] = useState<Point2D | undefined>();
   
   const [isLoading, setIsLoading] = useState(false);
@@ -139,6 +140,7 @@ function App() {
                 setBlocks(data.blocks);
                 setStyles(data.styles);
                 setLineTypes(data.lineTypes);
+                setLtScale(data.header?.ltScale ?? 1.0);
                 setWorldOffset(data.offset);
                 requestAnimationFrame(() => fitView(data.entities, data.blocks));
             } catch (err) {
@@ -203,7 +205,8 @@ function App() {
             blocks={blocks}
             styles={styles}
             lineTypes={lineTypes}
-            viewPort={viewPort}
+            ltScale={ltScale}
+            viewPort={viewPort} 
             onViewPortChange={setViewPort}
             selectedEntityIds={selectedEntityIds}
             onSelectIds={setSelectedEntityIds}
@@ -215,7 +218,8 @@ function App() {
         {showProperties && (
             <PropertiesPanel 
                 entities={selectedEntities} 
-                layers={layers}
+                layers={Object.values(layers)}
+                styles={styles}
             />
         )}
       </div>

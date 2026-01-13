@@ -4,11 +4,11 @@ import { DxfStyle } from '../types';
  * Optimized font stacks for CAD display
  */
 export const FONT_STACKS = {
-    CHINESE: '"Microsoft YaHei", "微软雅黑", "SimSun", "宋体", "STSong", "SimKai", "SimHei", "FangSong", sans-serif',
-    SONG: '"SimSun", "宋体", "STSong", serif',
-    HEI: '"SimHei", "微软雅黑", "Microsoft YaHei", sans-serif',
-    KAI: '"SimKai", "楷体", "STKaiti", serif',
-    FANGSONG: '"FangSong", "仿宋", "STFangsong", serif',
+    CHINESE: '"Microsoft YaHei", "微软雅黑", SimSun, "宋体", STSong, SimKai, SimHei, FangSong, sans-serif',
+    SONG: 'SimSun, "宋体", STSong, serif',
+    HEI: 'SimHei, "黑体", "Microsoft YaHei", "微软雅黑", sans-serif',
+    KAI: 'SimKai, "楷体", STKaiti, serif',
+    FANGSONG: 'FangSong, "仿宋", STFangsong, serif',
     SANS_SERIF: '"Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
     SERIF: '"Times New Roman", Times, serif',
     MONOSPACE: '"Cascadia Code", "Consolas", "Courier New", monospace',

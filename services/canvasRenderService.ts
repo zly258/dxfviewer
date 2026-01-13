@@ -1,4 +1,4 @@
-import { AnyEntity, EntityType, DxfLayer, DxfBlock, DxfStyle, Point2D, DxfInsert, HatchLoop, DxfText } from '../types';
+import { AnyEntity, EntityType, DxfLayer, DxfBlock, DxfStyle, Point2D, DxfInsert, HatchLoop, DxfText, DxfLineType } from '../types';
 import { AUTO_CAD_COLORS, DEFAULT_COLOR, getAutoCadColor } from '../constants';
 import { getBSplinePoints } from './dxfService';
 import { getStyleFontFamily, FONT_STACKS, mapCadFontToWebFont } from './fontService';
@@ -50,8 +50,20 @@ const getCanvasFont = (ent: AnyEntity, styles: Record<string, DxfStyle> | undefi
         if (fMatch && fMatch[1]) {
             const inlineFont = fMatch[1].replace(/\"/g, '').trim();
             if (inlineFont) {
-                // If it's a style name, use its font
-                if (styles && (styles[inlineFont] || styles[inlineFont.toUpperCase()])) {
+                const inlineFontLower = inlineFont.toLowerCase();
+                if (inlineFontLower.includes('仿宋') || inlineFontLower.includes('fangsong') || inlineFontLower === 'fs') {
+                    fontFamily = FONT_STACKS.FANGSONG;
+                } else if (inlineFontLower.includes('宋体') || inlineFontLower.includes('simsun') || inlineFontLower.includes('song')) {
+                    fontFamily = FONT_STACKS.SONG;
+                } else if (inlineFontLower.includes('黑体') || inlineFontLower.includes('simhei') || inlineFontLower.includes('hei')) {
+                    fontFamily = FONT_STACKS.HEI;
+                } else if (inlineFontLower.includes('楷体') || inlineFontLower.includes('simkai') || inlineFontLower.includes('kai')) {
+                    fontFamily = FONT_STACKS.KAI;
+                } else if (inlineFontLower.includes('yahei')) {
+                    fontFamily = FONT_STACKS.HEI;
+                } else if (inlineFontLower === 'arial') {
+                    fontFamily = 'Arial, Helvetica, sans-serif';
+                } else if (styles && (styles[inlineFont] || styles[inlineFont.toUpperCase()])) {
                     const matchedStyle = (styles[inlineFont] || styles[inlineFont.toUpperCase()]);
                     fontFamily = getStyleFontFamily(matchedStyle.name, styles);
                 } else {
@@ -234,6 +246,7 @@ export const renderEntitiesToCanvas = (
     blocks: Record<string, DxfBlock>,
     styles: Record<string, DxfStyle>,
     lineTypes: Record<string, DxfLineType>,
+    ltScale: number,
     viewPort: { x: number, y: number, zoom: number },
     selectedIds: Set<string>,
     width: number,
@@ -284,14 +297,26 @@ export const renderEntitiesToCanvas = (
         ctx.strokeStyle = color;
         ctx.fillStyle = color;
         ctx.lineWidth = (isSelected ? 2 : 1) / Math.abs(currentScale);
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
 
         // Apply line dash pattern
         const lineTypeName = (ent.lineType === 'ByLayer' && layer) ? layer.lineType : ent.lineType;
         if (lineTypeName && lineTypeName.toUpperCase() !== 'CONTINUOUS' && lineTypeName.toUpperCase() !== 'BYLAYER' && lineTypeName.toUpperCase() !== 'BYBLOCK') {
             const ltype = lineTypes[lineTypeName] || lineTypes[lineTypeName.toUpperCase()];
             if (ltype && ltype.pattern && ltype.pattern.length > 0) {
-                // Scale pattern by viewPort.zoom to keep it visible but proportional
-                const scale = 1.0 / viewPort.zoom;
+                // Scale pattern by LTSCALE and entity's lineTypeScale
+                const entityScale = ent.lineTypeScale || 1.0;
+                let scale = ltScale * entityScale;
+                
+                // Visibility optimization: ensure the pattern is large enough on screen to be seen as dashed.
+                // If the entire pattern cycle is less than 5 pixels, boost the scale.
+                const minPatternPixels = 5.0;
+                const patternScreenSize = ltype.totalLength * scale * viewPort.zoom;
+                if (patternScreenSize < minPatternPixels && ltype.totalLength > 0) {
+                    scale *= (minPatternPixels / patternScreenSize);
+                }
+
                 const dashPattern = ltype.pattern.map(p => Math.abs(p) * scale);
                 ctx.setLineDash(dashPattern);
             } else {
