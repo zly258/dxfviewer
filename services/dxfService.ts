@@ -99,7 +99,6 @@ const parseLayer = (state: DxfParserState): DxfLayer => {
             case 2: layer.name = g.value; break;
             case 62: layer.color = parseInt(g.value); break;
             case 6: layer.lineType = g.value; break;
-            case 370: layer.lineweight = parseInt(g.value, 10); break;
             case 70: layer.isVisible = (parseInt(g.value) & 1) !== 1; break; 
         }
     }
@@ -404,17 +403,21 @@ export const parseDxf = async (dxfString: string, onProgress?: (percent: number)
 
   if (onProgress) onProgress(100);
 
+  // Precompute block extents for culling and global extents
+  // We MUST do this before calculating initial extents because INSERT extents depend on block extents
+  precomputeBlockExtents(blocks);
+
   // Calculate extents to determine if we need an offset for large coordinates
   const initialExtents = calculateExtents(entities, blocks);
   let offset: Point2D | undefined;
 
-  // If coordinates are very large (e.g. > 1,000,000), apply an offset to bring them closer to origin
-  const LARGE_COORD_THRESHOLD = 1000000;
-  if (Math.abs(initialExtents.min.x) > LARGE_COORD_THRESHOLD || Math.abs(initialExtents.min.y) > LARGE_COORD_THRESHOLD) {
-      offset = { x: Math.floor(initialExtents.min.x), y: Math.floor(initialExtents.min.y) };
+  // If coordinates are large or far from origin, apply an offset to bring them closer to origin
+  // This helps with floating point precision in canvas transforms.
+  const LARGE_COORD_THRESHOLD = 1000;
+  if (Math.abs(initialExtents.center.x) > LARGE_COORD_THRESHOLD || Math.abs(initialExtents.center.y) > LARGE_COORD_THRESHOLD) {
+      offset = { x: initialExtents.center.x, y: initialExtents.center.y };
       
-      // Post-process all top-level entities to apply offset
-      const applyOffset = (p: Point2D) => {
+      const applyOffset = (p: Point2D | Point3D) => {
           if (!p) return;
           p.x -= offset!.x;
           p.y -= offset!.y;
@@ -425,13 +428,11 @@ export const parseDxf = async (dxfString: string, onProgress?: (percent: number)
           if ('start' in ent) applyOffset(ent.start);
           if ('end' in ent) applyOffset(ent.end);
           if ('center' in ent) applyOffset(ent.center);
-          if ('basePoint' in ent) applyOffset(ent.basePoint);
           if ('points' in ent && ent.points) ent.points.forEach(applyOffset);
           
           if ('secondPosition' in ent && ent.secondPosition) applyOffset(ent.secondPosition);
           if ('definitionPoint' in ent) applyOffset(ent.definitionPoint);
           if ('textMidPoint' in ent) applyOffset(ent.textMidPoint);
-          if ('vertices' in ent && (ent as any).vertices) (ent as any).vertices.forEach((v: any) => applyOffset(v));
           
           if (ent.type === EntityType.HATCH) {
               ent.loops.forEach(loop => {
@@ -452,6 +453,14 @@ export const parseDxf = async (dxfString: string, onProgress?: (percent: number)
               if (ent.calculatedPoints) ent.calculatedPoints.forEach(applyOffset);
           }
 
+          if (ent.type === EntityType.LEADER) {
+              if (ent.points) ent.points.forEach(applyOffset);
+          }
+
+          if (ent.type === EntityType.RAY || ent.type === EntityType.XLINE) {
+              if (ent.basePoint) applyOffset(ent.basePoint);
+          }
+
           if ((ent.type === EntityType.INSERT || ent.type === EntityType.ACAD_TABLE) && (ent as any).attributes) {
               (ent as any).attributes.forEach(processEntityOffset);
           }
@@ -459,15 +468,21 @@ export const parseDxf = async (dxfString: string, onProgress?: (percent: number)
 
       entities.forEach(processEntityOffset);
       
+      // Also shift all entities inside blocks
+      Object.values(blocks).forEach(block => {
+          if (block.basePoint) applyOffset(block.basePoint);
+          block.entities.forEach(processEntityOffset);
+      });
+      
       if (header) {
           applyOffset(header.extMin);
           applyOffset(header.extMax);
       }
-
-      // After shifting top-level entities, we need to RE-PRECOMPUTE block extents
-      // because some blocks might contain INSERTs of other blocks, and those INSERTs' 
-      // positions are world-like if they are at the top level, but here they are 
-      // inside blocks. Wait...
+      
+      // Clear block extents so they are re-calculated based on shifted coordinates
+      Object.values(blocks).forEach(b => {
+          delete b.extents;
+      });
   }
 
   // Precompute block extents for culling and global extents
@@ -513,7 +528,6 @@ const applyCommonGroup = (common: any, code: number, value: string) => {
         case 62: common.color = parseInt(value, 10); break;
         case 6: common.lineType = value; break;
         case 48: common.lineTypeScale = parseFloat(value); break;
-        case 370: common.lineweight = parseInt(value, 10); break;
         case 60: common.visible = parseInt(value, 10) === 0; break;
         case 67: common.inPaperSpace = parseInt(value, 10) === 1; break;
         case 210: common.extrusion.x = parseFloat(value); break;
@@ -1499,7 +1513,7 @@ const precomputeBlockExtents = (blocks: Record<string, DxfBlock>) => {
         block.entities.forEach(ent => {
             const ext = getEntityExtents(ent, blocks);
             if (ext) {
-                const isValid = (v: number) => isFinite(v) && Math.abs(v) < 1e20;
+                const isValid = (v: number) => isFinite(v) && Math.abs(v) < 1e15;
                 if (isValid(ext.min.x) && ext.min.x < minX) minX = ext.min.x; 
                 if (isValid(ext.max.x) && ext.max.x > maxX) maxX = ext.max.x;
                 if (isValid(ext.min.y) && ext.min.y < minY) minY = ext.min.y; 
@@ -1526,7 +1540,7 @@ export const calculateExtents = (entities: AnyEntity[], blocks: Record<string, D
         const ext = getEntityExtents(ent, blocks);
         if (ext) {
             // Validate coordinates are finite and not excessively large (CAD limit)
-            const isValid = (v: number) => isFinite(v) && Math.abs(v) < 1e20;
+            const isValid = (v: number) => isFinite(v) && Math.abs(v) < 1e15;
             
             if (isValid(ext.min.x) && ext.min.x < minX) minX = ext.min.x; 
             if (isValid(ext.max.x) && ext.max.x > maxX) maxX = ext.max.x;

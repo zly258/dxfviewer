@@ -730,8 +730,9 @@ export const hitTest = (x: number, y: number, threshold: number, entities: AnyEn
 
         const p = tx ? tx : (pt: Point2D) => pt;
         
-        // Increase threshold for selection
-        const effectiveThreshold = threshold;
+        // Use a larger threshold for text and small points to make them easier to select
+        const isTextEntity = [EntityType.TEXT, EntityType.MTEXT, EntityType.ATTRIB, EntityType.ATTDEF].includes(ent.type);
+        const effectiveThreshold = isTextEntity ? (threshold * 1.5) : threshold;
 
         // Bounding Box Selection Optimization
         // If entity has precomputed extents, use them for the primary hit test

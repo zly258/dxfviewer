@@ -33,12 +33,30 @@ const extractContentWidthFactor = (text: string): number | null => {
 }
 
 /**
- * Extracts the first font name from MTEXT formatting codes (e.g., \fArial|...;)
+ * Extract simple \H height factor from text if present (e.g., \H1x;)
+ * Returns null if not found.
  */
-const extractMTextFont = (text: string): string | null => {
-    const matches = text.match(/\\f([^|;]+)[|;]/);
+const extractContentHeightFactor = (text: string): number | null => {
+    // Matches \H1.5x; or \H2;
+    const matches = text.match(/\\H(\d+(\.\d+)?)(x?);/);
     if (matches && matches[1]) {
-        return matches[1].replace(/\"/g, ''); // Remove quotes if present
+        return parseFloat(matches[1]);
+    }
+    return null;
+}
+
+/**
+ * Extracts the first font name from MTEXT formatting codes (e.g., \fArial|...;)
+ * Also extracts bold/italic info if present.
+ */
+const extractMTextFormatting = (text: string) => {
+    const matches = text.match(/\\f([^|;]+)([^;]*);/);
+    if (matches) {
+        const fontName = matches[1].replace(/\"/g, '');
+        const options = matches[2];
+        const isBold = options.includes('|b1');
+        const isItalic = options.includes('|i1');
+        return { fontName, isBold, isItalic };
     }
     return null;
 };
@@ -54,18 +72,24 @@ interface TextRendererProps {
 export const TextRenderer: React.FC<TextRendererProps> = ({ entity: ent, color, styles, onClick, isSelected }) => {
     const isMText = ent.type === EntityType.MTEXT;
     let fontFamily = getStyleFontFamily(ent.styleName, styles);
+    let fontWeight = 'normal';
+    let fontStyle = 'normal';
     
     // Check for MTEXT inline font override
     if (isMText) {
-        const inlineFont = extractMTextFont(ent.value);
-        if (inlineFont) {
+        const formatting = extractMTextFormatting(ent.value);
+        if (formatting) {
+            const { fontName, isBold, isItalic } = formatting;
+            if (isBold) fontWeight = 'bold';
+            if (isItalic) fontStyle = 'italic';
+
             // Map the inline font name to a web font stack
-            if (inlineFont.toLowerCase().includes('song') || inlineFont.toLowerCase().includes('simsun')) {
+            if (fontName.toLowerCase().includes('song') || fontName.toLowerCase().includes('simsun')) {
                 fontFamily = '"SimSun", "宋体", "Microsoft YaHei", sans-serif';
-            } else if (inlineFont.toLowerCase().includes('arial')) {
+            } else if (fontName.toLowerCase().includes('arial')) {
                 fontFamily = 'Arial, Helvetica, sans-serif';
             } else {
-                fontFamily = `"${inlineFont}", ${fontFamily}`;
+                fontFamily = `"${fontName}", ${fontFamily}`;
             }
         }
     }
@@ -78,7 +102,14 @@ export const TextRenderer: React.FC<TextRendererProps> = ({ entity: ent, color, 
     const styleWidthFactor = style?.widthFactor || 1;
 
     // Height Logic: If Entity Height is 0, use Style Height. If both 0, default to 2.5
-    const height = (ent.height > 0) ? ent.height : (styleHeight > 0 ? styleHeight : 2.5);
+    let height = (ent.height > 0) ? ent.height : (styleHeight > 0 ? styleHeight : 2.5);
+    
+    if (isMText) {
+        const heightFactor = extractContentHeightFactor(ent.value);
+        if (heightFactor !== null) {
+            height *= heightFactor;
+        }
+    }
 
     // Width Factor Logic
     // MTEXT: Visual width factor comes from Style (or content \W overrides).
@@ -131,6 +162,8 @@ export const TextRenderer: React.FC<TextRendererProps> = ({ entity: ent, color, 
                             transformOrigin: '0 0',
                             fontSize: `${height}px`,
                             color: color,
+                            fontWeight: fontWeight,
+                            fontStyle: fontStyle,
                             width: wrapWidth ? `${wrapWidth}px` : 'max-content',
                             textAlign: textAlign,
                             lineHeight: '1.25',
@@ -173,6 +206,8 @@ export const TextRenderer: React.FC<TextRendererProps> = ({ entity: ent, color, 
                 fill={color}
                 fontSize={height}
                 fontFamily={fontFamily}
+                fontWeight={fontWeight}
+                fontStyle={fontStyle}
                 textAnchor={textAnchor}
                 dominantBaseline={alignmentBaseline}
                 style={{ pointerEvents: 'auto', ...selectionStyle }}

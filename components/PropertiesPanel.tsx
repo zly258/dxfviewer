@@ -69,9 +69,10 @@ interface PropertiesPanelProps {
   entities: AnyEntity[];
   layers?: any[];
   styles?: Record<string, DxfStyle>;
+  offset?: { x: number, y: number };
 }
 
-const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, layers, styles = {} }) => {
+const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, layers, styles = {}, offset }) => {
   
   const renderPropertyRow = (label: string, value: React.ReactNode) => {
     const translatedLabel = LABEL_TRANSLATIONS[label] || label;
@@ -109,6 +110,19 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, layers, sty
     );
   };
 
+  const renderLineweight = (lw: number | undefined) => {
+    if (lw === undefined || lw === -1) return <span className="text-gray-500">随层 (ByLayer)</span>;
+    if (lw === -2) return <span className="text-gray-500">随块 (ByBlock)</span>;
+    if (lw === -3) return <span className="text-gray-500">默认 (Default)</span>;
+    if (lw === 0) return "0.00 mm";
+    return `${(lw / 100).toFixed(2)} mm`;
+  };
+
+  const formatCoord = (val: number, axis: 'x' | 'y') => {
+    const originalVal = offset ? (val + (axis === 'x' ? offset.x : offset.y)) : val;
+    return originalVal.toFixed(3);
+  };
+
   const renderEntityProperties = (ent: AnyEntity) => {
       const typeDisplay = ENTITY_TYPE_TRANSLATIONS[ent.type] || ent.type;
       
@@ -122,38 +136,34 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, layers, sty
           renderPropertyRow("Lineweight", renderLineweight(ent.lineweight)),
       ];
 
-  const renderLineweight = (lw: number | undefined) => {
-    if (lw === undefined || lw === -1) return <span className="text-gray-500">随层 (ByLayer)</span>;
-    if (lw === -2) return <span className="text-gray-500">随块 (ByBlock)</span>;
-    if (lw === -3) return <span className="text-gray-500">默认 (Default)</span>;
-    if (lw === 0) return "0.00 mm";
-    return `${(lw / 100).toFixed(2)} mm`;
-  };
+      if (offset && (offset.x !== 0 || offset.y !== 0)) {
+          commonRows.push(renderPropertyRow("Global Offset", `${offset.x.toFixed(0)}, ${offset.y.toFixed(0)}`));
+      }
 
       let specificRows: React.ReactNode[] = [];
 
       switch (ent.type) {
           case EntityType.LINE:
               specificRows = [
-                  renderPropertyRow("Start X", ent.start.x.toFixed(3)),
-                  renderPropertyRow("Start Y", ent.start.y.toFixed(3)),
-                  renderPropertyRow("End X", ent.end.x.toFixed(3)),
-                  renderPropertyRow("End Y", ent.end.y.toFixed(3)),
+                  renderPropertyRow("Start X", formatCoord(ent.start.x, 'x')),
+                  renderPropertyRow("Start Y", formatCoord(ent.start.y, 'y')),
+                  renderPropertyRow("End X", formatCoord(ent.end.x, 'x')),
+                  renderPropertyRow("End Y", formatCoord(ent.end.y, 'y')),
                   renderPropertyRow("Length", Math.sqrt(Math.pow(ent.end.x - ent.start.x, 2) + Math.pow(ent.end.y - ent.start.y, 2)).toFixed(4))
               ];
               break;
           case EntityType.CIRCLE:
               specificRows = [
-                  renderPropertyRow("Center X", ent.center.x.toFixed(3)),
-                  renderPropertyRow("Center Y", ent.center.y.toFixed(3)),
+                  renderPropertyRow("Center X", formatCoord(ent.center.x, 'x')),
+                  renderPropertyRow("Center Y", formatCoord(ent.center.y, 'y')),
                   renderPropertyRow("Radius", ent.radius.toFixed(4)),
                   renderPropertyRow("Area", (Math.PI * ent.radius * ent.radius).toFixed(4))
               ];
               break;
           case EntityType.ARC:
               specificRows = [
-                  renderPropertyRow("Center X", ent.center.x.toFixed(3)),
-                  renderPropertyRow("Center Y", ent.center.y.toFixed(3)),
+                  renderPropertyRow("Center X", formatCoord(ent.center.x, 'x')),
+                  renderPropertyRow("Center Y", formatCoord(ent.center.y, 'y')),
                   renderPropertyRow("Radius", ent.radius.toFixed(4)),
                   renderPropertyRow("Start Angle", `${ent.startAngle.toFixed(1)}°`),
                   renderPropertyRow("End Angle", `${ent.endAngle.toFixed(1)}°`),
@@ -163,7 +173,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, layers, sty
           case EntityType.THREEDFACE:
               specificRows = [
                   renderPropertyRow("Vertices", ent.points.length),
-                  ...ent.points.map((p, i) => renderPropertyRow(`Vertex ${i+1}`, `${p.x.toFixed(3)}, ${p.y.toFixed(3)}`))
+                  ...ent.points.map((p, i) => renderPropertyRow(`Vertex ${i+1}`, `${formatCoord(p.x, 'x')}, ${formatCoord(p.y, 'y')}`))
               ];
               break;
           case EntityType.LWPOLYLINE:
@@ -200,8 +210,8 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, layers, sty
                       <div className="font-semibold">{friendlyFont}</div>
                       {style && <div className="text-[10px] text-gray-400">{style.fontFileName}{style.bigFontFileName ? ` | ${style.bigFontFileName}` : ''}</div>}
                   </div>),
-                  renderPropertyRow("Pos X", ent.position.x.toFixed(3)),
-                  renderPropertyRow("Pos Y", ent.position.y.toFixed(3)),
+                  renderPropertyRow("Pos X", formatCoord(ent.position.x, 'x')),
+                  renderPropertyRow("Pos Y", formatCoord(ent.position.y, 'y')),
                   renderPropertyRow("Rotation", `${ent.rotation?.toFixed(1)}°`),
                   ent.type === EntityType.MTEXT && renderPropertyRow("Width", ent.width ? ent.width.toFixed(3) : "自动 (Auto)")
               ].filter(Boolean);
@@ -211,8 +221,8 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, layers, sty
           case EntityType.ACAD_TABLE:
               specificRows = [
                   renderPropertyRow("Block", ent.blockName),
-                  renderPropertyRow("Pos X", ent.position.x.toFixed(3)),
-                  renderPropertyRow("Pos Y", ent.position.y.toFixed(3)),
+                  renderPropertyRow("Pos X", formatCoord(ent.position.x, 'x')),
+                  renderPropertyRow("Pos Y", formatCoord(ent.position.y, 'y')),
                   ent.type === EntityType.INSERT && renderPropertyRow("Scale", `${ent.scale.x.toFixed(2)}, ${ent.scale.y.toFixed(2)}`),
                   ent.type === EntityType.INSERT && renderPropertyRow("Rotation", `${ent.rotation.toFixed(1)}°`),
               ].filter(Boolean);

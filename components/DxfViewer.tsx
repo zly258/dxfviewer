@@ -141,7 +141,8 @@ const DxfViewer: React.FC<DxfViewerProps> = ({ entities, layers, blocks = {}, st
       const wPos = screenToWorld(mouseX, mouseY);
 
       if (dist < 5) {
-         const threshold = 10 / viewPort.zoom;
+         // Increase hit test threshold to make selection easier, especially for text
+         const threshold = 12 / viewPort.zoom;
          const hitId = hitTest(wPos.x, wPos.y, threshold, entities, blocks, layers, styles);
          
          if (hitId) {
