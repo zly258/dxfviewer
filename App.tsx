@@ -4,7 +4,7 @@ import Sidebar from './components/Sidebar';
 import PropertiesPanel from './components/PropertiesPanel';
 import ToolBar from './components/ToolBar';
 import { parseDxf, calculateExtents } from './services/dxfService';
-import { AnyEntity, ViewPort, DxfLayer, DxfBlock, EntityType, DxfStyle, Point2D } from './types';
+import { AnyEntity, ViewPort, DxfLayer, DxfBlock, EntityType, DxfStyle, DxfLineType, Point2D } from './types';
 import { DEFAULT_VIEWPORT } from './constants';
 
 function App() {
@@ -12,6 +12,7 @@ function App() {
   const [layers, setLayers] = useState<Record<string, DxfLayer>>({ '0': { name: '0', color: 7 }});
   const [blocks, setBlocks] = useState<Record<string, DxfBlock>>({});
   const [styles, setStyles] = useState<Record<string, DxfStyle>>({});
+  const [lineTypes, setLineTypes] = useState<Record<string, DxfLineType>>({});
   const [worldOffset, setWorldOffset] = useState<Point2D | undefined>();
   
   const [isLoading, setIsLoading] = useState(false);
@@ -100,6 +101,7 @@ function App() {
       setLayers({ '0': { name: '0', color: 7 }});
       setBlocks({});
       setStyles({});
+      setLineTypes({});
       setSelectedEntityIds(new Set());
       setViewPort(DEFAULT_VIEWPORT);
   };
@@ -136,6 +138,7 @@ function App() {
                 setLayers(data.layers);
                 setBlocks(data.blocks);
                 setStyles(data.styles);
+                setLineTypes(data.lineTypes);
                 setWorldOffset(data.offset);
                 requestAnimationFrame(() => fitView(data.entities, data.blocks));
             } catch (err) {
@@ -193,12 +196,13 @@ function App() {
             />
         )}
         
-        <main className="viewer-container">
+        <main className="viewer-container bg-[#212121] shadow-inner flex flex-col border-l border-r border-gray-300">
           <DxfViewer 
             entities={entities} 
             layers={layers}
             blocks={blocks}
             styles={styles}
+            lineTypes={lineTypes}
             viewPort={viewPort}
             onViewPortChange={setViewPort}
             selectedEntityIds={selectedEntityIds}

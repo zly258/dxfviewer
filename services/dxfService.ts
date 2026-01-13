@@ -126,7 +126,23 @@ const parseStyle = (state: DxfParserState): DxfStyle => {
     return style;
 };
 
-const parseTable = (state: DxfParserState, layers: Record<string, DxfLayer>, styles: Record<string, DxfStyle>) => {
+const parseLineType = (state: DxfParserState): DxfLineType => {
+    const ltype: DxfLineType = { name: '', pattern: [], totalLength: 0 };
+    while(state.hasNext) {
+        const p = state.peek();
+        if (!p || p.code === 0) break;
+        const g = state.next()!;
+        switch(g.code) {
+            case 2: ltype.name = g.value; break;
+            case 3: ltype.description = g.value; break;
+            case 40: ltype.totalLength = parseFloat(g.value); break;
+            case 49: ltype.pattern.push(parseFloat(g.value)); break;
+        }
+    }
+    return ltype;
+};
+
+const parseTable = (state: DxfParserState, layers: Record<string, DxfLayer>, styles: Record<string, DxfStyle>, lineTypes: Record<string, DxfLineType>) => {
     const nameGroup = state.next();
     if (!nameGroup || nameGroup.code !== 2) return;
     const tableName = nameGroup.value;
@@ -147,6 +163,10 @@ const parseTable = (state: DxfParserState, layers: Record<string, DxfLayer>, sty
                 state.next();
                 const style = parseStyle(state);
                 styles[style.name] = style;
+            } else if (tableName === 'LTYPE' && p.value === 'LTYPE') {
+                state.next();
+                const ltype = parseLineType(state);
+                lineTypes[ltype.name] = ltype;
             } else {
                 state.next(); 
             }
@@ -156,7 +176,7 @@ const parseTable = (state: DxfParserState, layers: Record<string, DxfLayer>, sty
     }
 }
 
-const parseBlock = (state: DxfParserState): DxfBlock | null => {
+const parseBlock = (state: DxfParserState, blockHandleMap?: Record<string, string>): DxfBlock | null => {
     const block: DxfBlock = { name: '', basePoint: {x:0, y:0}, entities: [] };
     while(state.hasNext) {
         const p = state.peek();
@@ -177,7 +197,7 @@ const parseBlock = (state: DxfParserState): DxfBlock | null => {
                 break;
             }
             state.next(); // Consume the entity type group (code 0)
-            const entity = parseEntityDispatcher(p.value, state);
+            const entity = parseEntityDispatcher(p.value, state, blockHandleMap);
             if (entity) block.entities.push(entity);
         } else {
             state.next();
@@ -305,11 +325,13 @@ export const parseDxf = async (dxfString: string, onProgress?: (percent: number)
   const layers: Record<string, DxfLayer> = {};
   const blocks: Record<string, DxfBlock> = {};
   const styles: Record<string, DxfStyle> = {};
+  const lineTypes: Record<string, DxfLineType> = {};
   const blockHandleMap: Record<string, string> = {}; 
   let header: DxfHeader | undefined;
   
   layers['0'] = { name: '0', color: 7, isVisible: true };
   styles['STANDARD'] = { name: 'STANDARD', fontFileName: 'txt', height: 0, widthFactor: 1 };
+  lineTypes['CONTINUOUS'] = { name: 'CONTINUOUS', pattern: [], totalLength: 0 };
 
   // Heuristic total size for progress: length of string / ~20 bytes per line
   const estimatedTotalLines = dxfString.length / 15; 
@@ -348,10 +370,10 @@ export const parseDxf = async (dxfString: string, onProgress?: (percent: number)
              }
          }
       } else if (currentSection === 'TABLES') {
-        if (group.code === 0 && group.value === 'TABLE') parseTable(state, layers, styles);
+        if (group.code === 0 && group.value === 'TABLE') parseTable(state, layers, styles, lineTypes);
       } else if (currentSection === 'BLOCKS') {
         if (group.code === 0 && group.value === 'BLOCK') {
-           const block = parseBlock(state);
+           const block = parseBlock(state, blockHandleMap);
            if (block) {
                blocks[block.name] = block;
                if (block.handle) blockHandleMap[block.handle] = block.name;
@@ -372,16 +394,15 @@ export const parseDxf = async (dxfString: string, onProgress?: (percent: number)
   if (onProgress) onProgress(100);
 
   // Calculate extents to determine if we need an offset for large coordinates
-  const extents = calculateExtents(entities, blocks);
+  const initialExtents = calculateExtents(entities, blocks);
   let offset: Point2D | undefined;
 
   // If coordinates are very large (e.g. > 1,000,000), apply an offset to bring them closer to origin
-  // This helps with precision issues in browser rendering (Canvas/SVG)
   const LARGE_COORD_THRESHOLD = 1000000;
-  if (Math.abs(extents.min.x) > LARGE_COORD_THRESHOLD || Math.abs(extents.min.y) > LARGE_COORD_THRESHOLD) {
-      offset = { x: Math.floor(extents.min.x), y: Math.floor(extents.min.y) };
+  if (Math.abs(initialExtents.min.x) > LARGE_COORD_THRESHOLD || Math.abs(initialExtents.min.y) > LARGE_COORD_THRESHOLD) {
+      offset = { x: Math.floor(initialExtents.min.x), y: Math.floor(initialExtents.min.y) };
       
-      // Post-process all entities to apply offset
+      // Post-process all top-level entities to apply offset
       const applyOffset = (p: Point2D) => {
           if (!p) return;
           p.x -= offset!.x;
@@ -394,7 +415,10 @@ export const parseDxf = async (dxfString: string, onProgress?: (percent: number)
           if ('end' in ent) applyOffset(ent.end);
           if ('center' in ent) applyOffset(ent.center);
           if ('points' in ent && ent.points) ent.points.forEach(applyOffset);
-          if ('basePoint' in ent) applyOffset(ent.basePoint);
+          // NOTE: We do NOT apply offset to block basePoint or entities inside blocks
+          // because they are in a local coordinate system. 
+          // We only shift the world positions (top-level entities and INSERT positions).
+          
           if ('secondPosition' in ent && ent.secondPosition) applyOffset(ent.secondPosition);
           if ('definitionPoint' in ent) applyOffset(ent.definitionPoint);
           if ('textMidPoint' in ent) applyOffset(ent.textMidPoint);
@@ -425,22 +449,24 @@ export const parseDxf = async (dxfString: string, onProgress?: (percent: number)
 
       entities.forEach(processEntityOffset);
       
-      // Also offset block base points and entities within blocks if they are not relative
-      // Note: Usually block entities are relative to (0,0), but some DXFs might have them absolute.
-      // However, we only offset top-level entities for now. If blocks are reused, 
-      // offsetting their entities would be wrong.
-      // But we MUST offset block basePoint.
-      Object.values(blocks).forEach(block => {
-          applyOffset(block.basePoint);
-      });
-
       if (header) {
           applyOffset(header.extMin);
           applyOffset(header.extMax);
       }
+
+      // After shifting top-level entities, we need to RE-PRECOMPUTE block extents
+      // because some blocks might contain INSERTs of other blocks, and those INSERTs' 
+      // positions are world-like if they are at the top level, but here they are 
+      // inside blocks. Wait...
   }
 
-  return { header, entities, layers, blocks, styles, offset };
+  // Precompute block extents for culling and global extents
+  precomputeBlockExtents(blocks);
+
+  // Re-calculate global extents for the shifted entities.
+  const extents = calculateExtents(entities, blocks);
+
+  return { header, entities, layers, blocks, styles, lineTypes, offset: offset || {x:0, y:0}, extents };
 };
 
 const parsePoint = (state: DxfParserState): Point2D => {
@@ -523,12 +549,14 @@ const parseAcadTable = (state: DxfParserState, common: any, blockHandleMap?: Rec
         ...common, 
         type: EntityType.ACAD_TABLE, 
         blockName: '', 
-        position: {x:0, y:0}
+        position: {x:0, y:0},
+        scale: {x:1, y:1, z:1},
+        rotation: 0
     };
     
     let z = 0;
     let blockHandle = '';
-    let direction = {x: 1, y: 0};
+    let direction = {x: 1, y: 0, z: 0};
 
     while(state.hasNext) {
         const p = state.peek();
@@ -540,10 +568,19 @@ const parseAcadTable = (state: DxfParserState, common: any, blockHandleMap?: Rec
             case 10: entity.position.x = parseFloat(g.value); break;
             case 20: entity.position.y = parseFloat(g.value); break;
             case 30: z = parseFloat(g.value); break;
+            case 50: entity.rotation = parseFloat(g.value); break;
             case 342: blockHandle = g.value; break; 
             case 11: direction.x = parseFloat(g.value); break; 
             case 21: direction.y = parseFloat(g.value); break; 
+            case 31: direction.z = parseFloat(g.value); break;
+            case 41: entity.scale!.x = parseFloat(g.value); break;
+            case 42: entity.scale!.y = parseFloat(g.value); break;
+            case 43: entity.scale!.z = parseFloat(g.value); break;
         }
+    }
+
+    if (direction.x !== 1 || direction.y !== 0 || direction.z !== 0) {
+        (entity as any).direction = direction;
     }
 
     if (!entity.blockName && blockHandle && blockHandleMap) {
@@ -552,6 +589,9 @@ const parseAcadTable = (state: DxfParserState, common: any, blockHandleMap?: Rec
 
     const ocs = getOcsToWcsMatrix(entity.extrusion!.x, entity.extrusion!.y, entity.extrusion!.z);
     entity.position = applyOcs(entity.position, ocs, z);
+    if (entity.rotation) {
+        entity.rotation = getWcsRotation(entity.rotation, ocs);
+    }
 
     if (!entity.blockName) return null; 
     return entity;
@@ -643,17 +683,34 @@ const parseText = (state: DxfParserState, common: any, type: EntityType): DxfTex
              // MTEXT direction vector (11, 21, 31) is already in WCS according to DXF spec
              entity.rotation = Math.atan2(direction.y, direction.x) * 180 / Math.PI;
         } else {
-             const rad = entity.rotation; 
-             const deg = rad * 180 / Math.PI;
-             entity.rotation = getWcsRotation(deg, ocs);
+             // MTEXT rotation angle (code 50) is in radians and is already in WCS
+             entity.rotation = entity.rotation * 180 / Math.PI;
         }
+        // MTEXT position (10, 20, 30) is already in WCS according to DXF spec
     } else {
+        entity.position = applyOcs(entity.position, ocs, z);
         if (secondPos) {
             entity.secondPosition = applyOcs(secondPos, ocs, z2);
         }
         entity.rotation = getWcsRotation(entity.rotation, ocs);
     }
-    entity.position = applyOcs(entity.position, ocs, z);
+
+    // Handle mirroring for OCS if the 2D determinant is negative
+    if (ocs) {
+        const det2D = ocs.Ax.x * ocs.Ay.y - ocs.Ax.y * ocs.Ay.x;
+        if (det2D < 0) {
+            // For mirrored OCS, we need to flip the rotation or scale to maintain correct appearance.
+            // In AutoCAD, a mirrored OCS (like Nz=-1) means the 2D plane is viewed from "behind".
+            if (type === EntityType.MTEXT) {
+                // MTEXT width is already handled by direction or rotation. 
+                // But the width factor (if any) or internal scaling might need flipping.
+                entity.widthFactor = -(entity.widthFactor || 1);
+            } else {
+                entity.widthFactor = -(entity.widthFactor || 1);
+            }
+        }
+    }
+    
     return entity;
 }
 
@@ -756,6 +813,16 @@ const parseArc = (state: DxfParserState, common: any): AnyEntity => {
     const ocs = getOcsToWcsMatrix(entity.extrusion.x, entity.extrusion.y, entity.extrusion.z);
     entity.center = applyOcs(entity.center, ocs, z);
     if (ocs) {
+        const det2D = ocs.Ax.x * ocs.Ay.y - ocs.Ax.y * ocs.Ay.x;
+        if (det2D < 0) {
+            // For mirrored OCS, the arc direction is reversed.
+            // Swap angles and negate them or adjust based on rotation.
+            // A simpler way: AutoCAD says if Nz < 0, the arc is CW.
+            // We can store this in the entity for the renderer to use.
+            entity.isCounterClockwise = false;
+        } else {
+            entity.isCounterClockwise = true;
+        }
         entity.startAngle = getWcsRotation(entity.startAngle, ocs);
         entity.endAngle = getWcsRotation(entity.endAngle, ocs);
     }
@@ -797,8 +864,13 @@ const parseLwPolyline = (state: DxfParserState, common: any): DxfPolyline => {
 
     const ocs = getOcsToWcsMatrix(common.extrusion.x, common.extrusion.y, common.extrusion.z);
     if (ocs) {
+        const det2D = ocs.Ax.x * ocs.Ay.y - ocs.Ax.y * ocs.Ay.x;
+        const mirror = det2D < 0;
         for(let i=0; i<points.length; i++) {
             points[i] = applyOcs(points[i], ocs, elevation);
+            if (mirror && bulges[i] !== 0) {
+                bulges[i] = -bulges[i];
+            }
         }
     }
     return { ...common, type: EntityType.LWPOLYLINE, points, bulges, closed };
@@ -853,8 +925,13 @@ const parsePolyline = (state: DxfParserState, common: any): DxfPolyline => {
 
     const ocs = getOcsToWcsMatrix(common.extrusion.x, common.extrusion.y, common.extrusion.z);
     if (ocs && !is3DPolyline) {
+        const det2D = ocs.Ax.x * ocs.Ay.y - ocs.Ax.y * ocs.Ay.x;
+        const mirror = det2D < 0;
         for(let i=0; i<points.length; i++) {
             points[i] = applyOcs(points[i], ocs, elevation);
+            if (mirror && bulges[i] !== 0) {
+                bulges[i] = -bulges[i];
+            }
         }
     }
     return { ...common, type: EntityType.POLYLINE, points, bulges, closed };
@@ -898,6 +975,14 @@ const parseInsert = (state: DxfParserState, common: any): DxfInsert => {
     const ocs = getOcsToWcsMatrix(entity.extrusion.x, entity.extrusion.y, entity.extrusion.z);
     entity.position = applyOcs(entity.position, ocs, z);
     entity.rotation = getWcsRotation(entity.rotation, ocs);
+
+    if (ocs) {
+        const det2D = ocs.Ax.x * ocs.Ay.y - ocs.Ax.y * ocs.Ay.x;
+        if (det2D < 0) {
+            // Mirroring detected in OCS. Flip the X scale to compensate.
+            entity.scale.x = -entity.scale.x;
+        }
+    }
 
     if (hasAttribs) {
         entity.attributes = [];
@@ -1048,13 +1133,8 @@ const parseSpline = (state: DxfParserState, common: any): DxfSpline => {
         }
     }
     
-    const ocs = getOcsToWcsMatrix(entity.extrusion.x, entity.extrusion.y, entity.extrusion.z);
-    if (ocs) {
-        const transform = (p: Point2D) => applyOcs(p, ocs, (p as any).z || 0);
-        entity.controlPoints = entity.controlPoints.map(transform);
-        entity.fitPoints = entity.fitPoints.map(transform);
-    }
-
+    // SPLINE control points and fit points are already in WCS according to DXF spec
+    
     // Pre-calculate spline points for faster rendering
     if (entity.controlPoints.length > 0) {
         entity.calculatedPoints = getBSplinePoints(entity.controlPoints, entity.degree, entity.knots, entity.weights);
@@ -1071,7 +1151,7 @@ const parseEllipse = (state: DxfParserState, common: any): AnyEntity => {
         majorAxis: {x:0, y:0}, 
         ratio: 1, startParam: 0, endParam: Math.PI*2 
     };
-    let z = 0, az = 0;
+    let z = 0;
     while(state.hasNext) {
         const p = state.peek();
         if (!p || p.code === 0) break;
@@ -1083,19 +1163,14 @@ const parseEllipse = (state: DxfParserState, common: any): AnyEntity => {
             case 30: z = parseFloat(g.value); break;
             case 11: entity.majorAxis.x = parseFloat(g.value); break;
             case 21: entity.majorAxis.y = parseFloat(g.value); break;
-            case 31: az = parseFloat(g.value); break;
+            case 31: // Z of major axis endpoint - ignored for 2D display
+                break;
             case 40: entity.ratio = parseFloat(g.value); break;
             case 41: entity.startParam = parseFloat(g.value); break;
             case 42: entity.endParam = parseFloat(g.value); break;
         }
     }
-    const ocs = getOcsToWcsMatrix(entity.extrusion.x, entity.extrusion.y, entity.extrusion.z);
-    entity.center = applyOcs(entity.center, ocs, z);
-    if (ocs) {
-        const tx = entity.majorAxis.x * ocs.Ax.x + entity.majorAxis.y * ocs.Ay.x + az * ocs.Az.x;
-        const ty = entity.majorAxis.x * ocs.Ax.y + entity.majorAxis.y * ocs.Ay.y + az * ocs.Az.y;
-        entity.majorAxis = {x: tx, y: ty};
-    }
+    // ELLIPSE center and major axis are already in WCS according to DXF spec
     return entity;
 }
 
@@ -1249,6 +1324,9 @@ const parseHatch = (state: DxfParserState, common: any): DxfHatch => {
     const ocs = getOcsToWcsMatrix(entity.extrusion.x, entity.extrusion.y, entity.extrusion.z);
     const transform = (x: number, y: number) => applyOcs({x, y}, ocs, elevation);
     if (ocs) {
+        const det2D = ocs.Ax.x * ocs.Ay.y - ocs.Ax.y * ocs.Ay.x;
+        entity.isFlipped = det2D < 0;
+        
         entity.loops.forEach((loop: HatchLoop) => {
              if (loop.points) loop.points = loop.points.map(p => transform(p.x, p.y));
              if (loop.edges) loop.edges.forEach(edge => {
@@ -1272,135 +1350,191 @@ const parseHatch = (state: DxfParserState, common: any): DxfHatch => {
     return entity;
 }
 
-export const calculateExtents = (entities: AnyEntity[], blocks: Record<string, DxfBlock>): { center: Point2D, width: number, height: number, min: Point2D, max: Point2D } => {
+const getEntityExtents = (ent: AnyEntity, blocks: Record<string, DxfBlock>): { min: Point2D, max: Point2D } | null => {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-
-    const updateExtents = (x: number, y: number) => {
-        if (x < minX) minX = x;
-        if (x > maxX) maxX = x;
-        if (y < minY) minY = y;
-        if (y > maxY) maxY = y;
+    const update = (x: number, y: number) => {
+        if (x < minX) minX = x; if (x > maxX) maxX = x;
+        if (y < minY) minY = y; if (y > maxY) maxY = y;
     };
 
-    const processEntity = (ent: AnyEntity, transform?: (p: Point2D) => Point2D, depth: number = 0) => {
-        if (depth > 20) return; // Prevent infinite recursion
-        
-        const apply = transform || ((p) => p);
-        if (ent.visible === false) return;
-
-        if (ent.type === EntityType.LINE) {
-            const s = apply(ent.start);
-            const e = apply(ent.end);
-            updateExtents(s.x, s.y);
-            updateExtents(e.x, e.y);
-        } else if (ent.type === EntityType.CIRCLE || ent.type === EntityType.ARC) {
-            const c = apply(ent.center);
-            updateExtents(c.x - ent.radius, c.y - ent.radius);
-            updateExtents(c.x + ent.radius, c.y + ent.radius);
-        } else if (ent.type === EntityType.LWPOLYLINE || ent.type === EntityType.POLYLINE) {
-            ent.points.forEach(p => {
-                const pt = apply(p);
-                updateExtents(pt.x, pt.y);
-            });
-        } else if (ent.type === EntityType.POINT || ent.type === EntityType.TEXT || ent.type === EntityType.MTEXT || ent.type === EntityType.ATTRIB || ent.type === EntityType.ATTDEF) {
-             const p = apply(ent.position);
-             updateExtents(p.x, p.y);
-        } else if (ent.type === EntityType.RAY || ent.type === EntityType.XLINE) {
-             const p = apply(ent.basePoint);
-             updateExtents(p.x, p.y);
-        } else if (ent.type === EntityType.LEADER) {
-             ent.points.forEach(p => {
-                 const pt = apply(p);
-                 updateExtents(pt.x, pt.y);
-             });
-        } else if (ent.type === EntityType.ELLIPSE) {
-             const c = apply(ent.center);
-             const rx = Math.sqrt(ent.majorAxis.x**2 + ent.majorAxis.y**2);
-             const ry = rx * ent.ratio;
-             updateExtents(c.x - rx, c.y - rx);
-             updateExtents(c.x + rx, c.y + rx);
-        } else if (ent.type === EntityType.SPLINE) {
-             const pts = ent.calculatedPoints || ent.controlPoints || ent.fitPoints || [];
-             pts.forEach(p => {
-                 const pt = apply(p);
-                 updateExtents(pt.x, pt.y);
-             });
-        } else if (ent.type === EntityType.SOLID || ent.type === EntityType.THREEDFACE) {
-            ent.points.forEach(p => {
-                const pt = apply(p);
-                updateExtents(pt.x, pt.y);
-            });
-        } else if (ent.type === EntityType.INSERT || ent.type === EntityType.ACAD_TABLE) {
-            const block = blocks[ent.blockName];
-            if (block) {
+    switch (ent.type) {
+        case EntityType.LINE:
+            update(ent.start.x, ent.start.y);
+            update(ent.end.x, ent.end.y);
+            break;
+        case EntityType.CIRCLE:
+        case EntityType.ARC:
+            update(ent.center.x - ent.radius, ent.center.y - ent.radius);
+            update(ent.center.x + ent.radius, ent.center.y + ent.radius);
+            break;
+        case EntityType.LWPOLYLINE:
+        case EntityType.POLYLINE:
+            ent.points.forEach(p => update(p.x, p.y));
+            break;
+        case EntityType.POINT:
+        case EntityType.TEXT:
+        case EntityType.MTEXT:
+        case EntityType.ATTRIB:
+        case EntityType.ATTDEF:
+            update(ent.position.x, ent.position.y);
+            if (ent.type !== EntityType.POINT) {
+                const h = (ent as any).height || 2.5;
+                const text = (ent as any).value || "";
+                const widthFactor = Math.abs((ent as any).widthFactor || 1);
                 const rotation = (ent as any).rotation || 0;
-                const scale = (ent as any).scale || {x:1, y:1, z:1};
-                const cos = Math.cos(rotation * Math.PI / 180);
-                const sin = Math.sin(rotation * Math.PI / 180);
-                const newTransform = (p: Point2D) => {
-                     const bx = (p.x - block.basePoint.x) * scale.x;
-                     const by = (p.y - block.basePoint.y) * scale.y;
-                     const rx = bx * cos - by * sin;
-                     const ry = bx * sin + by * cos;
-                     const final = { x: rx + ent.position.x, y: ry + ent.position.y };
-                     return apply ? apply(final) : final;
-                };
-                block.entities.forEach(child => processEntity(child, newTransform, depth + 1));
-            } else {
-                const p = apply(ent.position);
-                updateExtents(p.x, p.y);
+                const approxWidth = h * 0.7 * text.length * widthFactor;
+                const rad = rotation * Math.PI / 180;
+                const cos = Math.cos(rad);
+                const sin = Math.sin(rad);
+                const corners = [{x:0,y:0}, {x:approxWidth,y:0}, {x:0,y:h}, {x:approxWidth,y:h}];
+                corners.forEach(c => {
+                    update(ent.position.x + c.x * cos - c.y * sin, ent.position.y + c.x * sin + c.y * cos);
+                });
             }
-        } else if (ent.type === EntityType.HATCH) {
+            break;
+        case EntityType.ELLIPSE: {
+            const rx = Math.sqrt(ent.majorAxis.x ** 2 + ent.majorAxis.y ** 2);
+            const ry = rx * ent.ratio;
+            update(ent.center.x - rx, ent.center.y - rx);
+            update(ent.center.x + rx, ent.center.y + rx);
+            break;
+        }
+        case EntityType.SPLINE: {
+            const pts = ent.calculatedPoints || ent.controlPoints || ent.fitPoints || [];
+            pts.forEach(p => update(p.x, p.y));
+            break;
+        }
+        case EntityType.SOLID:
+        case EntityType.THREEDFACE:
+            ent.points.forEach(p => update(p.x, p.y));
+            break;
+        case EntityType.HATCH:
             ent.loops.forEach(loop => {
-                if (loop.points) {
-                    loop.points.forEach(p => {
-                        const pt = apply(p);
-                        updateExtents(pt.x, pt.y);
-                    });
-                }
+                if (loop.points) loop.points.forEach(p => update(p.x, p.y));
                 loop.edges.forEach(edge => {
-                    if (edge.calculatedPoints) {
-                        edge.calculatedPoints.forEach(p => {
-                            const pt = apply(p);
-                            updateExtents(pt.x, pt.y);
-                        });
-                    } else if (edge.start && edge.end) {
-                        const p1 = apply(edge.start);
-                        const p2 = apply(edge.end);
-                        updateExtents(p1.x, p1.y);
-                        updateExtents(p2.x, p2.y);
-                    } else if (edge.center && edge.radius) {
-                        const c = apply(edge.center);
-                        updateExtents(c.x - edge.radius, c.y - edge.radius);
-                        updateExtents(c.x + edge.radius, c.y + edge.radius);
+                    if (edge.calculatedPoints) edge.calculatedPoints.forEach(p => update(p.x, p.y));
+                    else if (edge.start && edge.end) { update(edge.start.x, edge.start.y); update(edge.end.x, edge.end.y); }
+                    else if (edge.center && edge.radius) {
+                        update(edge.center.x - edge.radius, edge.center.y - edge.radius);
+                        update(edge.center.x + edge.radius, edge.center.y + edge.radius);
                     }
                 });
             });
-        } else if (ent.type === EntityType.DIMENSION) {
+            break;
+        case EntityType.INSERT:
+        case EntityType.ACAD_TABLE: {
             const block = blocks[ent.blockName];
-            if (block) {
-                block.entities.forEach(child => processEntity(child, apply, depth + 1));
+            if (block && block.extents) {
+                const rot = (ent as any).rotation || 0;
+                const scale = (ent as any).scale || { x: 1, y: 1, z: 1 };
+                const cos = Math.cos(rot * Math.PI / 180);
+                const sin = Math.sin(rot * Math.PI / 180);
+                const corners = [
+                    { x: block.extents.min.x - block.basePoint.x, y: block.extents.min.y - block.basePoint.y },
+                    { x: block.extents.max.x - block.basePoint.x, y: block.extents.min.y - block.basePoint.y },
+                    { x: block.extents.min.x - block.basePoint.x, y: block.extents.max.y - block.basePoint.y },
+                    { x: block.extents.max.x - block.basePoint.x, y: block.extents.max.y - block.basePoint.y }
+                ];
+                corners.forEach(p => {
+                    const sx = p.x * scale.x;
+                    const sy = p.y * scale.y;
+                    update(ent.position.x + sx * cos - sy * sin, ent.position.y + sx * sin + sy * cos);
+                });
             } else {
-                const p1 = apply(ent.definitionPoint);
-                const p2 = apply(ent.textMidPoint);
-                updateExtents(p1.x, p1.y);
-                updateExtents(p2.x, p2.y);
+                update(ent.position.x, ent.position.y);
             }
+            break;
         }
+        case EntityType.DIMENSION:
+            if (ent.blockName && blocks[ent.blockName] && blocks[ent.blockName].extents) {
+                const b = blocks[ent.blockName];
+                update(b.extents!.min.x, b.extents!.min.y);
+                update(b.extents!.max.x, b.extents!.max.y);
+            } else {
+                update(ent.definitionPoint.x, ent.definitionPoint.y);
+                if (ent.textMidPoint) update(ent.textMidPoint.x, ent.textMidPoint.y);
+            }
+            break;
+        case EntityType.LEADER:
+            ent.points.forEach(p => update(p.x, p.y));
+            break;
+    }
+
+    if (minX === Infinity) return null;
+    return { min: { x: minX, y: minY }, max: { x: maxX, y: maxY } };
+};
+
+const precomputeBlockExtents = (blocks: Record<string, DxfBlock>) => {
+    const visited = new Set<string>();
+    const computing = new Set<string>();
+
+    const compute = (name: string) => {
+        if (visited.has(name) || computing.has(name)) return;
+        const block = blocks[name];
+        if (!block) return;
+        
+        computing.add(name);
+        
+        // Ensure child blocks are computed first
+        block.entities.forEach(ent => {
+            if ((ent.type === EntityType.INSERT || ent.type === EntityType.ACAD_TABLE || ent.type === EntityType.DIMENSION) && ent.blockName) {
+                compute(ent.blockName);
+            }
+        });
+
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        block.entities.forEach(ent => {
+            const ext = getEntityExtents(ent, blocks);
+            if (ext) {
+                const isValid = (v: number) => isFinite(v) && Math.abs(v) < 1e20;
+                if (isValid(ext.min.x) && ext.min.x < minX) minX = ext.min.x; 
+                if (isValid(ext.max.x) && ext.max.x > maxX) maxX = ext.max.x;
+                if (isValid(ext.min.y) && ext.min.y < minY) minY = ext.min.y; 
+                if (isValid(ext.max.y) && ext.max.y > maxY) maxY = ext.max.y;
+            }
+        });
+
+        if (minX !== Infinity && minY !== Infinity && maxX !== -Infinity && maxY !== -Infinity) {
+            block.extents = { min: { x: minX, y: minY }, max: { x: maxX, y: maxY } };
+        }
+        
+        computing.delete(name);
+        visited.add(name);
     };
 
-    entities.forEach(ent => processEntity(ent));
+    Object.keys(blocks).forEach(compute);
+};
 
-    if (minX === Infinity) {
-        return { center: {x:0, y:0}, width: 0, height: 0, min: {x:0,y:0}, max: {x:0,y:0} };
+export const calculateExtents = (entities: AnyEntity[], blocks: Record<string, DxfBlock>): { center: Point2D, width: number, height: number, min: Point2D, max: Point2D } => {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+    entities.forEach(ent => {
+        if (ent.visible === false) return;
+        const ext = getEntityExtents(ent, blocks);
+        if (ext) {
+            // Validate coordinates are finite and not excessively large (CAD limit)
+            const isValid = (v: number) => isFinite(v) && Math.abs(v) < 1e20;
+            
+            if (isValid(ext.min.x) && ext.min.x < minX) minX = ext.min.x; 
+            if (isValid(ext.max.x) && ext.max.x > maxX) maxX = ext.max.x;
+            if (isValid(ext.min.y) && ext.min.y < minY) minY = ext.min.y; 
+            if (isValid(ext.max.y) && ext.max.y > maxY) maxY = ext.max.y;
+            
+            // Also update the entity's own extents for culling
+            ent.extents = ext;
+        }
+    });
+
+    if (minX === Infinity || minY === Infinity || maxX === -Infinity || maxY === -Infinity) {
+        return { center: { x: 0, y: 0 }, width: 0, height: 0, min: { x: 0, y: 0 }, max: { x: 0, y: 0 } };
     }
 
     const width = maxX - minX;
     const height = maxY - minY;
     return {
         center: { x: minX + width / 2, y: minY + height / 2 },
-        width,
-        height,
+        width: isFinite(width) ? width : 0,
+        height: isFinite(height) ? height : 0,
         min: { x: minX, y: minY },
         max: { x: maxX, y: maxY }
     };

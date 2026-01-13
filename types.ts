@@ -48,10 +48,10 @@ export interface DxfEntity {
   layer: string;
   color?: number;
   lineType?: string;
-  selected?: boolean;
   visible?: boolean;
-  extrusion?: Point3D;
   inPaperSpace?: boolean;
+  extrusion?: Point3D;
+  extents?: { min: Point2D, max: Point2D };
 }
 
 export interface DxfLine extends DxfEntity {
@@ -89,6 +89,7 @@ export interface DxfArc extends DxfEntity {
   radius: number;
   startAngle: number;
   endAngle: number;
+  isCounterClockwise?: boolean;
 }
 
 export interface DxfPolyline extends DxfEntity {
@@ -225,6 +226,8 @@ export interface DxfTable extends DxfEntity {
   type: EntityType.ACAD_TABLE;
   blockName: string;
   position: Point2D;
+  scale?: { x: number, y: number, z: number };
+  rotation?: number;
 }
 
 export type AnyEntity = DxfLine | DxfRay | DxfXLine | DxfPoint | DxfCircle | DxfArc | DxfPolyline | DxfText | DxfEllipse | DxfSpline | DxfSolid | Dxf3DFace | DxfInsert | DxfDimension | DxfHatch | DxfRegion | DxfLeader | DxfTable;
@@ -234,6 +237,7 @@ export interface DxfBlock {
   handle?: string;
   basePoint: Point2D;
   entities: AnyEntity[];
+  extents?: { min: Point2D, max: Point2D };
 }
 
 export interface DxfLayer {
@@ -251,6 +255,13 @@ export interface DxfStyle {
   widthFactor?: number;
 }
 
+export interface DxfLineType {
+  name: string;
+  description?: string;
+  pattern: number[];
+  totalLength: number;
+}
+
 export interface DxfHeader {
     extMin: Point2D;
     extMax: Point2D;
@@ -263,7 +274,9 @@ export interface DxfData {
   layers: Record<string, DxfLayer>;
   blocks: Record<string, DxfBlock>;
   styles: Record<string, DxfStyle>;
+  lineTypes: Record<string, DxfLineType>;
   offset?: Point2D;
+  extents?: { center: Point2D, width: number, height: number, min: Point2D, max: Point2D };
 }
 
 export interface ViewPort {

@@ -1,5 +1,5 @@
 import React, { useRef, useState, WheelEvent, MouseEvent, useEffect, useLayoutEffect } from 'react';
-import { AnyEntity, ViewPort, DxfLayer, DxfBlock, DxfStyle, EntityType, Point2D } from '../types';
+import { AnyEntity, ViewPort, DxfLayer, DxfBlock, DxfStyle, DxfLineType, EntityType, Point2D } from '../types';
 import { GRID_SIZE } from '../constants';
 import { renderEntitiesToCanvas, hitTest, hitTestBox } from '../services/canvasRenderService';
 
@@ -8,6 +8,7 @@ interface DxfViewerProps {
   layers: Record<string, DxfLayer>;
   blocks?: Record<string, DxfBlock>;
   styles?: Record<string, DxfStyle>;
+  lineTypes?: Record<string, DxfLineType>;
   viewPort: ViewPort;
   onViewPortChange: (vp: ViewPort) => void;
   selectedEntityIds: Set<string>;
@@ -16,7 +17,7 @@ interface DxfViewerProps {
   worldOffset?: Point2D;
 }
 
-const DxfViewer: React.FC<DxfViewerProps> = ({ entities, layers, blocks = {}, styles = {}, viewPort, onViewPortChange, selectedEntityIds, onSelectIds, worldOffset }) => {
+const DxfViewer: React.FC<DxfViewerProps> = ({ entities, layers, blocks = {}, styles = {}, lineTypes = {}, viewPort, onViewPortChange, selectedEntityIds, onSelectIds, worldOffset }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   
@@ -59,12 +60,12 @@ const DxfViewer: React.FC<DxfViewerProps> = ({ entities, layers, blocks = {}, st
      ctx.setTransform(1, 0, 0, 1, 0, 0);
      ctx.scale(dpr, dpr);
 
-     renderEntitiesToCanvas(ctx, entities, layers, blocks, styles, viewPort, selectedEntityIds, rect.width, rect.height);
-  }, [entities, layers, blocks, styles, viewPort, selectedEntityIds]);
+     renderEntitiesToCanvas(ctx, entities, layers, blocks, styles, lineTypes, viewPort, selectedEntityIds, rect.width, rect.height);
+  }, [entities, layers, blocks, styles, lineTypes, viewPort, selectedEntityIds]);
 
   const handleWheel = (e: WheelEvent) => {
     e.preventDefault();
-    const scaleFactor = 1.1;
+    const scaleFactor = 1.2;
     const newZoom = e.deltaY < 0 ? viewPort.zoom * scaleFactor : viewPort.zoom / scaleFactor;
     
     if (newZoom < 0.000001 || newZoom > 1000000) return;
@@ -150,7 +151,8 @@ const DxfViewer: React.FC<DxfViewerProps> = ({ entities, layers, blocks = {}, st
          const boxIds = hitTestBox(
              { x1: startW.x, y1: startW.y, x2: endW.x, y2: endW.y },
              entities,
-             layers
+             layers,
+             blocks
          );
          
          const newSelection = new Set<string>(e.ctrlKey || e.shiftKey ? selectedEntityIds : []);

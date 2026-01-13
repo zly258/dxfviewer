@@ -4,12 +4,11 @@ import { DxfStyle } from '../types';
  * Optimized font stacks for CAD display
  */
 export const FONT_STACKS = {
+    CHINESE: '"Microsoft YaHei", "微软雅黑", "SimSun", "宋体", "STSong", "SimKai", "SimHei", "FangSong", sans-serif',
     SONG: '"SimSun", "宋体", "STSong", serif',
-    HEI: '"SimHei", "黑体", "STHeiti", sans-serif',
+    HEI: '"SimHei", "微软雅黑", "Microsoft YaHei", sans-serif',
     KAI: '"SimKai", "楷体", "STKaiti", serif',
     FANGSONG: '"FangSong", "仿宋", "STFangsong", serif',
-    YAHEI: '"Microsoft YaHei", "微软雅黑", sans-serif',
-    CHINESE: '"Microsoft YaHei", "微软雅黑", "SimSun", "宋体", "STSong", "SimKai", "SimHei", "FangSong", "Arial", sans-serif',
     SANS_SERIF: '"Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
     SERIF: '"Times New Roman", Times, serif',
     MONOSPACE: '"Cascadia Code", "Consolas", "Courier New", monospace',
@@ -26,22 +25,29 @@ export const mapCadFontToWebFont = (fontFileName: string | undefined, bigFontFil
     let result = FONT_STACKS.CHINESE; // Default for many CAD drawings
 
     // 1. Direct checks for common Chinese fonts
-    if (f.includes('simsun') || f.includes('song') || bf.includes('hztxt') || bf.includes('gb')) {
-        result = FONT_STACKS.SONG;
-    } else if (f.includes('simhei') || f.includes('hei')) {
-        result = FONT_STACKS.HEI;
-    } else if (f.includes('simkai') || f.includes('kai')) {
-        result = FONT_STACKS.KAI;
-    } else if (f.includes('fangsong') || f.includes('fang')) {
+    const combined = (f + "|" + bf).toLowerCase();
+    
+    if (combined.includes('tssd') || combined.includes('wcad') || combined.includes('fs') || combined.includes('fang')) {
+        // TSSD and WCAD fonts often use FangSong or are used in contexts where FangSong is expected
         result = FONT_STACKS.FANGSONG;
-    } else if (f.includes('msyh') || f.includes('yahei')) {
-        result = FONT_STACKS.YAHEI;
-    } else if (f.includes('arial')) {
+    } else if (combined.includes('hztxt') || combined.includes('hz') || combined.includes('gb') || combined.includes('ext')) {
+        result = FONT_STACKS.SONG;
+    } else if (combined.includes('txt') || combined.includes('simplex') || combined.includes('romans') || combined.includes('tssdeng') || combined.includes('wcadeng')) {
+        result = FONT_STACKS.SANS_SERIF;
+    } else if (combined.includes('simsun') || combined.includes('song')) {
+        result = FONT_STACKS.SONG;
+    } else if (combined.includes('simhei') || combined.includes('hei')) {
+        result = FONT_STACKS.HEI;
+    } else if (combined.includes('simkai') || combined.includes('kai')) {
+        result = FONT_STACKS.KAI;
+    } else if (combined.includes('msyh') || combined.includes('yahei')) {
+        result = FONT_STACKS.HEI;
+    } else if (combined.includes('arial')) {
         result = 'Arial, Helvetica, sans-serif';
-    } else if (f.includes('times') || f.includes('roman')) {
-        if (f.includes('romans')) result = FONT_STACKS.SANS_SERIF;
+    } else if (combined.includes('times') || combined.includes('roman')) {
+        if (combined.includes('romans')) result = FONT_STACKS.SANS_SERIF;
         else result = FONT_STACKS.SERIF;
-    } else if (f.includes('txt') || f.includes('mono') || f.includes('iso') || f.includes('simplex')) {
+    } else if (combined.includes('txt') || combined.includes('mono') || combined.includes('iso') || combined.includes('simplex')) {
         result = FONT_STACKS.SANS_SERIF;
     } else {
         // Check if either font file suggests Chinese/CJK support in a more general way
@@ -86,23 +92,61 @@ export const mapCadFontToWebFont = (fontFileName: string | undefined, bigFontFil
 export const getStyleFontFamily = (styleName: string | undefined, styles: Record<string, DxfStyle> | undefined): string => {
     const fallback = FONT_STACKS.CHINESE; // Default to Chinese-capable stack for safety
     
-    if (!styleName || !styles || !styles[styleName]) {
-        console.log(`[FontService] getStyleFontFamily: styleName="${styleName}" not found, using fallback`);
+    let effectiveStyleName = styleName || 'STANDARD';
+    if (!styles || (!styles[effectiveStyleName] && !styles[effectiveStyleName.toUpperCase()])) {
+        effectiveStyleName = 'STANDARD';
+    }
+    
+    if (!styles || !styles[effectiveStyleName]) {
+        // If even STANDARD is missing, try to find ANY style that might be a default
+        const firstStyle = styles ? Object.values(styles)[0] : null;
+        if (firstStyle) {
+             return getStyleFontFamily(firstStyle.name, styles);
+        }
         return fallback;
     }
     
-    const style = styles[styleName];
+    const style = styles[effectiveStyleName] || styles[effectiveStyleName.toUpperCase()];
     let result = fallback;
     
-    // 1. Try mapping font file names
+    // 1. Try mapping font file names first (most accurate)
     if (style.fontFileName || style.bigFontFileName) {
         result = mapCadFontToWebFont(style.fontFileName, style.bigFontFileName);
-    } else if (style.name && style.name !== 'STANDARD' && style.name !== 'Annotative') {
-        // 2. Try style name itself if it looks like a font name
-        // If style name contains "宋体" or similar, use Chinese stack
-        if (/[\u4e00-\u9fa5]/.test(style.name)) {
+        
+        // If the result is a generic font but the style name suggests a specific Chinese font, 
+        // give the style name preference
+        const isGeneric = result === FONT_STACKS.SANS_SERIF || result === FONT_STACKS.CHINESE || result === FONT_STACKS.SONG;
+        
+        if (isGeneric) {
+            const sn = style.name.toLowerCase();
+            if (sn.includes('仿宋') || sn.includes('fangsong') || sn === 'fs') {
+                result = FONT_STACKS.FANGSONG;
+            } else if (sn.includes('黑体') || sn.includes('simhei') || sn.includes('hei')) {
+                result = FONT_STACKS.HEI;
+            } else if (sn.includes('楷体') || sn.includes('simkai') || sn.includes('kai')) {
+                result = FONT_STACKS.KAI;
+            } else if (sn.includes('宋体') || sn.includes('simsun') || sn.includes('song')) {
+                result = FONT_STACKS.SONG;
+            }
+        }
+    } else if (style.name) {
+        // 2. Try style name itself if no font files are specified
+        const sn = style.name.toLowerCase();
+        if (sn.includes('仿宋') || sn.includes('fangsong') || sn === 'fs') {
+            result = FONT_STACKS.FANGSONG;
+        } else if (sn.includes('宋体') || sn.includes('simsun') || sn.includes('song')) {
+            result = FONT_STACKS.SONG;
+        } else if (sn.includes('黑体') || sn.includes('simhei') || sn.includes('hei')) {
+            result = FONT_STACKS.HEI;
+        } else if (sn.includes('楷体') || sn.includes('simkai') || sn.includes('kai')) {
+            result = FONT_STACKS.KAI;
+        } else if (sn.includes('微软雅黑') || sn.includes('yahei')) {
+            result = FONT_STACKS.HEI;
+        } else if (sn.includes('arial')) {
+            result = 'Arial, Helvetica, sans-serif';
+        } else if (/[\u4e00-\u9fa5]/.test(style.name)) {
             result = FONT_STACKS.CHINESE;
-        } else {
+        } else if (style.name !== 'STANDARD' && style.name !== 'Annotative') {
             result = `"${style.name}", ${fallback}`;
         }
     }

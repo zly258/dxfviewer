@@ -1,7 +1,7 @@
 import { AnyEntity, EntityType, DxfLayer, DxfBlock, DxfStyle, Point2D, DxfInsert, HatchLoop, DxfText } from '../types';
 import { AUTO_CAD_COLORS, DEFAULT_COLOR, getAutoCadColor } from '../constants';
 import { getBSplinePoints } from './dxfService';
-import { getStyleFontFamily } from './fontService';
+import { getStyleFontFamily, FONT_STACKS, mapCadFontToWebFont } from './fontService';
 
 const SELECTION_COLOR = '#0078d4'; 
 
@@ -15,25 +15,53 @@ const getColor = (entColor: number | undefined, layer: DxfLayer | undefined, par
 
 const getCanvasFont = (ent: AnyEntity, styles: Record<string, DxfStyle> | undefined): string => {
     const textEnt = (ent.type === EntityType.TEXT || ent.type === EntityType.MTEXT || ent.type === EntityType.ATTRIB || ent.type === EntityType.ATTDEF) ? (ent as DxfText) : null;
-    const height = textEnt ? (textEnt.height || 10) : 10;
-    // DXF Height is Cap Height. CSS is Em Height.
-    // Factor ~1.43 converts Cap Height to approx correct CSS px size for Arial-like fonts.
-    const correctedHeight = height * 1.43; 
-    let fontFamily = getStyleFontFamily(textEnt?.styleName, styles);
+    let height = textEnt ? (textEnt.height || 2.5) : 2.5;
+    
+    // Height priority: 1. Inline override, 2. Entity height, 3. Style height, 4. Default 2.5
+    const styleName = textEnt?.styleName || 'STANDARD';
+    const style = styles?.[styleName] || styles?.[styleName.toUpperCase()];
+    if (height <= 0) {
+        height = style?.height || 2.5;
+    }
 
-    // Check for MTEXT inline font override
+    // Check for MTEXT inline height override \H...;
     if (ent.type === EntityType.MTEXT) {
-        const matches = ent.value.match(/\\f([^|;]+)[|;]/);
-        if (matches && matches[1]) {
-            const inlineFont = matches[1].replace(/\"/g, '');
-            if (inlineFont.toLowerCase().includes('song') || inlineFont.toLowerCase().includes('simsun')) {
-                fontFamily = '"SimSun", "宋体", "Microsoft YaHei", sans-serif';
-            } else if (inlineFont.toLowerCase().includes('arial')) {
-                fontFamily = 'Arial, Helvetica, sans-serif';
-            } else {
-                fontFamily = `"${inlineFont}", ${fontFamily}`;
+        const hMatch = ent.value.match(/\\H([^;]+);/);
+        if (hMatch && hMatch[1]) {
+            const hVal = parseFloat(hMatch[1]);
+            if (!isNaN(hVal)) {
+                if (hMatch[1].endsWith('x')) {
+                    height *= hVal;
+                } else {
+                    height = hVal;
+                }
             }
         }
+    }
+
+    const correctedHeight = height * 1.43; 
+    let fontFamily = getStyleFontFamily(styleName, styles);
+
+    // MTEXT content can have complex formatting like {\fArial|b1|i1|c0|p34;Text}
+    if (ent.type === EntityType.MTEXT) {
+        // 1. Check for explicit font overrides in MTEXT value
+        // \fFontName|...; or \fFontName;
+        const fMatch = ent.value.match(/\\f([^|;]+)([|;])/);
+        if (fMatch && fMatch[1]) {
+            const inlineFont = fMatch[1].replace(/\"/g, '').trim();
+            if (inlineFont) {
+                // If it's a style name, use its font
+                if (styles && (styles[inlineFont] || styles[inlineFont.toUpperCase()])) {
+                    const matchedStyle = (styles[inlineFont] || styles[inlineFont.toUpperCase()]);
+                    fontFamily = getStyleFontFamily(matchedStyle.name, styles);
+                } else {
+                    fontFamily = mapCadFontToWebFont(inlineFont);
+                }
+            }
+        }
+    } else {
+        // For TEXT/ATTRIB/ATTDEF, if the font is not correctly resolved from style,
+        // we might want to double check if the entity itself has any font hints (usually it doesn't in DXF)
     }
 
     return `${correctedHeight}px ${fontFamily}`;
@@ -111,8 +139,11 @@ const drawHatchLoop = (ctx: CanvasRenderingContext2D, loop: HatchLoop, isFlipped
                 if (dist > 1e-9) {
                     const radius = Math.abs(dist / (2 * Math.sin(theta / 2)));
                     
-                    const cx = (p1.x + p2.x)/2 - (p2.y - p1.y)/2 * (1/Math.tan(2*Math.atan(bulge)));
-                    const cy = (p1.y + p2.y)/2 + (p2.x - p1.x)/2 * (1/Math.tan(2*Math.atan(bulge)));
+                    const a = (p2.x - p1.x) / 2;
+                    const b = (p2.y - p1.y) / 2;
+                    const h = (dist / 2) * (1 / bulge - bulge) / 2;
+                    const cx = p1.x + a - h * (p2.y - p1.y) / dist;
+                    const cy = p1.y + b + h * (p2.x - p1.x) / dist;
                     
                     const startAngle = Math.atan2(p1.y - cy, p1.x - cx);
                     const endAngle = Math.atan2(p2.y - cy, p2.x - cx);
@@ -202,6 +233,7 @@ export const renderEntitiesToCanvas = (
     layers: Record<string, DxfLayer>,
     blocks: Record<string, DxfBlock>,
     styles: Record<string, DxfStyle>,
+    lineTypes: Record<string, DxfLineType>,
     viewPort: { x: number, y: number, zoom: number },
     selectedIds: Set<string>,
     width: number,
@@ -225,37 +257,58 @@ export const renderEntitiesToCanvas = (
     const drawEntity = (ent: AnyEntity, parentLayerName?: string, parentColor?: string, currentScale: number = viewPort.zoom, parentSelected: boolean = false, depth: number = 0) => {
         if (ent.visible === false || depth > 20) return;
 
-        // Skip entities that are too small to be visible (LOD)
-        // For example, if an entity's size is less than 0.5 pixels on screen, skip it.
-        const pixelThreshold = 0.5 / viewPort.zoom;
-
         const layerName = (ent.layer === '0' && parentLayerName) ? parentLayerName : ent.layer;
         const layer = layers[layerName];
         if (layer && layer.isVisible === false) return;
 
         const isSelected = selectedIds.has(ent.id) || parentSelected;
+
+        // Skip entities that are too small to be visible (LOD)
+        const pixelThreshold = 0.5 / viewPort.zoom;
+
+        // Unified Culling using precomputed extents for top-level entities
+        if (depth === 0 && !isSelected && ent.extents) {
+            const { min, max } = ent.extents;
+            if (max.x < xMin || min.x > xMax || max.y < yMin || min.y > yMax) {
+                return;
+            }
+            
+            // LOD check for small entities
+            const w = max.x - min.x;
+            const h = max.y - min.y;
+            if (w * viewPort.zoom < 0.5 && h * viewPort.zoom < 0.5) return;
+        }
+
         const color = isSelected ? SELECTION_COLOR : getColor(ent.color, layer, parentColor);
         
         ctx.strokeStyle = color;
         ctx.fillStyle = color;
         ctx.lineWidth = (isSelected ? 2 : 1) / Math.abs(currentScale);
 
+        // Apply line dash pattern
+        const lineTypeName = (ent.lineType === 'ByLayer' && layer) ? layer.lineType : ent.lineType;
+        if (lineTypeName && lineTypeName.toUpperCase() !== 'CONTINUOUS' && lineTypeName.toUpperCase() !== 'BYLAYER' && lineTypeName.toUpperCase() !== 'BYBLOCK') {
+            const ltype = lineTypes[lineTypeName] || lineTypes[lineTypeName.toUpperCase()];
+            if (ltype && ltype.pattern && ltype.pattern.length > 0) {
+                // Scale pattern by viewPort.zoom to keep it visible but proportional
+                const scale = 1.0 / viewPort.zoom;
+                const dashPattern = ltype.pattern.map(p => Math.abs(p) * scale);
+                ctx.setLineDash(dashPattern);
+            } else {
+                ctx.setLineDash([]);
+            }
+        } else {
+            ctx.setLineDash([]);
+        }
+
         switch (ent.type) {
             case EntityType.LINE:
-                if (depth === 0 && !isSelected && (
-                    Math.max(ent.start.x, ent.end.x) < xMin ||
-                    Math.min(ent.start.x, ent.end.x) > xMax ||
-                    Math.max(ent.start.y, ent.end.y) < yMin ||
-                    Math.min(ent.start.y, ent.end.y) > yMax
-                )) return;
                 ctx.beginPath();
                 ctx.moveTo(ent.start.x, ent.start.y);
                 ctx.lineTo(ent.end.x, ent.end.y);
                 ctx.stroke();
                 break;
             case EntityType.RAY: {
-                // Approximate culling: check if base point is within a huge distance from viewport
-                if (depth === 0 && !isSelected && (ent.basePoint.x < xMin - 1000000 || ent.basePoint.x > xMax + 1000000)) return;
                 const farPoint = {
                     x: ent.basePoint.x + ent.direction.x * 1000000,
                     y: ent.basePoint.y + ent.direction.y * 1000000
@@ -267,7 +320,6 @@ export const renderEntitiesToCanvas = (
                 break;
             }
             case EntityType.XLINE: {
-                if (depth === 0 && !isSelected && (ent.basePoint.x < xMin - 1000000 || ent.basePoint.x > xMax + 1000000)) return;
                 const p1 = {
                     x: ent.basePoint.x - ent.direction.x * 1000000,
                     y: ent.basePoint.y - ent.direction.y * 1000000
@@ -283,48 +335,26 @@ export const renderEntitiesToCanvas = (
                 break;
             }
             case EntityType.POINT:
-                if (depth === 0 && !isSelected && (ent.position.x < xMin || ent.position.x > xMax || ent.position.y < yMin || ent.position.y > yMax)) return;
                 ctx.beginPath();
                 ctx.arc(ent.position.x, ent.position.y, 2/viewPort.zoom, 0, 2*Math.PI);
                 ctx.fill();
                 break;
             case EntityType.CIRCLE:
-                if (!isSelected && (ent.radius < pixelThreshold)) return;
-                if (depth === 0 && !isSelected && (
-                    ent.center.x + ent.radius < xMin ||
-                    ent.center.x - ent.radius > xMax ||
-                    ent.center.y + ent.radius < yMin ||
-                    ent.center.y - ent.radius > yMax
-                )) return;
                 ctx.beginPath();
                 ctx.arc(ent.center.x, ent.center.y, ent.radius, 0, 2 * Math.PI);
                 ctx.stroke();
                 break;
             case EntityType.ARC: {
-                if (!isSelected && (ent.radius < pixelThreshold)) return;
-                if (depth === 0 && !isSelected && (
-                    ent.center.x + ent.radius < xMin ||
-                    ent.center.x - ent.radius > xMax ||
-                    ent.center.y + ent.radius < yMin ||
-                    ent.center.y - ent.radius > yMax
-                )) return;
-
-                const isFlipped = (ent.extrusion?.z || 1) < 0;
+                const isCcw = ent.isCounterClockwise !== false;
                 let startRad = ent.startAngle * Math.PI / 180;
                 let endRad = ent.endAngle * Math.PI / 180;
                 
                 ctx.beginPath();
-                if (isFlipped) {
-                    // When Nz = -1, the sweep direction is CW (anticlockwise = true in Y-up)
-                    ctx.arc(ent.center.x, ent.center.y, ent.radius, startRad, endRad, true);
-                } else {
-                    ctx.arc(ent.center.x, ent.center.y, ent.radius, startRad, endRad, false);
-                }
+                ctx.arc(ent.center.x, ent.center.y, ent.radius, startRad, endRad, !isCcw);
                 ctx.stroke();
                 break;
             }
             case EntityType.ELLIPSE: {
-                if (!isSelected && (Math.max(Math.abs(ent.majorAxis.x), Math.abs(ent.majorAxis.y)) < pixelThreshold)) return;
                 const rx = Math.sqrt(ent.majorAxis.x ** 2 + ent.majorAxis.y ** 2);
                 const ry = rx * ent.ratio;
                 const rotation = Math.atan2(ent.majorAxis.y, ent.majorAxis.x);
@@ -338,17 +368,6 @@ export const renderEntitiesToCanvas = (
             case EntityType.LWPOLYLINE:
             case EntityType.POLYLINE:
                 if (ent.points.length > 1) {
-                    // Simple culling for Polyline using bounding box
-                    if (depth === 0 && !isSelected) {
-                        let pMinX = Infinity, pMaxX = -Infinity, pMinY = Infinity, pMaxY = -Infinity;
-                        for (const p of ent.points) {
-                            if (p.x < pMinX) pMinX = p.x; if (p.x > pMaxX) pMaxX = p.x;
-                            if (p.y < pMinY) pMinY = p.y; if (p.y > pMaxY) pMaxY = p.y;
-                        }
-                        if (pMaxX < xMin || pMinX > xMax || pMaxY < yMin || pMinY > yMax) return;
-                        if (pMaxX - pMinX < pixelThreshold && pMaxY - pMinY < pixelThreshold) return;
-                    }
-
                     ctx.beginPath();
                     drawPolyline(ctx, ent.points, ent.bulges, ent.closed, (ent.extrusion?.z || 1) < 0);
                     ctx.stroke();
@@ -357,16 +376,6 @@ export const renderEntitiesToCanvas = (
             case EntityType.SPLINE:
                 const splinePoints = ent.calculatedPoints || getBSplinePoints(ent.controlPoints, ent.degree, ent.knots, ent.weights);
                 if (splinePoints.length > 1) {
-                    if (depth === 0 && !isSelected) {
-                        let pMinX = Infinity, pMaxX = -Infinity, pMinY = Infinity, pMaxY = -Infinity;
-                        for (const p of splinePoints) {
-                            if (p.x < pMinX) pMinX = p.x; if (p.x > pMaxX) pMaxX = p.x;
-                            if (p.y < pMinY) pMinY = p.y; if (p.y > pMaxY) pMaxY = p.y;
-                        }
-                        if (pMaxX < xMin || pMinX > xMax || pMaxY < yMin || pMinY > yMax) return;
-                        if (pMaxX - pMinX < pixelThreshold && pMaxY - pMinY < pixelThreshold) return;
-                    }
-
                     ctx.beginPath();
                     ctx.moveTo(splinePoints[0].x, splinePoints[0].y);
                     for(let i=1; i<splinePoints.length; i++) ctx.lineTo(splinePoints[i].x, splinePoints[i].y);
@@ -378,23 +387,9 @@ export const renderEntitiesToCanvas = (
                 const text = cleanTextContent(ent.value);
                 if (!text) break;
                 
-                // Culling for text (simplified). Skip culling if inside a block (depth > 0)
-                // because ent.position is in local coordinates.
-                if (depth === 0 && !isSelected && (ent.position.x < xMin - 500 || ent.position.x > xMax + 500 || ent.position.y < yMin - 500 || ent.position.y > yMax + 500)) return;
-
-                ctx.save();
-                
-                const hAlign = ent.hAlign || 0;
-                const vAlign = ent.vAlign || 0;
-                // For TEXT: if alignment is set, use secondPosition.
-                const isMText = ent.type === EntityType.MTEXT;
-                const pos = (!isMText && (hAlign !== 0 || vAlign !== 0) && ent.secondPosition) ? ent.secondPosition : ent.position;
-                
-                ctx.translate(pos.x, pos.y);
-                if (ent.rotation) ctx.rotate(ent.rotation * Math.PI / 180);
-                
                 let widthFactor = 1;
                 const style = styles[ent.styleName || 'STANDARD'];
+                const isMText = ent.type === EntityType.MTEXT;
                 if (isMText) {
                     const matches = ent.value.match(/\\W(\d+(\.\d+)?);/);
                     if (matches && matches[1]) {
@@ -403,8 +398,18 @@ export const renderEntitiesToCanvas = (
                         widthFactor = style?.widthFactor || 1;
                     }
                 } else {
-                    widthFactor = (ent.widthFactor && ent.widthFactor > 0) ? ent.widthFactor : (style?.widthFactor || 1);
+                    widthFactor = (ent.widthFactor !== undefined && ent.widthFactor !== 0) ? ent.widthFactor : (style?.widthFactor || 1);
                 }
+
+                ctx.save();
+                
+                const hAlign = ent.hAlign || 0;
+                const vAlign = ent.vAlign || 0;
+                // For TEXT: if alignment is set, use secondPosition.
+                const pos = (!isMText && (hAlign !== 0 || vAlign !== 0) && ent.secondPosition) ? ent.secondPosition : ent.position;
+                
+                ctx.translate(pos.x, pos.y);
+                if (ent.rotation) ctx.rotate(ent.rotation * Math.PI / 180);
                 
                 ctx.scale(widthFactor, -1); 
                 
@@ -454,26 +459,47 @@ export const renderEntitiesToCanvas = (
                 }
                 ctx.restore();
                 break;
-            case EntityType.INSERT:
             case EntityType.ACAD_TABLE:
+            case EntityType.INSERT: {
                 const block = blocks[ent.blockName];
-                if (block) {
-                    ctx.save();
-                    ctx.translate(ent.position.x, ent.position.y);
-                    if ('rotation' in ent) ctx.rotate((ent as any).rotation * Math.PI / 180);
-                    if ('scale' in ent) ctx.scale((ent as any).scale.x, (ent as any).scale.y);
-                    ctx.translate(-block.basePoint.x, -block.basePoint.y);
-                    block.entities.forEach(child => drawEntity(child, layerName, color, currentScale * ((ent as any).scale?.x || 1), isSelected, depth + 1));
-                    ctx.restore();
-                    if ('attributes' in ent && (ent as any).attributes) {
-                        (ent as any).attributes.forEach((attr: any) => drawEntity(attr, layerName, color, currentScale, isSelected, depth + 1));
+                if (!block) break;
+
+                const scale = ent.scale || { x: 1, y: 1, z: 1 };
+                const blockScale = Math.abs(scale.x * currentScale);
+
+                // LOD: if block is too small on screen, skip or simplify
+                if (!isSelected && blockScale < 0.5) return;
+
+                ctx.save();
+                ctx.translate(ent.position.x, ent.position.y);
+                
+                if (ent.type === EntityType.ACAD_TABLE && (ent as any).direction) {
+                    const dir = (ent as any).direction;
+                    if (dir.x !== 0 || dir.y !== 0) {
+                        ctx.rotate(Math.atan2(dir.y, dir.x));
                     }
+                } else if (ent.rotation) {
+                    ctx.rotate(ent.rotation * Math.PI / 180);
                 }
+
+                if (ent.scale) ctx.scale(ent.scale.x, ent.scale.y);
+                ctx.translate(-block.basePoint.x, -block.basePoint.y);
+
+                const layerName = (ent.layer === '0' && parentLayerName) ? parentLayerName : ent.layer;
+                block.entities.forEach(child => drawEntity(child, layerName, color, blockScale, isSelected, depth + 1));
+
+                // Draw attributes if any
+                if ((ent as any).attributes) {
+                    (ent as any).attributes.forEach((attr: AnyEntity) => drawEntity(attr, layerName, color, blockScale, isSelected, depth + 1));
+                }
+
+                ctx.restore();
                 break;
-            case EntityType.HATCH:
+            }
+            case EntityType.HATCH: {
                 ctx.save();
                 ctx.beginPath();
-                ent.loops.forEach(loop => drawHatchLoop(ctx, loop, (ent.extrusion?.z || 1) < 0));
+                ent.loops.forEach(loop => drawHatchLoop(ctx, loop, ent.isFlipped || false));
                 ctx.closePath();
                 
                 if (ent.solid) {
@@ -490,9 +516,11 @@ export const renderEntitiesToCanvas = (
                 }
                 ctx.restore();
                 break;
+            }
             case EntityType.DIMENSION: {
                 const block = blocks[ent.blockName];
                 if (block) {
+                    const layerName = (ent.layer === '0' && parentLayerName) ? parentLayerName : ent.layer;
                     block.entities.forEach(child => {
                         let childEnt = child;
                         // Propagate Dimension color to its block components (Text, Arrows, etc)
@@ -514,6 +542,7 @@ export const renderEntitiesToCanvas = (
                              visible: true,
                              hAlign: 1, vAlign: 2 
                          };
+                         const layerName = (ent.layer === '0' && parentLayerName) ? parentLayerName : ent.layer;
                          drawEntity(tempText, layerName, color, currentScale, isSelected, depth + 1);
                      }
                 }
@@ -523,16 +552,6 @@ export const renderEntitiesToCanvas = (
             case EntityType.THREEDFACE: {
                 if (ent.points.length < 3) break;
                 
-                // Culling for SOLID/3DFACE
-                if (depth === 0 && !isSelected) {
-                    let pMinX = Infinity, pMaxX = -Infinity, pMinY = Infinity, pMaxY = -Infinity;
-                    for (const p of ent.points) {
-                        if (p.x < pMinX) pMinX = p.x; if (p.x > pMaxX) pMaxX = p.x;
-                        if (p.y < pMinY) pMinY = p.y; if (p.y > pMaxY) pMaxY = p.y;
-                    }
-                    if (pMaxX < xMin || pMinX > xMax || pMaxY < yMin || pMinY > yMax) return;
-                }
-
                 if (ent.type === EntityType.SOLID) {
                     ctx.beginPath();
                     ctx.moveTo(ent.points[0].x, ent.points[0].y);
@@ -629,35 +648,60 @@ const distanceToLine = (px: number, py: number, x1: number, y1: number, x2: numb
 };
 
 export const hitTest = (x: number, y: number, threshold: number, entities: AnyEntity[], blocks: Record<string, DxfBlock>, layers: Record<string, DxfLayer>, styles: Record<string, DxfStyle>): string | null => {
+    // Map of block names to dimension entities that use them
+    const blockToDimensionMap = new Map<string, string>();
+    entities.forEach(ent => {
+        if (ent.type === EntityType.DIMENSION && ent.blockName) {
+            blockToDimensionMap.set(ent.blockName, ent.id);
+        }
+    });
+
     const checkEntity = (ent: AnyEntity, tx?: (p: Point2D) => Point2D, depth: number = 0): boolean => {
-        if (depth > 20) return false;
+        if (ent.visible === false || depth > 20) return false;
+
+        const layer = layers[ent.layer];
+        if (layer && layer.isVisible === false) return false;
+
         const p = tx ? tx : (pt: Point2D) => pt;
         
+        // Increase threshold for text selection
+        const isText = [EntityType.TEXT, EntityType.MTEXT, EntityType.ATTRIB, EntityType.ATTDEF].includes(ent.type);
+        const effectiveThreshold = isText ? threshold * 2 : threshold;
+
+        // Use precomputed extents for fast culling if available (and at top level)
+        if (depth === 0 && ent.extents) {
+            const { min, max } = ent.extents;
+            if (x < min.x - effectiveThreshold || x > max.x + effectiveThreshold || 
+                y < min.y - effectiveThreshold || y > max.y + effectiveThreshold) {
+                return false;
+            }
+        }
+
         if (ent.type === EntityType.LINE) {
             const s = p(ent.start), e = p(ent.end);
-            return distanceToLine(x, y, s.x, s.y, e.x, e.y) < threshold;
+            return distanceToLine(x, y, s.x, s.y, e.x, e.y) < effectiveThreshold;
         } else if (ent.type === EntityType.RAY) {
             const s = p(ent.basePoint);
             const e = { x: s.x + ent.direction.x * 1000000, y: s.y + ent.direction.y * 1000000 };
-            return distanceToLine(x, y, s.x, s.y, e.x, e.y) < threshold;
+            return distanceToLine(x, y, s.x, s.y, e.x, e.y) < effectiveThreshold;
         } else if (ent.type === EntityType.XLINE) {
             const s = p(ent.basePoint);
             const p1 = { x: s.x - ent.direction.x * 1000000, y: s.y - ent.direction.y * 1000000 };
             const p2 = { x: s.x + ent.direction.x * 1000000, y: s.y + ent.direction.y * 1000000 };
-            return distanceToLine(x, y, p1.x, p1.y, p2.x, p2.y) < threshold;
+            return distanceToLine(x, y, p1.x, p1.y, p2.x, p2.y) < effectiveThreshold;
         } else if (ent.type === EntityType.CIRCLE) {
             const c = p(ent.center);
             const d = Math.sqrt(Math.pow(x - c.x, 2) + Math.pow(y - c.y, 2));
-            return Math.abs(d - ent.radius) < threshold;
+            return Math.abs(d - ent.radius) < effectiveThreshold;
         } else if (ent.type === EntityType.ARC) {
             const c = p(ent.center);
             const d = Math.sqrt(Math.pow(x - c.x, 2) + Math.pow(y - c.y, 2));
-            if (Math.abs(d - ent.radius) < threshold) {
+            if (Math.abs(d - ent.radius) < effectiveThreshold) {
                 let angle = Math.atan2(y - c.y, x - c.x) * 180 / Math.PI;
                 while (angle < 0) angle += 360;
                 while (angle >= 360) angle -= 360;
                 
-                const isFlipped = (ent.extrusion?.z || 1) < 0;
+                const isCcw = ent.isCounterClockwise !== false;
                 let s = ent.startAngle;
                 let e = ent.endAngle;
                 while (s < 0) s += 360;
@@ -665,8 +709,7 @@ export const hitTest = (x: number, y: number, threshold: number, entities: AnyEn
                 while (e < 0) e += 360;
                 while (e >= 360) e -= 360;
 
-                if (isFlipped) {
-                    // For CW arc, swap start/end to use CCW logic
+                if (!isCcw) {
                     const temp = s;
                     s = e;
                     e = temp;
@@ -682,7 +725,7 @@ export const hitTest = (x: number, y: number, threshold: number, entities: AnyEn
                 const bulge = ent.bulges ? (ent.bulges[j] || 0) : 0;
                 
                 if (Math.abs(bulge) < 1e-6) {
-                    if (distanceToLine(x, y, p1.x, p1.y, p2.x, p2.y) < threshold) return true;
+                    if (distanceToLine(x, y, p1.x, p1.y, p2.x, p2.y) < effectiveThreshold) return true;
                 } else {
                     const dist = Math.sqrt((p2.x - p1.x)**2 + (p2.y - p1.y)**2);
                     if (dist > 1e-9) {
@@ -692,7 +735,7 @@ export const hitTest = (x: number, y: number, threshold: number, entities: AnyEn
                         const cy = (p1.y + p2.y)/2 + (p2.x - p1.x)/2 * (1/Math.tan(2*Math.atan(bulge)));
                         
                         const d = Math.sqrt(Math.pow(x - cx, 2) + Math.pow(y - cy, 2));
-                        if (Math.abs(d - radius) < threshold) {
+                        if (Math.abs(d - radius) < effectiveThreshold) {
                             let angle = Math.atan2(y - cy, x - cx);
                             let s = Math.atan2(p1.y - cy, p1.x - cx);
                             let e = Math.atan2(p2.y - cy, p2.x - cx);
@@ -721,20 +764,20 @@ export const hitTest = (x: number, y: number, threshold: number, entities: AnyEn
                             if (s > e ? (angle >= s || angle <= e) : (angle >= s && angle <= e)) return true;
                         }
                     } else {
-                        if (Math.sqrt((x - p1.x)**2 + (y - p1.y)**2) < threshold) return true;
+                        if (Math.sqrt((x - p1.x)**2 + (y - p1.y)**2) < effectiveThreshold) return true;
                     }
                 }
             }
         } else if (ent.type === EntityType.SPLINE) {
-             const points = getBSplinePoints(ent.controlPoints, ent.degree, ent.knots, ent.weights, 20); // Low res for hit test
+             const points = getBSplinePoints(ent.controlPoints, ent.degree, ent.knots, ent.weights, 20);
              for (let j = 0; j < points.length - 1; j++) {
                 const p1 = p(points[j]), p2 = p(points[j+1]);
-                if (distanceToLine(x, y, p1.x, p1.y, p2.x, p2.y) < threshold) return true;
+                if (distanceToLine(x, y, p1.x, p1.y, p2.x, p2.y) < effectiveThreshold) return true;
             }
         } else if (ent.type === EntityType.POINT) {
             const pos = p(ent.position);
-            return Math.sqrt(Math.pow(x - pos.x, 2) + Math.pow(y - pos.y, 2)) < threshold;
-        } else if (ent.type === EntityType.TEXT || ent.type === EntityType.MTEXT || ent.type === EntityType.ATTRIB || ent.type === EntityType.ATTDEF) {
+            return Math.sqrt(Math.pow(x - pos.x, 2) + Math.pow(y - pos.y, 2)) < effectiveThreshold;
+        } else if (isText) {
             const textEnt = ent as DxfText;
             const pos = p(textEnt.position);
             const text = cleanTextContent(textEnt.value);
@@ -746,7 +789,7 @@ export const hitTest = (x: number, y: number, threshold: number, entities: AnyEn
             
             // Heuristic for width calculation
             const charCount = text.length;
-            const approxWidth = height * 0.7 * charCount * widthFactor;
+            const approxWidth = height * 0.7 * charCount * Math.abs(widthFactor);
             
             const rad = (textEnt.rotation || 0) * Math.PI / 180;
             const cos = Math.cos(rad), sin = Math.sin(rad);
@@ -779,13 +822,13 @@ export const hitTest = (x: number, y: number, threshold: number, entities: AnyEn
             const localY = -lx * sin + ly * cos;
 
             // Check if within bounds with some padding
-            const pad = threshold;
+            const pad = effectiveThreshold;
             return localX >= dx - pad && localX <= dx + approxWidth + pad &&
                    localY >= dy - pad && localY <= dy + height + pad;
         } else if (ent.type === EntityType.LEADER) {
             for (let j = 0; j < ent.points.length - 1; j++) {
                 const p1 = p(ent.points[j]), p2 = p(ent.points[j+1]);
-                if (distanceToLine(x, y, p1.x, p1.y, p2.x, p2.y) < threshold) return true;
+                if (distanceToLine(x, y, p1.x, p1.y, p2.x, p2.y) < effectiveThreshold) return true;
             }
         } else if (ent.type === EntityType.ELLIPSE) {
             const c = p(ent.center);
@@ -793,7 +836,7 @@ export const hitTest = (x: number, y: number, threshold: number, entities: AnyEn
             const ry = rx * ent.ratio;
             const isFlipped = (ent.extrusion?.z || 1) < 0;
             // Simple bounding box check for ellipse hit test
-            if (Math.abs(x - c.x) > rx + threshold || Math.abs(y - c.y) > ry + threshold) return false;
+            if (Math.abs(x - c.x) > rx + effectiveThreshold || Math.abs(y - c.y) > ry + effectiveThreshold) return false;
             
             // More accurate: transform point to ellipse local space and check distance
             const dx = x - c.x;
@@ -804,7 +847,7 @@ export const hitTest = (x: number, y: number, threshold: number, entities: AnyEn
             const localY = dx * sin + dy * cos;
             const normDist = (localX * localX) / (rx * rx) + (localY * localY) / (ry * ry);
             
-            if (Math.abs(Math.sqrt(normDist) - 1) < threshold / Math.min(rx, ry)) {
+            if (Math.abs(Math.sqrt(normDist) - 1) < effectiveThreshold / Math.min(rx, ry)) {
                 let param = Math.atan2(localY / ry, localX / rx);
                 while (param < 0) param += Math.PI * 2;
                 while (param >= Math.PI * 2) param -= Math.PI * 2;
@@ -835,7 +878,7 @@ export const hitTest = (x: number, y: number, threshold: number, entities: AnyEn
             // Check edges
             for (let j = 0; j < ent.points.length; j++) {
                 const p1 = p(ent.points[j]), p2 = p(ent.points[(j + 1) % ent.points.length]);
-                if (distanceToLine(x, y, p1.x, p1.y, p2.x, p2.y) < threshold) return true;
+                if (distanceToLine(x, y, p1.x, p1.y, p2.x, p2.y) < effectiveThreshold) return true;
             }
             // Check if point is inside
             let inside = false;
@@ -881,8 +924,8 @@ export const hitTest = (x: number, y: number, threshold: number, entities: AnyEn
                         } else if (edgeType === 'arc' && edge.center && edge.radius) {
                             // Approximate arc with few points
                             const steps = 8;
-                            const s = edge.startAngle * Math.PI / 180;
-                            const e = edge.endAngle * Math.PI / 180;
+                            const s = (edge.startAngle || 0) * Math.PI / 180;
+                            const e = (edge.endAngle || 360) * Math.PI / 180;
                             const sweep = e - s;
                             for (let i = 0; i <= steps; i++) {
                                 const a = s + (sweep * i / steps);
@@ -894,68 +937,81 @@ export const hitTest = (x: number, y: number, threshold: number, entities: AnyEn
                         }
                     });
                 }
-
-                if (points.length < 3) continue;
-
-                let inside = false;
-                for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
-                    const pi = p(points[i]), pj = p(points[j]);
-                    if (((pi.y > y) !== (pj.y > y)) &&
-                        (x < (pj.x - pi.x) * (y - pi.y) / (pj.y - pi.y) + pi.x)) {
-                        inside = !inside;
+                
+                if (points.length > 2) {
+                    let inside = false;
+                    for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+                        const pi = p(points[i]), pj = p(points[j]);
+                        if (((pi.y > y) !== (pj.y > y)) &&
+                            (x < (pj.x - pi.x) * (y - pi.y) / (pj.y - pi.y) + pi.x)) {
+                            inside = !inside;
+                        }
                     }
+                    if (inside) totalInside = !totalInside;
                 }
-                if (inside) totalInside = !totalInside; // XOR for holes
             }
-            return totalInside;
+            if (totalInside) return true;
         } else if (ent.type === EntityType.DIMENSION) {
-             const block = blocks[ent.blockName];
-             if (block) {
-                 return block.entities.some(child => checkEntity(child, p, depth + 1));
-             }
+            // Check definition points
+            const d1 = p(ent.definitionPoint);
+            if (Math.sqrt((x - d1.x)**2 + (y - d1.y)**2) < effectiveThreshold) return true;
+            if (ent.textMidPoint) {
+                const d2 = p(ent.textMidPoint);
+                if (Math.sqrt((x - d2.x)**2 + (y - d2.y)**2) < effectiveThreshold) return true;
+            }
+            
+            // DIMENSION hit test: if its block is hit, it is hit
+            if (ent.blockName) {
+                const block = blocks[ent.blockName];
+                if (block) {
+                    // Important: Pass the current transform 'p' to the block entities
+                    return block.entities.some(child => checkEntity(child, p, depth + 1));
+                }
+            }
         }
         return false;
     };
 
+    // First check dimensions to allow selecting them as a whole
+    for (const ent of entities) {
+        if (ent.type === EntityType.DIMENSION) {
+            if (checkEntity(ent)) return ent.id;
+        }
+    }
+
+    // Then check other entities
     for (let i = entities.length - 1; i >= 0; i--) {
-        if (checkEntity(entities[i])) return entities[i].id;
+        const ent = entities[i];
+        if (ent.type !== EntityType.DIMENSION && checkEntity(ent)) return ent.id;
     }
     return null;
 };
 
-export const hitTestBox = (box: {x1:number, y1:number, x2:number, y2:number}, entities: AnyEntity[], layers: Record<string, DxfLayer>): Set<string> => {
+export const hitTestBox = (box: {x1:number, y1:number, x2:number, y2:number}, entities: AnyEntity[], layers: Record<string, DxfLayer>, blocks: Record<string, DxfBlock> = {}): Set<string> => {
     const results = new Set<string>();
     const minX = Math.min(box.x1, box.x2), maxX = Math.max(box.x1, box.x2);
     const minY = Math.min(box.y1, box.y2), maxY = Math.max(box.y1, box.y2);
 
     entities.forEach(ent => {
-        let inBox = false;
-        if (ent.type === EntityType.POINT) {
-            inBox = ent.position.x >= minX && ent.position.x <= maxX && ent.position.y >= minY && ent.position.y <= maxY;
-        } else if (ent.type === EntityType.LINE) {
-            inBox = (ent.start.x >= minX && ent.start.x <= maxX && ent.start.y >= minY && ent.start.y <= maxY) ||
-                    (ent.end.x >= minX && ent.end.x <= maxX && ent.end.y >= minY && ent.end.y <= maxY);
-        } else if (ent.type === EntityType.RAY || ent.type === EntityType.XLINE) {
-            inBox = ent.basePoint.x >= minX && ent.basePoint.x <= maxX && ent.basePoint.y >= minY && ent.basePoint.y <= maxY;
-        } else if (ent.type === EntityType.CIRCLE || ent.type === EntityType.ARC) {
-            inBox = ent.center.x >= minX && ent.center.x <= maxX && ent.center.y >= minY && ent.center.y <= maxY;
-        } else if (ent.type === EntityType.LWPOLYLINE || ent.type === EntityType.POLYLINE) {
-            inBox = ent.points.some(p => p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY);
-        } else if (ent.type === EntityType.LEADER) {
-            inBox = ent.points.some(p => p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY);
-        } else if (ent.type === EntityType.ELLIPSE) {
-            inBox = ent.center.x >= minX && ent.center.x <= maxX && ent.center.y >= minY && ent.center.y <= maxY;
-        } else if (ent.type === EntityType.SOLID || ent.type === EntityType.THREEDFACE) {
-            inBox = ent.points.some(p => p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY);
-        } else if (ent.type === EntityType.SPLINE && ent.controlPoints) {
-            inBox = ent.controlPoints.some(p => p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY);
-        } else if (ent.type === EntityType.TEXT || ent.type === EntityType.MTEXT || ent.type === EntityType.ATTRIB || ent.type === EntityType.ATTDEF || ent.type === EntityType.INSERT || ent.type === EntityType.ACAD_TABLE) {
-            inBox = ent.position.x >= minX && ent.position.x <= maxX && ent.position.y >= minY && ent.position.y <= maxY;
-        } else if (ent.type === EntityType.DIMENSION) {
-            const p = ent.textMidPoint || ent.definitionPoint;
-            inBox = p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY;
+        const layer = layers[ent.layer];
+        if (layer && layer.isVisible === false) return;
+
+        if (ent.extents) {
+            const { min, max } = ent.extents;
+            // A simple overlap check between the selection box and the entity extents
+            const overlap = !(max.x < minX || min.x > maxX || max.y < minY || min.y > maxY);
+            if (overlap) {
+                results.add(ent.id);
+            }
+        } else {
+            // Fallback for entities without extents
+            if (ent.type === EntityType.POINT && ent.position) {
+                if (ent.position.x >= minX && ent.position.x <= maxX && ent.position.y >= minY && ent.position.y <= maxY) {
+                    results.add(ent.id);
+                }
+            }
         }
-        if (inBox) results.add(ent.id);
     });
+
     return results;
 };
