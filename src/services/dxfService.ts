@@ -721,7 +721,14 @@ const parseText = (state: DxfParserState, common: any, type: EntityType): DxfTex
     entity.value = valueParts.join('');
     
     if (type === EntityType.MTEXT) {
-        entity.value = cleanMText(entity.value);
+        // Parse width factor from raw value
+        // Support both \W and \w, and optional semicolon
+        const matches = entity.value.match(/\\[Ww](\d+(\.\d+)?)(?:;|$)/);
+        if (matches && matches[1]) {
+            entity.widthFactor = parseFloat(matches[1]);
+        }
+        // Do NOT clean here, renderer will clean it.
+        // This allows renderer to see formatting codes for font/height/etc.
     }
     
     if (!entity.styleName) entity.styleName = 'STANDARD';

@@ -21,7 +21,8 @@ export function cleanMText(text: string): string {
     // \T...; (Tracking)
     // \Q...; (Obliquing)
     // \A...; (Alignment)
-    result = result.replace(/\\[fHWCTQA].*?;/g, "");
+    // Support codes with or without semicolon, safely
+    result = result.replace(/\\[fHWCTQA][^;\\}]*(?:;|(?=[\\}]|$))/gi, "");
 
     // 3. Handle special characters:
     // \P (Paragraph/Newline)

@@ -56,9 +56,9 @@ const getCanvasFont = (ent: AnyEntity, styles: Record<string, DxfStyle> | undefi
 
         // MTEXT content can have complex formatting like {\fArial|b1|i1|c0|p34;Text}
         // 1. Check for explicit font overrides in MTEXT value
-        // \fFontName|...; or \fFontName;
+        // \fFontName|...; or \fFontName; or even \fFontName without semicolon in some optimized cases
         // Using a non-greedy match to avoid capturing multiple formatting blocks
-        const fMatch = ent.value.match(/\\f([^;|]+)(?:\|([^;]*))?;/);
+        const fMatch = ent.value.match(/\\[fF]([^;|]+)(?:\|([^;]*))?(?:;|$)/);
         if (fMatch && fMatch[1]) {
             const inlineFont = fMatch[1].replace(/\"/g, '').trim();
             const inlineParams = fMatch[2] || '';
@@ -66,9 +66,10 @@ const getCanvasFont = (ent: AnyEntity, styles: Record<string, DxfStyle> | undefi
             if (inlineParams) {
                 const parts = inlineParams.split('|');
                 parts.forEach(part => {
-                    if (part.startsWith('b') && part.length > 1) {
+                    const partLower = part.toLowerCase();
+                    if (partLower.startsWith('b') && part.length > 1) {
                         fontWeight = part.substring(1) === '1' ? 'bold' : 'normal';
-                    } else if (part.startsWith('i') && part.length > 1) {
+                    } else if (partLower.startsWith('i') && part.length > 1) {
                         fontStyle = part.substring(1) === '1' ? 'italic' : 'normal';
                     }
                 });
@@ -86,9 +87,9 @@ const getCanvasFont = (ent: AnyEntity, styles: Record<string, DxfStyle> | undefi
                     fontFamily = FONT_STACKS.HEI;
                 } else if (inlineFontLower.includes('楷体') || inlineFontLower.includes('simkai') || inlineFontLower.includes('kai')) {
                     fontFamily = FONT_STACKS.KAI;
-                } else if (inlineFontLower.includes('yahei')) {
+                } else if (inlineFontLower.includes('yahei') || inlineFontLower.includes('微软雅黑')) {
                     fontFamily = FONT_STACKS.HEI;
-                } else if (inlineFontLower === 'arial') {
+                } else if (inlineFontLower === 'arial' || inlineFontLower.includes('arial')) {
                     fontFamily = 'Arial, Helvetica, sans-serif';
                 } else if (styles && (styles[inlineFont] || styles[inlineFont.toUpperCase()])) {
                     const matchedStyle = (styles[inlineFont] || styles[inlineFont.toUpperCase()]);
@@ -116,7 +117,7 @@ const cleanTextContent = (text: string): string => {
         .replace(/\\\}/g, '')
         .replace(/\\U\+([0-9A-Fa-f]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16))) // Unicode \U+XXXX
         .replace(/\\S([^^]+)\^([^;]+);/g, '$1/$2') // Stacked Text \S...^...; -> .../...
-        .replace(/\\[A-Z][^;]*;/gi, '') 
+        .replace(/\\[A-Z][^;\\}]*(?:;|(?=[\\}]|$))/gi, '') // Handle codes with or without semicolon, safely
         .replace(/\{|\}/g, '')
         .replace(/%%[cC]/g, 'Ø')
         .replace(/%%[dD]/g, '°')
@@ -522,15 +523,19 @@ export const renderEntitiesToCanvas = (
                 let widthFactor = 1;
                 const style = styles[ent.styleName || 'STANDARD'];
                 const isMText = ent.type === EntityType.MTEXT;
-                if (isMText) {
-                    const matches = ent.value.match(/\\W(\d+(\.\d+)?);/);
+                
+                // Use pre-parsed width factor if available, otherwise try to parse it
+                if (ent.widthFactor !== undefined && ent.widthFactor !== 0) {
+                    widthFactor = ent.widthFactor;
+                } else if (isMText) {
+                    const matches = ent.value.match(/\\[Ww](\d+(\.\d+)?)(?:;|$)/);
                     if (matches && matches[1]) {
                         widthFactor = parseFloat(matches[1]);
                     } else {
                         widthFactor = style?.widthFactor || 1;
                     }
                 } else {
-                    widthFactor = (ent.widthFactor !== undefined && ent.widthFactor !== 0) ? ent.widthFactor : (style?.widthFactor || 1);
+                    widthFactor = style?.widthFactor || 1;
                 }
 
                 ctx.save();
