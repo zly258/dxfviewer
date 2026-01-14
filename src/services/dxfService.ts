@@ -1,4 +1,5 @@
 import { AnyEntity, DxfData, EntityType, DxfLayer, DxfBlock, Point2D, Point3D, DxfHatch, HatchLoop, HatchEdge, DxfStyle, DxfPolyline, DxfInsert, DxfHeader, DxfSpline, DxfText, DxfLeader, DxfTable, DxfLineType } from '../types';
+import { cleanMText } from '../utils/textUtils';
 
 class DxfParserState {
   private text: string;
@@ -98,6 +99,10 @@ const parseLayer = (state: DxfParserState): DxfLayer => {
         switch(g.code) {
             case 2: layer.name = g.value; break;
             case 62: layer.color = parseInt(g.value); break;
+            case 420: 
+                    const val = String(g.value);
+                    layer.trueColor = parseInt(val.startsWith('0x') ? val : val, val.startsWith('0x') ? 16 : 10); 
+                    break;
             case 6: layer.lineType = g.value; break;
             case 70: layer.isVisible = (parseInt(g.value) & 1) !== 1; break; 
         }
@@ -404,18 +409,28 @@ export const parseDxf = async (dxfString: string, onProgress?: (percent: number)
   if (onProgress) onProgress(100);
 
   // Precompute block extents for culling and global extents
-  // We MUST do this before calculating initial extents because INSERT extents depend on block extents
+  // 1. Initial precomputation on raw coordinates (for correct initial center)
   precomputeBlockExtents(blocks);
 
-  // Calculate initial global extents to find the center
+  // 2. Calculate initial global extents to find the center
   const initialExtents = calculateExtents(entities, blocks);
   const offset = { x: initialExtents.center.x, y: initialExtents.center.y };
 
-  // Offset all top-level entities to center them around (0,0)
+  // 3. Offset EVERYTHING to center around (0,0)
   // This is the "Industrial Standard" approach to fix floating point precision issues
   entities.forEach(ent => offsetEntity(ent, offset));
+  
+  // Also offset all blocks and their contents
+  Object.values(blocks).forEach(block => {
+    block.basePoint.x -= offset.x;
+    block.basePoint.y -= offset.y;
+    block.entities.forEach(ent => offsetEntity(ent, offset));
+  });
 
-  // Re-calculate extents for the offset entities
+  // 4. Re-precompute block extents (now in offset coordinate system)
+  precomputeBlockExtents(blocks);
+
+  // 5. Re-calculate final global extents for the offset entities
   const extents = calculateExtents(entities, blocks);
 
   return { header, entities, layers, blocks, styles, lineTypes, offset, extents };
@@ -528,6 +543,10 @@ const applyCommonGroup = (common: any, code: number, value: string) => {
         case 5: common.handle = value; break;
         case 8: common.layer = value; break;
         case 62: common.color = parseInt(value, 10); break;
+        case 420: 
+                // Group 420 is true color (24-bit integer)
+                common.trueColor = typeof value === 'string' ? parseInt(value.startsWith('0x') ? value : value, value.startsWith('0x') ? 16 : 10) : Number(value); 
+                break;
         case 6: common.lineType = value; break;
         case 48: common.lineTypeScale = parseFloat(value); break;
         case 60: common.visible = parseInt(value, 10) === 0; break;
@@ -700,6 +719,10 @@ const parseText = (state: DxfParserState, common: any, type: EntityType): DxfTex
         }
     }
     entity.value = valueParts.join('');
+    
+    if (type === EntityType.MTEXT) {
+        entity.value = cleanMText(entity.value);
+    }
     
     if (!entity.styleName) entity.styleName = 'STANDARD';
     if (!entity.height) entity.height = 0; 
@@ -1401,18 +1424,6 @@ const parseHatch = (state: DxfParserState, common: any): DxfHatch => {
     return entity;
 }
 
-const stripMTextFormatting = (text: string): string => {
-    // Remove formatting like \fArial|b0|i0|c00|p39; or \H1x; or \W0.8;
-    // Also remove braces {} used for grouping
-    return text
-        .replace(/\\P/g, '\n') // New line
-        .replace(/\\{/g, '') // Open brace
-        .replace(/\\}/g, '') // Close brace
-        .replace(/\\[fHWSLCOQTVA].*?;/g, '') // Formatting codes
-        .replace(/\{/g, '')
-        .replace(/\}/g, '');
-};
-
 const getEntityExtents = (ent: AnyEntity, blocks: Record<string, DxfBlock>): { min: Point2D, max: Point2D } | null => {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     const update = (x: number, y: number) => {
@@ -1444,30 +1455,50 @@ const getEntityExtents = (ent: AnyEntity, blocks: Record<string, DxfBlock>): { m
                 const h = (ent as any).height || 2.5;
                 let text = (ent as any).value || "";
                 if (ent.type === EntityType.MTEXT) {
-                    text = stripMTextFormatting(text);
+                    text = cleanMText(text);
                 }
                 const widthFactor = Math.abs((ent as any).widthFactor || 1);
                 const rotation = (ent as any).rotation || 0;
-                // Average char width is ~0.7 * height
-                const approxWidth = h * 0.7 * text.length * widthFactor;
+                
+                // MText line spacing and width factor
+                const lines = text.split('\n');
+                const maxLineLen = Math.max(...lines.map(l => l.length), 1);
+                const totalHeight = lines.length * h * 1.3; // Increased line spacing for better selection
+                const totalWidth = h * 0.8 * maxLineLen * widthFactor; // Wider character approximation
+
                 const rad = rotation * Math.PI / 180;
                 const cos = Math.cos(rad);
                 const sin = Math.sin(rad);
-                // MText can have multiple lines
-                const lines = text.split('\n');
-                const maxLineLen = Math.max(...lines.map(l => l.length), 1);
-                const totalHeight = lines.length * h * 1.2; // 1.2 for line spacing
-                const totalWidth = h * 0.7 * maxLineLen * widthFactor;
+
+                // Handle MText attachment point (71) and Text alignment (72, 73)
+                let ox = 0, oy = 0;
+                if (ent.type === EntityType.MTEXT) {
+                    const ap = (ent as any).attachmentPoint || 1;
+                    // Attachment points: 1=TL, 2=TC, 3=TR, 4=ML, 5=MC, 6=MR, 7=BL, 8=BC, 9=BR
+                    if ([2, 5, 8].includes(ap)) ox = -totalWidth / 2;
+                    else if ([3, 6, 9].includes(ap)) ox = -totalWidth;
+                    
+                    if ([4, 5, 6].includes(ap)) oy = totalHeight / 2;
+                    else if ([7, 8, 9].includes(ap)) oy = totalHeight;
+                } else {
+                    const ha = (ent as any).hAlign || 0;
+                    const va = (ent as any).vAlign || 0;
+                    // Text alignment is more complex, but simplified:
+                    if (ha === 1) ox = -totalWidth / 2; // Center
+                    else if (ha === 2) ox = -totalWidth; // Right
+                    
+                    if (va === 1) oy = h * 0.5; // Bottom
+                    else if (va === 2) oy = h * 1.0; // Middle
+                    else if (va === 3) oy = h * 1.5; // Top
+                }
 
                 const corners = [
-                    {x:0, y:0}, 
-                    {x:totalWidth, y:0}, 
-                    {x:0, y:totalHeight}, 
-                    {x:totalWidth, y:totalHeight}
+                    {x: ox, y: oy}, 
+                    {x: ox + totalWidth, y: oy}, 
+                    {x: ox, y: oy - totalHeight}, 
+                    {x: ox + totalWidth, y: oy - totalHeight}
                 ];
                 corners.forEach(c => {
-                    // For MText, the position is usually the top-left or top-center etc. 
-                    // For simplicity, we assume top-left for extents calculation
                     update(ent.position.x + c.x * cos - c.y * sin, ent.position.y + c.x * sin + c.y * cos);
                 });
             }
@@ -1570,7 +1601,8 @@ const precomputeBlockExtents = (blocks: Record<string, DxfBlock>) => {
         block.entities.forEach(ent => {
             const ext = getEntityExtents(ent, blocks);
             if (ext) {
-                const isValid = (v: number) => isFinite(v) && Math.abs(v) < 1e15;
+                // Use a very large limit to allow extreme coordinates but prevent Infinity
+                const isValid = (v: number) => isFinite(v) && Math.abs(v) < 1e100;
                 if (isValid(ext.min.x) && ext.min.x < minX) minX = ext.min.x; 
                 if (isValid(ext.max.x) && ext.max.x > maxX) maxX = ext.max.x;
                 if (isValid(ext.min.y) && ext.min.y < minY) minY = ext.min.y; 
@@ -1596,8 +1628,8 @@ export const calculateExtents = (entities: AnyEntity[], blocks: Record<string, D
         if (ent.visible === false) return;
         const ext = getEntityExtents(ent, blocks);
         if (ext) {
-            // Validate coordinates are finite and not excessively large (CAD limit)
-            const isValid = (v: number) => isFinite(v) && Math.abs(v) < 1e15;
+            // Use a very large limit to allow extreme coordinates but prevent Infinity
+            const isValid = (v: number) => isFinite(v) && Math.abs(v) < 1e100;
             
             if (isValid(ext.min.x) && ext.min.x < minX) minX = ext.min.x; 
             if (isValid(ext.max.x) && ext.max.x > maxX) maxX = ext.max.x;

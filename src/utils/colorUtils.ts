@@ -6,6 +6,16 @@ export const AUTO_CAD_COLORS: Record<number, string> = {
   8: '#808080', 9: '#C0C0C0'
 };
 
+export const trueColorToHex = (trueColor: number): string => {
+  // TrueColor in DXF is 24-bit integer: 0x00RRGGBB
+  // Note: Sometimes it's negative if bit 24 is set in signed int
+  const c = trueColor >>> 0; // Convert to unsigned
+  const r = (c >> 16) & 0xFF;
+  const g = (c >> 8) & 0xFF;
+  const b = c & 0xFF;
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`.toUpperCase();
+};
+
 /**
  * ACI to RGB Conversion Algorithm
  * @param index ACI color index
@@ -30,26 +40,46 @@ export const getAutoCadColor = (index: number, theme: 'black' | 'white' = 'black
       return `#${h}${h}${h}`;
   }
 
-  // Indices 10-249: 24 Hue groups * 5 Saturation/Lightness levels
-  // A simplified version of the ACI algorithm
-  const hue = Math.floor((index - 10) / 10);
-  const shade = (index - 10) % 10;
+  // Indices 10-249: 24 Hue groups * 10 levels
+  const hueIndex = Math.floor((index - 10) / 10);
+  const level = (index - 10) % 10;
   
-  // Standard ACI hues
+  // Standard ACI 24 Hues
   const hues = [
-      [255, 0, 0], [255, 127, 0], [255, 255, 0], [127, 255, 0], [0, 255, 0], [0, 255, 127],
-      [0, 255, 255], [0, 127, 255], [0, 0, 255], [127, 0, 255], [255, 0, 255], [255, 0, 127]
+    [255, 0, 0], [255, 63, 0], [255, 127, 0], [255, 191, 0], [255, 255, 0], [191, 255, 0],
+    [127, 255, 0], [63, 255, 0], [0, 255, 0], [0, 255, 63], [0, 255, 127], [0, 255, 191],
+    [0, 255, 255], [0, 191, 255], [0, 127, 255], [0, 63, 255], [0, 0, 255], [63, 0, 255],
+    [127, 0, 255], [191, 0, 255], [255, 0, 255], [255, 0, 191], [255, 0, 127], [255, 0, 63]
   ];
   
-  const baseHue = hues[hue % 12];
-  if (!baseHue) return DEFAULT_COLOR;
+  const baseHue = hues[hueIndex] || hues[0];
 
-  // Shade 0,2,4,6,8 (Even indices are used in ACI 10-249)
-  // Simplified brightness/saturation adjustment
-  const factor = (10 - shade) / 10;
-  const r = Math.round(baseHue[0] * factor).toString(16).padStart(2, '0');
-  const g = Math.round(baseHue[1] * factor).toString(16).padStart(2, '0');
-  const b = Math.round(baseHue[2] * factor).toString(16).padStart(2, '0');
+  // ACI Level handling:
+  // Even levels (0, 2, 4, 6, 8): Full saturation, varying brightness
+  // Odd levels (1, 3, 5, 7, 9): 50% saturation, varying brightness
+  const isHalfSaturation = level % 2 !== 0;
+  const brightnessMap = [1.0, 1.0, 0.8, 0.8, 0.6, 0.6, 0.4, 0.4, 0.2, 0.2];
+  const brightness = brightnessMap[level];
+
+  let r = baseHue[0];
+  let g = baseHue[1];
+  let b = baseHue[2];
+
+  if (isHalfSaturation) {
+      // Mix with white for half saturation
+      r = (r + 255) / 2;
+      g = (g + 255) / 2;
+      b = (b + 255) / 2;
+  }
+
+  // Apply brightness
+  r = Math.round(r * brightness);
+  g = Math.round(g * brightness);
+  b = Math.round(b * brightness);
   
-  return `#${r}${g}${b}`;
+  const rs = r.toString(16).padStart(2, '0');
+  const gs = g.toString(16).padStart(2, '0');
+  const bs = b.toString(16).padStart(2, '0');
+  
+  return `#${rs}${gs}${bs}`;
 };

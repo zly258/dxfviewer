@@ -1,14 +1,17 @@
 import { AnyEntity, EntityType, DxfLayer, DxfBlock, DxfStyle, Point2D, DxfInsert, HatchLoop, DxfText, DxfLineType, ViewPort } from '../types';
 import { DEFAULT_COLOR } from '../constants';
-import { getAutoCadColor, AUTO_CAD_COLORS } from '../utils/colorUtils';
+import { getAutoCadColor, AUTO_CAD_COLORS, trueColorToHex } from '../utils/colorUtils';
 import { getBSplinePoints } from './dxfService';
 import { getStyleFontFamily, FONT_STACKS, mapCadFontToWebFont } from './fontService';
 
 const SELECTION_COLOR = '#0078d4'; 
 
-const getColor = (entColor: number | undefined, layer: DxfLayer | undefined, parentColor: string | undefined, theme: 'black' | 'white'): string => {
+const getColor = (ent: AnyEntity, layer: DxfLayer | undefined, parentColor: string | undefined, theme: 'black' | 'white'): string => {
+    if (ent.trueColor !== undefined) return trueColorToHex(ent.trueColor);
+    const entColor = ent.color;
     if (entColor === 0 && parentColor) return parentColor; // ByBlock
     if (entColor === 256 || entColor === undefined) { // ByLayer
+        if (layer?.trueColor !== undefined) return trueColorToHex(layer.trueColor);
         return layer ? getAutoCadColor(layer.color, theme) : (theme === 'black' ? '#FFFFFF' : '#000000');
     }
     return getAutoCadColor(entColor, theme);
@@ -160,23 +163,30 @@ const createHatchPattern = (ctx: CanvasRenderingContext2D, color: string) => {
     return ctx.createPattern(canvas, 'repeat');
 };
 
-const drawHatchLoop = (ctx: CanvasRenderingContext2D, loop: HatchLoop, isFlipped: boolean = false) => {
+interface RenderTransform {
+    project: (p: Point2D) => Point2D;
+    scale: number; // Cumulative scale factor to screen pixels
+}
+
+const drawHatchLoop = (ctx: CanvasRenderingContext2D, loop: HatchLoop, transform: RenderTransform) => {
+    const { project, scale } = transform;
     if (loop.isPolyline && loop.points && loop.points.length > 0) {
         const points = loop.points;
         const bulges = loop.bulges || [];
-        ctx.moveTo(points[0].x, points[0].y);
+        const start = project(points[0]);
+        ctx.moveTo(start.x, start.y);
         for (let i = 0; i < points.length; i++) {
             const p1 = points[i];
             const p2 = points[(i + 1) % points.length];
             const bulge = bulges[i] || 0;
+            const sP2 = project(p2);
             if (Math.abs(bulge) < 1e-6) {
-                ctx.lineTo(p2.x, p2.y);
+                ctx.lineTo(sP2.x, sP2.y);
             } else {
                 const theta = 4 * Math.atan(bulge);
                 const dist = Math.sqrt((p2.x - p1.x)**2 + (p2.y - p1.y)**2);
                 if (dist > 1e-9) {
                     const radius = Math.abs(dist / (2 * Math.sin(theta / 2)));
-                    
                     const a = (p2.x - p1.x) / 2;
                     const b = (p2.y - p1.y) / 2;
                     const h = (dist / 2) * (1 / bulge - bulge) / 2;
@@ -186,28 +196,39 @@ const drawHatchLoop = (ctx: CanvasRenderingContext2D, loop: HatchLoop, isFlipped
                     const startAngle = Math.atan2(p1.y - cy, p1.x - cx);
                     const endAngle = Math.atan2(p2.y - cy, p2.x - cx);
                     
-                    let ccw = bulge > 0;
-                    if (isFlipped) ccw = !ccw;
+                    const sCenter = project({ x: cx, y: cy });
+                    const sRadius = radius * scale;
                     
-                    ctx.arc(cx, cy, radius, startAngle, endAngle, !ccw); 
+                    // Note: In screen space, we use project which already handles Y-flip
+                    // But arc() still needs a direction. 
+                    // If CAD is CCW, and Y is flipped, it becomes CW in screen.
+                    const ccw = bulge < 0; // Reversed because of Y-flip
+                    ctx.arc(sCenter.x, sCenter.y, sRadius, -startAngle, -endAngle, ccw); 
                 } else {
-                    ctx.lineTo(p2.x, p2.y);
+                    ctx.lineTo(sP2.x, sP2.y);
                 }
             }
         }
     } else if (loop.edges && loop.edges.length > 0) {
         loop.edges.forEach((edge, i) => {
-            if (i === 0 && edge.start) ctx.moveTo(edge.start.x, edge.start.y);
-            else if (edge.start) ctx.lineTo(edge.start.x, edge.start.y); 
+            if (i === 0 && edge.start) {
+                const start = project(edge.start);
+                ctx.moveTo(start.x, start.y);
+            } else if (edge.start) {
+                const start = project(edge.start);
+                ctx.lineTo(start.x, start.y); 
+            }
 
             if (edge.type === 'LINE' && edge.end) {
-                ctx.lineTo(edge.end.x, edge.end.y);
+                const end = project(edge.end);
+                ctx.lineTo(end.x, end.y);
             } else if (edge.type === 'ARC' && edge.center && edge.radius) {
                 const start = (edge.startAngle || 0) * Math.PI / 180;
-                let end = (edge.endAngle || 0) * Math.PI / 180;
-                let ccw = edge.ccw === undefined ? true : edge.ccw; 
-                if (isFlipped) ccw = !ccw;
-                ctx.arc(edge.center.x, edge.center.y, edge.radius, start, end, !ccw); 
+                const end = (edge.endAngle || 0) * Math.PI / 180;
+                const sCenter = project(edge.center);
+                const sRadius = edge.radius * scale;
+                const isCcw = edge.ccw === undefined ? true : edge.ccw; 
+                ctx.arc(sCenter.x, sCenter.y, sRadius, -start, -end, !isCcw); 
             } else if (edge.type === 'ELLIPSE' && edge.center && edge.majorAxis) {
                 const majX = edge.majorAxis.x;
                 const majY = edge.majorAxis.y;
@@ -216,34 +237,39 @@ const drawHatchLoop = (ctx: CanvasRenderingContext2D, loop: HatchLoop, isFlipped
                 const rotation = Math.atan2(majY, majX);
                 const start = edge.startAngle || 0;
                 const end = edge.endAngle || 2*Math.PI;
-                let ccw = edge.ccw === undefined ? true : edge.ccw;
-                if (isFlipped) ccw = !ccw;
-                ctx.ellipse(edge.center.x, edge.center.y, rX, rY, rotation, start, end, !ccw);
+                const sCenter = project(edge.center);
+                const isCcw = edge.ccw === undefined ? true : edge.ccw;
+                ctx.ellipse(sCenter.x, sCenter.y, rX * scale, rY * scale, -rotation, start, end, !isCcw);
             } else if (edge.type === 'SPLINE' && (edge.calculatedPoints || edge.controlPoints)) {
                  const points = edge.calculatedPoints || getBSplinePoints(edge.controlPoints!, edge.degree || 3, edge.knots, edge.weights, 20);
-                 points.forEach(p => ctx.lineTo(p.x, p.y));
+                 points.forEach(p => {
+                     const sp = project(p);
+                     ctx.lineTo(sp.x, sp.y);
+                 });
             }
         });
     }
     ctx.closePath();
 }
 
-const drawPolyline = (ctx: CanvasRenderingContext2D, points: Point2D[], bulges: number[] | undefined, closed: boolean, isFlipped: boolean = false) => {
+const drawPolyline = (ctx: CanvasRenderingContext2D, points: Point2D[], bulges: number[] | undefined, closed: boolean, transform: RenderTransform) => {
     if (points.length < 1) return;
-    ctx.moveTo(points[0].x, points[0].y);
+    const { project, scale } = transform;
+    const start = project(points[0]);
+    ctx.moveTo(start.x, start.y);
     for (let i = 0; i < (closed ? points.length : points.length - 1); i++) {
         const p1 = points[i];
         const p2 = points[(i + 1) % points.length];
         const bulge = bulges ? (bulges[i] || 0) : 0;
+        const sP2 = project(p2);
         
         if (Math.abs(bulge) < 1e-6) {
-            ctx.lineTo(p2.x, p2.y);
+            ctx.lineTo(sP2.x, sP2.y);
         } else {
             const theta = 4 * Math.atan(bulge);
             const dist = Math.sqrt((p2.x - p1.x)**2 + (p2.y - p1.y)**2);
             if (dist > 1e-9) {
                 const radius = Math.abs(dist / (2 * Math.sin(theta / 2)));
-                // Center calculation for bulge arc
                 const a = (p2.x - p1.x) / 2;
                 const b = (p2.y - p1.y) / 2;
                 const h = (dist / 2) * (1 / bulge - bulge) / 2;
@@ -253,12 +279,12 @@ const drawPolyline = (ctx: CanvasRenderingContext2D, points: Point2D[], bulges: 
                 const startAngle = Math.atan2(p1.y - cy, p1.x - cx);
                 const endAngle = Math.atan2(p2.y - cy, p2.x - cx);
                 
-                let ccw = bulge > 0;
-                if (isFlipped) ccw = !ccw;
-                
-                ctx.arc(cx, cy, radius, startAngle, endAngle, !ccw);
+                const sCenter = project({ x: cx, y: cy });
+                const sRadius = radius * scale;
+                const ccw = bulge < 0; // Reversed because of Y-flip
+                ctx.arc(sCenter.x, sCenter.y, sRadius, -startAngle, -endAngle, ccw);
             } else {
-                ctx.lineTo(p2.x, p2.y);
+                ctx.lineTo(sP2.x, sP2.y);
             }
         }
     }
@@ -283,19 +309,17 @@ export const renderEntitiesToCanvas = (
     ctx.fillStyle = theme === 'black' ? '#212121' : '#FFFFFF';
     ctx.fillRect(0, 0, width, height);
 
-    ctx.save();
-    
-    // Step 1: Move screen origin to the center of the viewport
-    ctx.translate(width / 2, height / 2);
-    
-    // Step 2: Apply zoom and flip Y axis
     const safeZoom = isNaN(viewPort.zoom) || viewPort.zoom === 0 ? 1 : viewPort.zoom;
-    ctx.scale(safeZoom, -safeZoom);
-    
-    // Step 3: Move the world target point to the current origin (screen center)
     const safeTargetX = isNaN(viewPort.targetX) ? 0 : viewPort.targetX;
     const safeTargetY = isNaN(viewPort.targetY) ? 0 : viewPort.targetY;
-    ctx.translate(-safeTargetX, -safeTargetY);
+
+    const transform: RenderTransform = {
+        project: (p: Point2D) => ({
+            x: (p.x - safeTargetX) * safeZoom + width / 2,
+            y: height / 2 - (p.y - safeTargetY) * safeZoom
+        }),
+        scale: safeZoom
+    };
 
     // Calculate viewport bounds in world coordinates for culling
     const worldLeft = (0 - width / 2) / safeZoom + safeTargetX;
@@ -308,11 +332,10 @@ export const renderEntitiesToCanvas = (
     const vMinY = Math.min(worldTop, worldBottom);
     const vMaxY = Math.max(worldTop, worldBottom);
 
-    const drawEntity = (ent: AnyEntity, parentLayerName?: string, parentColor?: string, currentScale: number = viewPort.zoom, parentSelected: boolean = false, depth: number = 0) => {
+    const drawEntity = (ent: AnyEntity, transform: RenderTransform, parentLayerName?: string, parentColor?: string, parentSelected: boolean = false, depth: number = 0) => {
         if (ent.visible === false || depth > 20) return;
 
         // Culling: check if entity extents overlap viewport
-        // Top-level entities (depth 0) are in world space (already centered)
         if (depth === 0 && ent.extents) {
             if (ent.extents.max.x < vMinX || ent.extents.min.x > vMaxX ||
                 ent.extents.max.y < vMinY || ent.extents.min.y > vMaxY) {
@@ -325,83 +348,59 @@ export const renderEntitiesToCanvas = (
         if (layer && layer.isVisible === false) return;
 
         const isSelected = selectedIds.has(ent.id) || parentSelected;
-
-        const color = isSelected ? SELECTION_COLOR : getColor(ent.color, layer, parentColor, theme);
+        const color = isSelected ? SELECTION_COLOR : getColor(ent, layer, parentColor, theme);
         
         ctx.strokeStyle = color;
         ctx.fillStyle = color;
 
-    // Calculate lineweight
-    // DXF lineweight is in hundredths of mm. e.g. 25 = 0.25mm.
-    let lw = ent.lineweight;
-    if (lw === undefined || lw === -1) { // ByLayer
-        lw = layer?.lineweight !== undefined ? layer.lineweight : -3; // Default
-    }
-    if (lw === -3 || lw === -2) lw = 25; // Default 0.25mm
+        // Calculate lineweight
+        let lw = ent.lineweight;
+        if (lw === undefined || lw === -1) { // ByLayer
+            lw = layer?.lineweight !== undefined ? layer.lineweight : -3; 
+        }
+        if (lw === -3 || lw === -2) lw = 25; // Default 0.25mm
 
-    // Convert mm to screen pixels. 0.25mm -> 1.0 pixel is a standard mapping.
-    let baseLw = lw > 0 ? (lw / 25) : 0.8;
-    
-    // Clamp base lineweight to a reasonable range for screen display
-    if (baseLw > 2.0) baseLw = 2.0; 
-    if (baseLw < 0.5) baseLw = 0.5;
-    
-    const screenLw = isSelected ? (baseLw + 1.5) : baseLw;
-    
-    // Convert screen pixels to world units for ctx.lineWidth
-    let lineWidth = screenLw / Math.abs(currentScale);
+        let baseLw = lw > 0 ? (lw / 25) : 0.8;
+        if (baseLw > 2.0) baseLw = 2.0; 
+        if (baseLw < 0.5) baseLw = 0.5;
+        
+        const screenLw = isSelected ? (baseLw + 1.5) : baseLw;
+        
+        // Since we are now in screen space, lineWidth is just screenLw
+        let lineWidth = screenLw;
 
-    // If entity has constant world-space width (Polylines), use it
-    if ((ent as any).constantWidth !== undefined && (ent as any).constantWidth > 0) {
-        lineWidth = (ent as any).constantWidth;
-    }
-    
-    // Limit maximum screen width to avoid "giant lines" when zoomed out
-    // Use a tighter limit for better appearance
-    const maxScreenPixels = isSelected ? 8 : 4; 
-    const maxWorldWidth = maxScreenPixels / Math.abs(currentScale);
-    
-    ctx.lineWidth = Math.min(lineWidth, maxWorldWidth);
-    
-    // Ensure minimum visibility of 0.5 pixels on screen
-    const minWorldWidth = 0.5 / Math.abs(currentScale);
-    if (ctx.lineWidth < minWorldWidth) ctx.lineWidth = minWorldWidth;
+        // If entity has constant world-space width (Polylines), use it scaled
+        if ((ent as any).constantWidth !== undefined && (ent as any).constantWidth > 0) {
+            lineWidth = (ent as any).constantWidth * Math.abs(transform.scale);
+        }
+        
+        // Limit maximum screen width to avoid "giant lines"
+        const maxScreenPixels = isSelected ? 8 : 4; 
+        ctx.lineWidth = Math.min(lineWidth, maxScreenPixels);
+        
+        // Ensure minimum visibility of 0.5 pixels on screen
+        if (ctx.lineWidth < 0.5) ctx.lineWidth = 0.5;
 
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
 
         // Apply line dash pattern
         const lineTypeName = (ent.lineType === 'ByLayer' && layer) ? layer.lineType : ent.lineType;
         if (lineTypeName && lineTypeName.toUpperCase() !== 'CONTINUOUS' && lineTypeName.toUpperCase() !== 'BYLAYER' && lineTypeName.toUpperCase() !== 'BYBLOCK') {
             const ltype = lineTypes[lineTypeName] || lineTypes[lineTypeName.toUpperCase()];
             if (ltype && ltype.pattern && ltype.pattern.length > 0) {
-                // Scale pattern by LTSCALE and entity's lineTypeScale
                 const entityScale = ent.lineTypeScale || 1.0;
-                let scale = ltScale * entityScale;
+                // Pattern scale: LTSCALE * entityScale * transform.scale
+                let patternScale = ltScale * entityScale * Math.abs(transform.scale);
 
-                // Enhanced visibility optimization: ensure the pattern is clearly visible at all zoom levels
-                // Use adaptive minimum based on zoom level to maintain consistent visibility
-                const minDashPixels = 4.0; // Minimum dash segment in pixels
-                const minGapPixels = 2.0;  // Minimum gap segment in pixels
-                const patternScreenSize = ltype.totalLength * scale * Math.abs(viewPort.zoom);
-
-                // Find the smallest positive dash or gap segment in the pattern
-                const minSegment = ltype.pattern.reduce((min, p) => {
-                    const absP = Math.abs(p);
-                    return absP > 0 && absP < min ? absP : min;
-                }, Infinity);
-
-                if (minSegment !== Infinity && minSegment > 0) {
-                    const minSegmentScreen = minSegment * scale * Math.abs(viewPort.zoom);
-                    // Calculate required scale boost to make smallest segment visible
-                    const minRequired = Math.min(minDashPixels, minGapPixels);
-                    if (minSegmentScreen < minRequired) {
-                        scale *= (minRequired / minSegmentScreen);
-                    }
+                // Optimization: if pattern is too small to see, don't dash
+                const totalPatternPixels = ltype.totalLength * patternScale;
+                if (totalPatternPixels < 2.0) {
+                    ctx.setLineDash([]);
+                } else {
+                    const dashPattern = ltype.pattern.map(p => Math.abs(p) * patternScale);
+                    ctx.setLineDash(dashPattern);
                 }
-
-                const dashPattern = ltype.pattern.map(p => Math.abs(p) * scale);
-                ctx.setLineDash(dashPattern);
             } else {
                 ctx.setLineDash([]);
             }
@@ -410,39 +409,43 @@ export const renderEntitiesToCanvas = (
         }
 
         switch (ent.type) {
-            case EntityType.LINE:
+            case EntityType.LINE: {
+                const s = transform.project(ent.start);
+                const e = transform.project(ent.end);
                 ctx.beginPath();
-                ctx.moveTo(ent.start.x, ent.start.y);
-                ctx.lineTo(ent.end.x, ent.end.y);
+                ctx.moveTo(s.x, s.y);
+                ctx.lineTo(e.x, e.y);
                 ctx.stroke();
                 break;
+            }
             case EntityType.RAY: {
-                // Calculate a safe "infinity" distance based on viewport size
-                const diag = Math.sqrt(Math.pow(vMaxX - vMinX, 2) + Math.pow(vMaxY - vMinY, 2));
-                const infiniteDist = Math.max(diag * 2, 1e10); 
+                const diag = Math.sqrt(Math.pow(width, 2) + Math.pow(height, 2));
+                const infiniteDist = diag * 2; 
                 
+                const s = transform.project(ent.basePoint);
+                // Direction needs to be adjusted for Y-flip
                 const farPoint = {
-                    x: ent.basePoint.x + ent.direction.x * infiniteDist,
-                    y: ent.basePoint.y + ent.direction.y * infiniteDist
+                    x: s.x + ent.direction.x * infiniteDist,
+                    y: s.y - ent.direction.y * infiniteDist
                 };
                 ctx.beginPath();
-                ctx.moveTo(ent.basePoint.x, ent.basePoint.y);
+                ctx.moveTo(s.x, s.y);
                 ctx.lineTo(farPoint.x, farPoint.y);
                 ctx.stroke();
                 break;
             }
             case EntityType.XLINE: {
-                // Calculate a safe "infinity" distance based on viewport size
-                const diag = Math.sqrt(Math.pow(vMaxX - vMinX, 2) + Math.pow(vMaxY - vMinY, 2));
-                const infiniteDist = Math.max(diag * 2, 1e10);
+                const diag = Math.sqrt(Math.pow(width, 2) + Math.pow(height, 2));
+                const infiniteDist = diag * 2;
 
+                const s = transform.project(ent.basePoint);
                 const p1 = {
-                    x: ent.basePoint.x - ent.direction.x * infiniteDist,
-                    y: ent.basePoint.y - ent.direction.y * infiniteDist
+                    x: s.x - ent.direction.x * infiniteDist,
+                    y: s.y + ent.direction.y * infiniteDist
                 };
                 const p2 = {
-                    x: ent.basePoint.x + ent.direction.x * infiniteDist,
-                    y: ent.basePoint.y + ent.direction.y * infiniteDist
+                    x: s.x + ent.direction.x * infiniteDist,
+                    y: s.y - ent.direction.y * infiniteDist
                 };
                 ctx.beginPath();
                 ctx.moveTo(p1.x, p1.y);
@@ -450,34 +453,42 @@ export const renderEntitiesToCanvas = (
                 ctx.stroke();
                 break;
             }
-            case EntityType.POINT:
+            case EntityType.POINT: {
+                const p = transform.project(ent.position);
                 ctx.beginPath();
-                ctx.arc(ent.position.x, ent.position.y, 2/viewPort.zoom, 0, 2*Math.PI);
+                ctx.arc(p.x, p.y, 2, 0, 2*Math.PI);
                 ctx.fill();
                 break;
-            case EntityType.CIRCLE:
+            }
+            case EntityType.CIRCLE: {
+                const c = transform.project(ent.center);
                 ctx.beginPath();
-                ctx.arc(ent.center.x, ent.center.y, ent.radius, 0, 2 * Math.PI);
+                ctx.arc(c.x, c.y, ent.radius * transform.scale, 0, 2 * Math.PI);
                 ctx.stroke();
                 break;
+            }
             case EntityType.ARC: {
+                const c = transform.project(ent.center);
                 const isCcw = ent.isCounterClockwise !== false;
                 let startRad = (ent.startAngle || 0) * Math.PI / 180;
                 let endRad = (ent.endAngle || 0) * Math.PI / 180;
                 
                 ctx.beginPath();
-                ctx.arc(ent.center.x, ent.center.y, ent.radius, startRad, endRad, !isCcw);
+                // Y is flipped in screen space, so we negate angles and swap CCW
+                ctx.arc(c.x, c.y, ent.radius * transform.scale, -startRad, -endRad, isCcw);
                 ctx.stroke();
                 break;
             }
             case EntityType.ELLIPSE: {
-                const rx = Math.sqrt(ent.majorAxis.x ** 2 + ent.majorAxis.y ** 2);
+                const c = transform.project(ent.center);
+                const rx = Math.sqrt(ent.majorAxis.x ** 2 + ent.majorAxis.y ** 2) * transform.scale;
                 const ry = rx * ent.ratio;
                 const rotation = Math.atan2(ent.majorAxis.y, ent.majorAxis.x);
                 const isFlipped = (ent.extrusion?.z || 1) < 0;
                 
                 ctx.beginPath();
-                ctx.ellipse(ent.center.x, ent.center.y, rx, ry, rotation, ent.startParam || 0, ent.endParam || (Math.PI * 2), isFlipped);
+                // Y is flipped in screen space, negate rotation and flip param direction
+                ctx.ellipse(c.x, c.y, rx, ry, -rotation, ent.startParam || 0, ent.endParam || (Math.PI * 2), !isFlipped);
                 ctx.stroke();
                 break;
             }
@@ -485,21 +496,26 @@ export const renderEntitiesToCanvas = (
             case EntityType.POLYLINE:
                 if (ent.points.length > 1) {
                     ctx.beginPath();
-                    drawPolyline(ctx, ent.points, ent.bulges, ent.closed, (ent.extrusion?.z || 1) < 0);
+                    drawPolyline(ctx, ent.points, ent.bulges, ent.closed, transform);
                     ctx.stroke();
                 }
                 break;
-            case EntityType.SPLINE:
+            case EntityType.SPLINE: {
                 const splinePoints = ent.calculatedPoints || getBSplinePoints(ent.controlPoints, ent.degree, ent.knots, ent.weights);
                 if (splinePoints.length > 1) {
                     ctx.beginPath();
-                    ctx.moveTo(splinePoints[0].x, splinePoints[0].y);
-                    for(let i=1; i<splinePoints.length; i++) ctx.lineTo(splinePoints[i].x, splinePoints[i].y);
+                    const start = transform.project(splinePoints[0]);
+                    ctx.moveTo(start.x, start.y);
+                    for(let i=1; i<splinePoints.length; i++) {
+                        const p = transform.project(splinePoints[i]);
+                        ctx.lineTo(p.x, p.y);
+                    }
                     ctx.stroke();
                 }
                 break;
+            }
             case EntityType.TEXT:
-            case EntityType.MTEXT:
+            case EntityType.MTEXT: {
                 const text = cleanTextContent(ent.value);
                 if (!text) break;
                 
@@ -521,33 +537,44 @@ export const renderEntitiesToCanvas = (
                 
                 const hAlign = ent.hAlign || 0;
                 const vAlign = ent.vAlign || 0;
-                // For TEXT: if alignment is set, use secondPosition.
                 const pos = (!isMText && (hAlign !== 0 || vAlign !== 0) && ent.secondPosition) ? ent.secondPosition : ent.position;
                 
-                ctx.translate(pos.x, pos.y);
-                if (ent.rotation) ctx.rotate(ent.rotation * Math.PI / 180);
+                const sPos = transform.project(pos);
+                ctx.translate(sPos.x, sPos.y);
                 
-                ctx.scale(widthFactor, -1); 
+                if (ent.rotation) {
+                    // Y-flip means rotation direction is negated
+                    ctx.rotate(-ent.rotation * Math.PI / 180);
+                }
                 
+                // Scale text height to pixels
+                const textHeightPixels = ent.height * transform.scale;
+                const scaleY = 1.0; 
+                ctx.scale(widthFactor, scaleY); 
+                
+                // Update font height for the canvas font
+                const originalHeight = ent.height;
+                ent.height = textHeightPixels;
                 ctx.font = getCanvasFont(ent, styles);
+                ent.height = originalHeight; // Restore for next use
                 
                 let align: CanvasTextAlign = 'left';
                 let baseline: CanvasTextBaseline = 'alphabetic';
                 let dy = 0;
 
                 if (isMText) {
-                    const wrapW = ent.width || 0;
+                    const wrapW = (ent.width || 0) * transform.scale;
                     const lines = wrapText(ctx, text, wrapW);
-                    const lineHeight = ent.height * 1.67; 
+                    const lineHeight = textHeightPixels * 1.67; 
                     const totalHeight = lines.length * lineHeight;
                     const ap = ent.attachmentPoint || 1;
                     
                     if ([2, 5, 8].includes(ap)) align = 'center';
                     else if ([3, 6, 9].includes(ap)) align = 'right';
                     
-                    if ([1, 2, 3].includes(ap)) dy = 0; // Top
-                    if ([4, 5, 6].includes(ap)) dy = -totalHeight / 2; // Middle
-                    if ([7, 8, 9].includes(ap)) dy = -totalHeight; // Bottom
+                    if ([1, 2, 3].includes(ap)) dy = 0; 
+                    if ([4, 5, 6].includes(ap)) dy = -totalHeight / 2; 
+                    if ([7, 8, 9].includes(ap)) dy = -totalHeight; 
                     
                     baseline = 'top'; 
                     ctx.textAlign = align;
@@ -557,13 +584,11 @@ export const renderEntitiesToCanvas = (
                         ctx.fillText(line, 0, dy + i * lineHeight);
                     });
                 } else {
-                    // Standard TEXT
-                    if (hAlign === 1 || hAlign === 4) align = 'center'; // Center, Middle
-                    else if (hAlign === 2) align = 'right'; // Right
-                    else if (hAlign === 3) align = 'left'; // Aligned
-                    else if (hAlign === 5) align = 'center'; // Fit
+                    if (hAlign === 1 || hAlign === 4) align = 'center';
+                    else if (hAlign === 2) align = 'right';
+                    else if (hAlign === 3) align = 'left';
+                    else if (hAlign === 5) align = 'center';
 
-                    // Vertical Alignment
                     if (vAlign === 1) baseline = 'bottom';
                     else if (vAlign === 2) baseline = 'middle'; 
                     else if (vAlign === 3) baseline = 'top';
@@ -575,52 +600,59 @@ export const renderEntitiesToCanvas = (
                 }
                 ctx.restore();
                 break;
+            }
             case EntityType.ACAD_TABLE:
             case EntityType.INSERT: {
                 const block = blocks[ent.blockName];
                 if (!block) break;
 
                 const scale = ent.scale || { x: 1, y: 1, z: 1 };
-                const blockScale = Math.abs(scale.x * currentScale);
-
-                ctx.save();
-                ctx.translate(ent.position.x, ent.position.y);
+                const rotation = (ent.rotation || 0) * Math.PI / 180;
+                const cosR = Math.cos(rotation);
+                const sinR = Math.sin(rotation);
                 
-                if (ent.type === EntityType.ACAD_TABLE && (ent as any).direction) {
-                    const dir = (ent as any).direction;
-                    if (dir.x !== 0 || dir.y !== 0) {
-                        ctx.rotate(Math.atan2(dir.y, dir.x));
-                    }
-                } else if (ent.rotation) {
-                    ctx.rotate(ent.rotation * Math.PI / 180);
-                }
-
-                if (ent.scale) ctx.scale(ent.scale.x, ent.scale.y);
-                ctx.translate(-block.basePoint.x, -block.basePoint.y);
+                // Create nested transform
+                const nestedTransform: RenderTransform = {
+                    project: (p: Point2D) => {
+                        // 1. Apply block internal translation (relative to block base point)
+                        const px = p.x - block.basePoint.x;
+                        const py = p.y - block.basePoint.y;
+                        
+                        // 2. Apply scale
+                        const sx = px * scale.x;
+                        const sy = py * scale.y;
+                        
+                        // 3. Apply rotation
+                        const rx = sx * cosR - sy * sinR;
+                        const ry = sx * sinR + sy * cosR;
+                        
+                        // 4. Translate to insert position
+                        const tx = rx + ent.position.x;
+                        const ty = ry + ent.position.y;
+                        
+                        // 5. Apply parent project
+                        return transform.project({ x: tx, y: ty });
+                    },
+                    scale: transform.scale * Math.abs(scale.x) // Simplified scale for nested lineweights
+                };
 
                 const layerName = (ent.layer === '0' && parentLayerName) ? parentLayerName : ent.layer;
-                // Important: for children, they are relative to block base point, so no further world offset
-                block.entities.forEach(child => drawEntity(child, layerName, color, blockScale, isSelected, depth + 1));
-
-                // Draw attributes if any
+                block.entities.forEach(child => drawEntity(child, nestedTransform, layerName, color, isSelected, depth + 1));
                 if ((ent as any).attributes) {
-                    (ent as any).attributes.forEach((attr: AnyEntity) => drawEntity(attr, layerName, color, blockScale, isSelected, depth + 1));
+                    (ent as any).attributes.forEach((attr: AnyEntity) => drawEntity(attr, nestedTransform, layerName, color, isSelected, depth + 1));
                 }
-
-                ctx.restore();
                 break;
             }
             case EntityType.HATCH: {
                 ctx.save();
                 ctx.beginPath();
-                ent.loops.forEach(loop => drawHatchLoop(ctx, loop, ent.isFlipped || false));
+                ent.loops.forEach(loop => drawHatchLoop(ctx, loop, transform));
                 ctx.closePath();
                 
                 if (ent.solid) {
                     ctx.fillStyle = color;
                     ctx.fill('evenodd');
                 } else {
-                    // Pattern fill for non-solid hatches
                     const pattern = createHatchPattern(ctx, color);
                     if (pattern) {
                         ctx.fillStyle = pattern;
@@ -635,30 +667,12 @@ export const renderEntitiesToCanvas = (
                 const block = blocks[ent.blockName];
                 if (block) {
                     const layerName = (ent.layer === '0' && parentLayerName) ? parentLayerName : ent.layer;
-                    block.entities.forEach(child => {
-                        let childEnt = child;
-                        // Propagate Dimension color to its block components (Text, Arrows, etc)
-                        // if they are ByLayer (256) or ByBlock (0).
-                        if (child.color === undefined || child.color === 256 || child.color === 0) {
-                             childEnt = { ...child, color: 0 }; 
-                        }
-                        drawEntity(childEnt, layerName, color, currentScale, isSelected, depth + 1);
-                    });
-                } else {
-                     if (ent.text || ent.measurement) {
-                         const txt = ent.text || ent.measurement?.toFixed(2);
-                         const tempText: any = {
-                             id: 'temp', type: EntityType.TEXT, layer: ent.layer, color: ent.color,
-                             position: ent.textMidPoint || ent.definitionPoint,
-                             height: 2.5,
-                             value: txt,
-                             rotation: 0,
-                             visible: true,
-                             hAlign: 1, vAlign: 2 
-                         };
-                         const layerName = (ent.layer === '0' && parentLayerName) ? parentLayerName : ent.layer;
-                         drawEntity(tempText, layerName, color, currentScale, isSelected, depth + 1);
-                     }
+                    // Dimensions are essentially INSERTS of their block with identity transform
+                    const nestedTransform: RenderTransform = {
+                        project: (p: Point2D) => transform.project(p),
+                        scale: transform.scale
+                    };
+                    block.entities.forEach(child => drawEntity(child, nestedTransform, layerName, color, isSelected, depth + 1));
                 }
                 break;
             }
@@ -668,22 +682,23 @@ export const renderEntitiesToCanvas = (
                 
                 if (ent.type === EntityType.SOLID) {
                     ctx.beginPath();
-                    ctx.moveTo(ent.points[0].x, ent.points[0].y);
+                    const p0 = transform.project(ent.points[0]);
+                    ctx.moveTo(p0.x, p0.y);
                     for (let i = 1; i < ent.points.length; i++) {
-                        ctx.lineTo(ent.points[i].x, ent.points[i].y);
+                        const p = transform.project(ent.points[i]);
+                        ctx.lineTo(p.x, p.y);
                     }
                     ctx.closePath();
                     ctx.fill();
                     ctx.stroke();
                 } else {
-                    // 3DFACE: Handle invisible edges
                     const flags = ent.edgeFlags || 0;
                     const pts = ent.points;
                     
                     ctx.beginPath();
                     for (let i = 0; i < pts.length; i++) {
-                        const p1 = pts[i];
-                        const p2 = pts[(i + 1) % pts.length];
+                        const p1 = transform.project(pts[i]);
+                        const p2 = transform.project(pts[(i + 1) % pts.length]);
                         const isVisible = (flags & (1 << i)) === 0;
                         
                         if (isVisible) {
@@ -699,8 +714,12 @@ export const renderEntitiesToCanvas = (
                 if (ent.points.length < 2) break;
                 ctx.beginPath();
                 const pts = ent.points;
-                ctx.moveTo(pts[0].x, pts[0].y);
-                pts.slice(1).forEach(p => ctx.lineTo(p.x, p.y));
+                const p0 = transform.project(pts[0]);
+                ctx.moveTo(p0.x, p0.y);
+                pts.slice(1).forEach(p => {
+                    const sp = transform.project(p);
+                    ctx.lineTo(sp.x, sp.y);
+                });
                 
                 if (ent.hasHookLine) {
                      const last = pts[pts.length-1];
@@ -708,15 +727,16 @@ export const renderEntitiesToCanvas = (
                      const dx = last.x - prev.x;
                      const hookLen = 2.5; 
                      const dir = dx >= 0 ? 1 : -1;
-                     ctx.lineTo(last.x + dir * hookLen, last.y);
+                     const sp = transform.project({ x: last.x + dir * hookLen, y: last.y });
+                     ctx.lineTo(sp.x, sp.y);
                 }
                 ctx.stroke();
 
                 if (ent.arrowHeadFlag === 1) {
-                    const p1 = pts[0];
-                    const p2 = pts[1];
+                    const p1 = transform.project(pts[0]);
+                    const p2 = transform.project(pts[1]);
                     const ang = Math.atan2(p2.y - p1.y, p2.x - p1.x);
-                    const s = 2.5; 
+                    const s = 2.5 * transform.scale; 
                     const a1 = ang + Math.PI/6; 
                     const a2 = ang - Math.PI/6;
                     ctx.beginPath();
@@ -732,8 +752,7 @@ export const renderEntitiesToCanvas = (
         }
     };
 
-    entities.forEach(ent => drawEntity(ent, undefined, undefined, viewPort.zoom, false, 0));
-    ctx.restore();
+    entities.forEach(ent => drawEntity(ent, transform, undefined, undefined, false, 0));
 };
 
 const distanceToLine = (px: number, py: number, x1: number, y1: number, x2: number, y2: number) => {

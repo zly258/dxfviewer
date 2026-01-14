@@ -39,27 +39,92 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
   const [viewPort, setViewPort] = useState<ViewPort>(DEFAULT_VIEWPORT);
   const [theme, setTheme] = useState<'black' | 'white'>('black');
 
-  // Add resize listener
-  useEffect(() => {
-    const handleResize = () => {
-        if (entities.length > 0) {
-            fitView(entities, blocks);
-        }
-    };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, [entities, blocks]);
+  const fitView = useCallback((ents: AnyEntity[], blks: Record<string, DxfBlock>) => {
+    if (ents.length === 0) return;
+    const visibleEnts = ents.filter(e => e.visible !== false && e.type !== EntityType.ATTDEF);
+    if (visibleEnts.length === 0) return;
 
-  // Load initial file if provided
-  useEffect(() => {
-    if (initFiles) {
-        if (typeof initFiles === 'string') {
-            loadFromUrl(initFiles);
-        } else if (initFiles instanceof File) {
-            loadFromFile(initFiles);
-        }
+    // Step 1: Calculate world bounding box (min/max)
+    const extents = calculateExtents(visibleEnts, blks);
+
+    // Step 2: Calculate world center (must-have for precision)
+    const centerX = extents.center.x;
+    const centerY = extents.center.y;
+
+    // Step 3: Calculate scale (only based on range)
+    const sidebarWidth = showSidebar ? 256 : 0;
+    const propsWidth = showProperties ? 320 : 0;
+    // Account for potential scrollbars and padding - use a safer margin
+    const containerW = Math.max(window.innerWidth - sidebarWidth - propsWidth - 40, 100);
+    const containerH = Math.max(window.innerHeight - 40 - 40, 100); 
+
+    if (extents.width <= 0 && extents.height <= 0) {
+        setViewPort({ targetX: centerX, targetY: centerY, zoom: 1 });
+        return;
     }
-  }, [initFiles]);
+
+    const worldW = Math.max(extents.width, 1e-6);
+    const worldH = Math.max(extents.height, 1e-6);
+
+    const marginFactor = 0.95;
+    const scaleX = (containerW / worldW) * marginFactor;
+    const scaleY = (containerH / worldH) * marginFactor;
+    let zoom = Math.min(scaleX, scaleY);
+    
+    // Final safety check for zoom
+    if (isNaN(zoom) || !isFinite(zoom) || zoom <= 0) {
+        zoom = 1.0;
+    }
+
+    // Clamp zoom to reasonable values (extended for extreme coordinates)
+    zoom = Math.max(Math.min(zoom, 1e20), 1e-50);
+
+    // Step 4: Set Viewport (will be used by renderer's setTransform)
+    // Using targetX/targetY as the world center ensures the "subtract first" principle
+    // is applied during rendering.
+    setViewPort({ 
+        targetX: centerX, 
+        targetY: centerY, 
+        zoom 
+    });
+  }, [showSidebar, showProperties]);
+
+  const processBuffer = async (buffer: ArrayBuffer) => {
+    let content = '';
+    // Auto-detect encoding
+    try {
+        const decoder = new TextDecoder('utf-8', { fatal: true });
+        content = decoder.decode(buffer);
+    } catch (err) {
+        // Fallback to GB18030 for Chinese CAD files
+        const decoder = new TextDecoder('gb18030');
+        content = decoder.decode(buffer);
+    }
+
+    try {
+        const data = await parseDxf(content, (progress) => {
+            setLoadingProgress(progress);
+        });
+        setEntities(data.entities);
+        setLayers(data.layers);
+        setBlocks(data.blocks);
+        setStyles(data.styles);
+        setLineTypes(data.lineTypes);
+        setLtScale(data.header?.ltScale ?? 1.0);
+        setWorldOffset(data.offset);
+        onLoad?.(data);
+        
+        // Fit view immediately with the new data
+        fitView(data.entities, data.blocks);
+    } catch (err) {
+        const error = err instanceof Error ? err : new Error(String(err));
+        onError?.(error);
+        alert("DXF Parse Error: " + error.message);
+        console.error(err);
+    } finally {
+        setIsLoading(false);
+    }
+  };
 
   const loadFromUrl = async (url: string) => {
     setIsLoading(true);
@@ -94,86 +159,29 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
     reader.readAsArrayBuffer(file);
   };
 
-  const processBuffer = async (buffer: ArrayBuffer) => {
-    let content = '';
-    // Auto-detect encoding
-    try {
-        const decoder = new TextDecoder('utf-8', { fatal: true });
-        content = decoder.decode(buffer);
-    } catch (err) {
-        // Fallback to GB18030 for Chinese CAD files
-        const decoder = new TextDecoder('gb18030');
-        content = decoder.decode(buffer);
+  // Fit view on resize or layout change
+  useEffect(() => {
+    const handleResize = () => {
+      if (entities.length > 0) {
+        fitView(entities, blocks);
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    // Also trigger on sidebar/properties toggle
+    handleResize();
+    return () => window.removeEventListener('resize', handleResize);
+  }, [entities, blocks, fitView, showSidebar, showProperties]);
+
+  // Load initial file if provided
+  useEffect(() => {
+    if (initFiles) {
+        if (typeof initFiles === 'string') {
+            loadFromUrl(initFiles);
+        } else if (initFiles instanceof File) {
+            loadFromFile(initFiles);
+        }
     }
-
-    try {
-        const data = await parseDxf(content, (progress) => {
-            setLoadingProgress(progress);
-        });
-        setEntities(data.entities);
-        setLayers(data.layers);
-        setBlocks(data.blocks);
-        setStyles(data.styles);
-        setLineTypes(data.lineTypes);
-        setLtScale(data.header?.ltScale ?? 1.0);
-        setWorldOffset(data.offset);
-        onLoad?.(data);
-        
-        // Use data.offset directly to avoid dependency on state update
-        fitView(data.entities, data.blocks, data.offset);
-    } catch (err) {
-        const error = err instanceof Error ? err : new Error(String(err));
-        onError?.(error);
-        alert("DXF Parse Error: " + error.message);
-        console.error(err);
-    } finally {
-        setIsLoading(false);
-    }
-  };
-
-  const fitView = useCallback((ents: AnyEntity[], blks: Record<string, DxfBlock>) => {
-    if (ents.length === 0) return;
-    const visibleEnts = ents.filter(e => e.visible !== false && e.type !== EntityType.ATTDEF);
-    if (visibleEnts.length === 0) return;
-
-    // Step 1: Calculate world bounding box (min/max)
-    const extents = calculateExtents(visibleEnts, blks);
-
-    // Step 2: Calculate world center (must-have for precision)
-    const centerX = extents.center.x;
-    const centerY = extents.center.y;
-
-    // Step 3: Calculate scale (only based on range)
-    const sidebarWidth = showSidebar ? 256 : 0;
-    const propsWidth = showProperties ? 320 : 0;
-    // Account for potential scrollbars and padding - use a safer margin
-    const containerW = Math.max(window.innerWidth - sidebarWidth - propsWidth - 40, 100);
-    const containerH = Math.max(window.innerHeight - 40 - 40, 100); 
-
-    if (extents.width <= 0 && extents.height <= 0) {
-        setViewPort({ targetX: centerX, targetY: centerY, zoom: 1 });
-        return;
-    }
-
-    const worldW = Math.max(extents.width, 1e-9);
-    const worldH = Math.max(extents.height, 1e-9);
-
-    // Follow user's Step 3: scale = Math.min(canvas.width / worldW, canvas.height / worldH)
-    // We add a 5% margin (0.95 factor) for better visual framing
-    const marginFactor = 0.95;
-    const scaleX = (containerW / worldW) * marginFactor;
-    const scaleY = (containerH / worldH) * marginFactor;
-    let zoom = Math.min(scaleX, scaleY);
-
-    // Step 4: Set Viewport (will be used by renderer's setTransform)
-    // Using targetX/targetY as the world center ensures the "subtract first" principle
-    // is applied during rendering.
-    setViewPort({ 
-        targetX: centerX, 
-        targetY: centerY, 
-        zoom 
-    });
-  }, [showSidebar, showProperties]);
+  }, [initFiles]);
 
   const handleSidebarSelectIds = (ids: Set<string>) => {
       setSelectedEntityIds(ids);
@@ -222,7 +230,9 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
       setViewPort(DEFAULT_VIEWPORT);
   };
 
-  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+
+
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 

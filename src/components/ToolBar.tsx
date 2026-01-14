@@ -65,14 +65,14 @@ const ToolBar: React.FC<ToolBarProps> = ({
             </div>
             <div className="divider"></div>
             <div onClick={onToggleSidebar} className="dropdown-item">
-              <span>图层</span>
+              <span>图层 ({showSidebar ? '关闭' : '打开'})</span>
             </div>
             <div onClick={onToggleProperties} className="dropdown-item">
-               <span>属性</span>
+               <span>属性 ({showProperties ? '关闭' : '打开'})</span>
             </div>
             <div className="divider"></div>
             <div onClick={onToggleTheme} className="dropdown-item">
-              <span>切换背景 ({theme === 'black' ? '黑色' : '白色'})</span>
+              <span>背景 ({theme === 'black' ? '黑色' : '白色'})</span>
             </div>
           </div>
         )}

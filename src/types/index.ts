@@ -47,6 +47,7 @@ export interface DxfEntity {
   type: EntityType;
   layer: string;
   color?: number;
+  trueColor?: number;
   lineType?: string;
   lineTypeScale?: number;
   lineweight?: number;
@@ -251,6 +252,7 @@ export interface DxfBlock {
 export interface DxfLayer {
   name: string;
   color: number;
+  trueColor?: number;
   lineType?: string;
   lineweight?: number;
   isVisible?: boolean;
