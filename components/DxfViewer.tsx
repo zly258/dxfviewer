@@ -33,6 +33,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({ entities, layers, blocks = {}, st
      const safeZoom = Math.max(Math.abs(viewPort.zoom), Number.MIN_VALUE);
      const offsetX = worldOffset?.x || 0;
      const offsetY = worldOffset?.y || 0;
+     // Using original coordinates
      const wx = (sx - viewPort.x) / safeZoom + offsetX;
      const wy = -(sy - viewPort.y) / safeZoom + offsetY;
      return {

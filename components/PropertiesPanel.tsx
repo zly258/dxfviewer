@@ -119,6 +119,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, layers, sty
   };
 
   const formatCoord = (val: number, axis: 'x' | 'y') => {
+    // No offset needed - using original coordinates
     return val.toFixed(3);
   };
 

@@ -409,11 +409,9 @@ export const parseDxf = async (dxfString: string, onProgress?: (percent: number)
 
   // Calculate extents
   const extents = calculateExtents(entities, blocks);
-  
-  // Use the center as the offset for large coordinates to maintain precision during rendering
-  const offset = { x: extents.center.x, y: extents.center.y };
 
-  return { header, entities, layers, blocks, styles, lineTypes, offset, extents };
+  // Return original data without offset - rendering will handle large coordinates
+  return { header, entities, layers, blocks, styles, lineTypes, offset: {x: 0, y: 0}, extents };
 };
 
 const parsePoint = (state: DxfParserState): Point2D => {

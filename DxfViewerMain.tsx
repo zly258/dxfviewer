@@ -137,9 +137,11 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
         // For single point, center it and use default zoom
         const offsetX = worldOffset?.x || 0;
         const offsetY = worldOffset?.y || 0;
-        const centeredX = extents.center.x - offsetX;
-        const centeredY = extents.center.y - offsetY;
-        setViewPort({ x: containerW/2, y: containerH/2, zoom: 1 });
+        setViewPort({
+            x: containerW/2 - (extents.center.x - offsetX),
+            y: containerH/2 + (extents.center.y - offsetY),
+            zoom: 1
+        });
         return;
      }
 
@@ -159,16 +161,13 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
 
      const screenCenterX = containerW / 2;
      const screenCenterY = containerH / 2;
+
+     // Use original coordinates - offset is zero
      const offsetX = worldOffset?.x || 0;
      const offsetY = worldOffset?.y || 0;
 
-     // Calculate position with offset to center the view
-     // The offset should bring the world center to near the origin for rendering precision
-     const centeredExtentsX = extents.center.x - offsetX;
-     const centeredExtentsY = extents.center.y - offsetY;
-
-     const x = screenCenterX - centeredExtentsX * zoom;
-     const y = screenCenterY + centeredExtentsY * zoom;
+     const x = screenCenterX - (extents.center.x - offsetX) * zoom;
+     const y = screenCenterY + (extents.center.y - offsetY) * zoom;
 
      setViewPort({ x, y, zoom });
   };
@@ -201,11 +200,9 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
 
                   const screenCenterX = containerW / 2;
                   const screenCenterY = containerH / 2;
-                  const centeredExtentsX = extents.center.x - offsetX;
-                  const centeredExtentsY = extents.center.y - offsetY;
 
-                  const x = screenCenterX - centeredExtentsX * zoom;
-                  const y = screenCenterY + centeredExtentsY * zoom;
+                  const x = screenCenterX - (extents.center.x - offsetX) * zoom;
+                  const y = screenCenterY + (extents.center.y - offsetY) * zoom;
 
                   setViewPort({ x, y, zoom });
               }

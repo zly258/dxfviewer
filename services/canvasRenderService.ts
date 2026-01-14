@@ -284,8 +284,6 @@ export const renderEntitiesToCanvas = (
     ctx.save();
     ctx.translate(viewPort.x, viewPort.y);
     ctx.scale(viewPort.zoom, -viewPort.zoom);
-    // Apply offset to maintain precision with large coordinates
-    ctx.translate(-(offset.x || 0), -(offset.y || 0));
 
     const drawEntity = (ent: AnyEntity, parentLayerName?: string, parentColor?: string, currentScale: number = viewPort.zoom, parentSelected: boolean = false, depth: number = 0, ox: number = offset.x, oy: number = offset.y) => {
         if (ent.visible === false || depth > 20) return;
