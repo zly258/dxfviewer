@@ -6,8 +6,6 @@ export const DEFAULT_VIEWPORT = {
 
 export const DEFAULT_COLOR = '#FFFFFF';
 
-export const GRID_SIZE = 100;
-
 export const LINE_TYPE_MAP: Record<string, string> = {
   'CONTINUOUS': 'none',
   'BYLAYER': 'none',

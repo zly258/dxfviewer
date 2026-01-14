@@ -1,16 +1,23 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './styles/styles.css';
-import App from './App';
+import DxfViewerMain from './DxfViewerMain';
 
+// Export for library use
+export { DxfViewerMain };
+export type { AnyEntity, ViewPort, DxfLayer, DxfBlock, DxfStyle, DxfLineType, Point2D } from './types';
+
+// Default entry point for dev
 const rootElement = document.getElementById('root');
-if (!rootElement) {
-  throw new Error("Could not find root element to mount to");
+if (rootElement) {
+  const root = ReactDOM.createRoot(rootElement);
+  root.render(
+    <React.StrictMode>
+      <DxfViewerMain 
+        showOpenMenu={true}
+        onError={(err) => console.error('DXF Viewer Error:', err)}
+        onLoad={(data) => console.log('DXF Data Loaded:', data)}
+      />
+    </React.StrictMode>
+  );
 }
-
-const root = ReactDOM.createRoot(rootElement);
-root.render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);

@@ -1,7 +1,7 @@
-import React, { useRef, useState, WheelEvent, MouseEvent, useEffect, useLayoutEffect } from 'react';
+import React, { useRef, useState, WheelEvent, MouseEvent, useEffect, useLayoutEffect, useCallback } from 'react';
 import { AnyEntity, ViewPort, DxfLayer, DxfBlock, DxfStyle, DxfLineType, EntityType, Point2D } from '../types';
-import { GRID_SIZE } from '../constants';
 import { renderEntitiesToCanvas, hitTest, hitTestBox } from '../services/canvasRenderService';
+import { Language, UI_TRANSLATIONS } from '../constants/i18n';
 
 interface DxfViewerProps {
   entities: AnyEntity[];
@@ -17,11 +17,13 @@ interface DxfViewerProps {
   worldOffset?: Point2D;
   ltScale?: number;
   theme: 'black' | 'white';
+  lang: Language;
 }
 
-const DxfViewer: React.FC<DxfViewerProps> = ({ entities, layers, blocks = {}, styles = {}, lineTypes = {}, viewPort, onViewPortChange, selectedEntityIds, onSelectIds, worldOffset, ltScale = 1.0, theme }) => {
+const DxfViewer: React.FC<DxfViewerProps> = ({ entities, layers, blocks = {}, styles = {}, lineTypes = {}, viewPort, onViewPortChange, selectedEntityIds, onSelectIds, worldOffset, ltScale = 1.0, theme, lang }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const t = UI_TRANSLATIONS[lang];
   
   const [isPanning, setIsPanning] = useState(false);
   const [isBoxSelecting, setIsBoxSelecting] = useState(false);
@@ -277,7 +279,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({ entities, layers, blocks = {}, st
             </div>
             <div className="status-spacer"></div>
             <div>
-                实体数: <span className="status-value">{visibleCount}</span>
+                {lang === 'zh' ? '实体数' : 'Entities'}: <span className="status-value">{visibleCount}</span>
             </div>
         </div>
     </div>

@@ -6,19 +6,26 @@ import ToolBar from './components/ToolBar';
 import { parseDxf, calculateExtents, calculateSmartExtents } from './services/dxfService';
 import { AnyEntity, ViewPort, DxfLayer, DxfBlock, EntityType, DxfStyle, DxfLineType, Point2D } from './types';
 import { DEFAULT_VIEWPORT } from './constants';
+import { Language } from './constants/i18n';
 
 interface DxfViewerMainProps {
   initFiles?: string | File;
   showOpenMenu?: boolean;
   onError?: (err: Error) => void;
   onLoad?: (data: any) => void;
+  defaultLanguage?: Language;
+  lang?: Language;
+  onLanguageChange?: (lang: Language) => void;
 }
 
 const DxfViewerMain: React.FC<DxfViewerMainProps> = ({ 
   initFiles, 
   showOpenMenu = true, 
   onError, 
-  onLoad 
+  onLoad,
+  defaultLanguage = 'zh',
+  lang: controlledLang,
+  onLanguageChange
 }) => {
   const [entities, setEntities] = useState<AnyEntity[]>([]);
   const [layers, setLayers] = useState<Record<string, DxfLayer>>({ '0': { name: '0', color: 7 }});
@@ -38,6 +45,13 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
 
   const [viewPort, setViewPort] = useState<ViewPort>(DEFAULT_VIEWPORT);
   const [theme, setTheme] = useState<'black' | 'white'>('black');
+  const [internalLang, setInternalLang] = useState<Language>(defaultLanguage);
+
+  const lang = controlledLang || internalLang;
+  const handleSetLang = useCallback((newLang: Language) => {
+    setInternalLang(newLang);
+    onLanguageChange?.(newLang);
+  }, [onLanguageChange]);
 
   const fitView = useCallback((ents: AnyEntity[], blks: Record<string, DxfBlock>) => {
     if (ents.length === 0) return;
@@ -312,6 +326,8 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
         showOpen={showOpenMenu}
         theme={theme}
         onToggleTheme={() => setTheme(theme === 'black' ? 'white' : 'black')}
+        lang={lang}
+        onSetLang={handleSetLang}
       />
       
       <div className="main-content" style={{ height: 'calc(100vh - 40px)' }}>
@@ -322,6 +338,7 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
             selectedEntityIds={selectedEntityIds}
             onSelectIds={handleSidebarSelectIds}
             theme={theme}
+            lang={lang}
             />
         )}
         
@@ -340,6 +357,7 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
             onFitView={handleFitView}
             worldOffset={worldOffset}
             theme={theme}
+            lang={lang}
           />
         </main>
 
@@ -350,6 +368,7 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
                 styles={styles}
                 offset={worldOffset}
                 theme={theme}
+                lang={lang}
             />
         )}
       </div>

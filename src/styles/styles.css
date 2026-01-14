@@ -141,7 +141,7 @@ body {
 .status-bar {
   height: 32px;
   background-color: white;
-  border-top: 2px solid var(--blue-600);
+  border-top: 1px solid var(--bg-gray-300);
   display: flex;
   align-items: center;
   padding: 0 1rem;

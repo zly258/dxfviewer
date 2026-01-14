@@ -6,6 +6,18 @@
     "access": "public"
   },
   "type": "module",
+  "main": "./dist/dxfviewer.umd.js",
+  "module": "./dist/dxfviewer.es.js",
+  "exports": {
+    ".": {
+      "import": "./dist/dxfviewer.es.js",
+      "require": "./dist/dxfviewer.umd.js"
+    },
+    "./style.css": "./dist/style.css"
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "dev": "vite",
     "build": "vite build",

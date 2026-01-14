@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { AnyEntity, EntityType, DxfLayer } from '../types';
 import { getAutoCadColor } from '../utils/colorUtils';
-import { ENTITY_TYPE_TRANSLATIONS } from '../constants';
+import { Language, UI_TRANSLATIONS, ENTITY_TYPE_NAMES } from '../constants/i18n';
 
 interface SidebarProps {
   layers: Record<string, DxfLayer>;
@@ -9,6 +9,7 @@ interface SidebarProps {
   selectedEntityIds: Set<string>;
   onSelectIds: (ids: Set<string>) => void;
   theme: 'black' | 'white';
+  lang: Language;
 }
 
 const ROW_HEIGHT = 36; 
@@ -17,11 +18,13 @@ type FlatItem =
   | { type: 'layer'; name: string; layer: DxfLayer; count: number; expanded: boolean }
   | { type: 'entity'; id: string; entity: AnyEntity };
 
-const Sidebar: React.FC<SidebarProps> = ({ layers, entities, selectedEntityIds, onSelectIds, theme }) => {
+const Sidebar: React.FC<SidebarProps> = ({ layers, entities, selectedEntityIds, onSelectIds, theme, lang }) => {
   const [expandedLayers, setExpandedLayers] = useState<Set<string>>(new Set(Object.keys(layers)));
   const containerRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [containerHeight, setContainerHeight] = useState(500);
+  const t = UI_TRANSLATIONS[lang];
+  const entNames = ENTITY_TYPE_NAMES[lang];
 
   const entitiesByLayer = useMemo(() => {
     return entities.reduce((acc, ent) => {
@@ -122,7 +125,7 @@ const Sidebar: React.FC<SidebarProps> = ({ layers, entities, selectedEntityIds, 
   return (
     <div className="sidebar">
       <div className="sidebar-header">
-        图层与实体
+        {t.layersTitle}
       </div>
       
       <div 
@@ -159,8 +162,8 @@ const Sidebar: React.FC<SidebarProps> = ({ layers, entities, selectedEntityIds, 
                             >
                                 {getEntityIcon(item.entity.type)}
                                 <span className="entity-name">
-                                    {ENTITY_TYPE_TRANSLATIONS[item.entity.type] || item.entity.type}
-                                </span>
+                            {entNames[item.entity.type] || item.entity.type}
+                          </span>
                                 {isSelected && <div className="selection-dot"></div>}
                             </div>
                         );

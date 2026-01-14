@@ -1,46 +1,8 @@
 import React from 'react';
 import { AnyEntity, EntityType, DxfStyle } from '../types';
 import { getAutoCadColor } from '../utils/colorUtils';
-import { ENTITY_TYPE_TRANSLATIONS } from '../constants';
+import { Language, UI_TRANSLATIONS, ENTITY_TYPE_NAMES } from '../constants/i18n';
 import { getStyleFontFamily } from '../services/fontService';
-
-const LABEL_TRANSLATIONS: Record<string, string> = {
-  "Type": "类型 (Type)",
-  "Handle": "句柄 (Handle)",
-  "Layer": "图层 (Layer)",
-  "Color": "颜色 (Color)",
-  "Linetype": "线型 (Linetype)",
-  "Linetype Scale": "线型比例 (Linetype Scale)",
-  "Lineweight": "线宽 (Lineweight)",
-  "Start X": "起点 X",
-  "Start Y": "起点 Y",
-  "End X": "终点 X",
-  "End Y": "终点 Y",
-  "Length": "长度",
-  "Center X": "中心 X",
-  "Center Y": "中心 Y",
-  "Radius": "半径",
-  "Area": "面积",
-  "Start Angle": "起始角度",
-  "End Angle": "终止角度",
-  "Vertices": "顶点数",
-  "Closed": "是否闭合",
-  "Content": "文字内容",
-  "Height": "高度",
-  "Pos X": "位置 X",
-  "Pos Y": "位置 Y",
-  "Rotation": "旋转角度",
-  "Width": "宽度",
-  "Block": "块名",
-  "Scale": "缩放比例",
-  "Pattern": "填充图案",
-  "Style": "填充样式",
-  "Loops": "边界环数",
-  "Value": "测量值",
-  "Text": "显示文字",
-  "Font": "字体 (Font)",
-  "StyleName": "文字样式",
-};
 
 interface PropertiesPanelProps {
   entities: AnyEntity[];
@@ -48,12 +10,17 @@ interface PropertiesPanelProps {
   styles?: Record<string, DxfStyle>;
   offset?: { x: number, y: number };
   theme: 'black' | 'white';
+  lang: Language;
 }
 
-const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, layers, styles = {}, offset, theme }) => {
+const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, layers, styles = {}, offset, theme, lang }) => {
+  const t = UI_TRANSLATIONS[lang];
+  const entNames = ENTITY_TYPE_NAMES[lang];
   
   const renderPropertyRow = (label: string, value: React.ReactNode) => {
-    const translatedLabel = LABEL_TRANSLATIONS[label] || label;
+    // Try to find the translation for the label (convert label to camelCase or direct match)
+    const key = label.charAt(0).toLowerCase() + label.slice(1).replace(/ /g, '');
+    const translatedLabel = t[key] || t[label] || label;
     return (
       <tr key={label} className="property-row">
         <td className="property-label-cell">{translatedLabel}</td>
@@ -102,7 +69,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, layers, sty
   };
 
   const renderEntityProperties = (ent: AnyEntity) => {
-      const typeDisplay = ENTITY_TYPE_TRANSLATIONS[ent.type] || ent.type;
+      const typeDisplay = entNames[ent.type] || ent.type;
       
       const commonRows = [
           renderPropertyRow("Type", <span className="text-blue-600 font-bold">{typeDisplay}</span>),
@@ -229,20 +196,24 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, layers, sty
   return (
       <div className="properties-panel">
         <div className="properties-header">
-           属性面板
+          {t.propertiesTitle || "属性面板"}
         </div>
         <div className="properties-content">
-          {entities.length === 1 ? (
-             renderEntityProperties(entities[0])
+          {entities.length === 0 ? (
+             <div className="empty-state">
+               {t.noSelection || "未选择对象"}
+             </div>
           ) : entities.length > 1 ? (
              <div className="empty-state">
-               <div style={{ fontWeight: 500, color: '#6b7280' }}>已选择 {entities.length} 个对象</div>
-               <div style={{ fontSize: '12px', marginTop: '4px' }}>选择单个对象以查看详细属性</div>
+               <div style={{ fontWeight: 500, color: '#6b7280' }}>
+                 {t.selectedCount ? t.selectedCount.replace('{count}', entities.length.toString()) : `已选择 ${entities.length} 个对象`}
+               </div>
+               <div style={{ fontSize: '12px', marginTop: '4px' }}>
+                 {t.selectSingle || "选择单个对象以查看详细属性"}
+               </div>
              </div>
           ) : (
-             <div className="empty-state">
-               未选择对象
-             </div>
+             renderEntityProperties(entities[0])
           )}
         </div>
       </div>
