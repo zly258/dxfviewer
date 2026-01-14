@@ -37,6 +37,7 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
   const [showProperties, setShowProperties] = useState(true);
 
   const [viewPort, setViewPort] = useState<ViewPort>(DEFAULT_VIEWPORT);
+  const [theme, setTheme] = useState<'black' | 'white'>('black');
 
   // Add resize listener
   useEffect(() => {
@@ -130,51 +131,48 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
     }
   };
 
-  const fitView = useCallback((ents: AnyEntity[], blks: Record<string, DxfBlock>, overrideOffset?: Point2D) => {
-     if (ents.length === 0) return;
-     const visibleEnts = ents.filter(e => e.visible !== false && e.type !== EntityType.ATTDEF);
-     if (visibleEnts.length === 0) return;
+  const fitView = useCallback((ents: AnyEntity[], blks: Record<string, DxfBlock>) => {
+    if (ents.length === 0) return;
+    const visibleEnts = ents.filter(e => e.visible !== false && e.type !== EntityType.ATTDEF);
+    if (visibleEnts.length === 0) return;
 
-     const extents = calculateExtents(visibleEnts, blks);
+    // Step 1: Calculate world bounding box (min/max)
+    const extents = calculateExtents(visibleEnts, blks);
 
-     const sidebarWidth = showSidebar ? 256 : 0;
-     const propsWidth = showProperties ? 320 : 0;
-     const containerW = window.innerWidth - sidebarWidth - propsWidth;
-     const containerH = window.innerHeight - 40; // Only subtract Toolbar height
+    // Step 2: Calculate world center (must-have for precision)
+    const centerX = extents.center.x;
+    const centerY = extents.center.y;
 
-     if (extents.width <= 0 && extents.height <= 0) {
-        // For single point, center it and use default zoom
-        const offsetX = (overrideOffset || worldOffset)?.x || 0;
-        const offsetY = (overrideOffset || worldOffset)?.y || 0;
-        setViewPort({
-            x: containerW/2 - (extents.center.x - offsetX),
-            y: containerH/2 + (extents.center.y - offsetY),
-            zoom: 1
-        });
+    // Step 3: Calculate scale (only based on range)
+    const sidebarWidth = showSidebar ? 256 : 0;
+    const propsWidth = showProperties ? 320 : 0;
+    // Account for potential scrollbars and padding - use a safer margin
+    const containerW = Math.max(window.innerWidth - sidebarWidth - propsWidth - 40, 100);
+    const containerH = Math.max(window.innerHeight - 40 - 40, 100); 
+
+    if (extents.width <= 0 && extents.height <= 0) {
+        setViewPort({ targetX: centerX, targetY: centerY, zoom: 1 });
         return;
-     }
+    }
 
-     const w = Math.max(extents.width, 1e-9);
-     const h = Math.max(extents.height, 1e-9);
+    const worldW = Math.max(extents.width, 1e-9);
+    const worldH = Math.max(extents.height, 1e-9);
 
-     // Calculate zoom with consistent 5% margin on all sides
-     const marginFactor = 0.95; 
-     const zoomX = (containerW / w) * marginFactor;
-     const zoomY = (containerH / h) * marginFactor;
-     let zoom = Math.min(zoomX, zoomY);
+    // Follow user's Step 3: scale = Math.min(canvas.width / worldW, canvas.height / worldH)
+    // We add a 5% margin (0.95 factor) for better visual framing
+    const marginFactor = 0.95;
+    const scaleX = (containerW / worldW) * marginFactor;
+    const scaleY = (containerH / worldH) * marginFactor;
+    let zoom = Math.min(scaleX, scaleY);
 
-     // Clamp zoom to prevent extreme values that cause rendering artifacts
-     zoom = Math.max(Math.min(zoom, 1e10), 1e-10);
-
-     const screenCenterX = containerW / 2;
-     const screenCenterY = containerH / 2;
-
-     // The entities are already centered around (0,0) in world space by parseDxf
-     // So extents.center is already the center in the current coordinate system.
-     const x = screenCenterX - extents.center.x * zoom;
-     const y = screenCenterY + extents.center.y * zoom;
-
-     setViewPort({ x, y, zoom });
+    // Step 4: Set Viewport (will be used by renderer's setTransform)
+    // Using targetX/targetY as the world center ensures the "subtract first" principle
+    // is applied during rendering.
+    setViewPort({ 
+        targetX: centerX, 
+        targetY: centerY, 
+        zoom 
+    });
   }, [showSidebar, showProperties]);
 
   const handleSidebarSelectIds = (ids: Set<string>) => {
@@ -198,16 +196,13 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
                   const zoomX = (containerW / w) * marginFactor;
                   const zoomY = (containerH / h) * marginFactor;
                   // Clamp zoom to prevent excessive zoom on small entities
-                  let zoom = Math.min(zoomX, zoomY, 1e6);
-                  zoom = Math.max(zoom, 1e-10);
+                  let zoom = Math.min(zoomX, zoomY, 100);
 
-                  const screenCenterX = containerW / 2;
-                  const screenCenterY = containerH / 2;
-
-                  const x = screenCenterX - extents.center.x * zoom;
-                  const y = screenCenterY + extents.center.y * zoom;
-
-                  setViewPort({ x, y, zoom });
+                  setViewPort({
+                    targetX: extents.center.x,
+                    targetY: extents.center.y,
+                    zoom
+                  });
               }
           }
       }
@@ -250,32 +245,24 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
       }
 
       try {
-        setTimeout(async () => {
-            try {
-                const data = await parseDxf(content, (progress) => {
-                    setLoadingProgress(progress);
-                });
-                setEntities(data.entities);
-                setLayers(data.layers);
-                setBlocks(data.blocks);
-                setStyles(data.styles);
-                setLineTypes(data.lineTypes);
-                setLtScale(data.header?.ltScale ?? 1.0);
-                setWorldOffset(data.offset);
-                // Wait for state updates to propagate before fitting view
-                setTimeout(() => {
-                  fitView(data.entities, data.blocks);
-                }, 100);
-            } catch (err) {
-                alert("DXF Parse Error: " + (err as any).message);
-                console.error(err);
-            } finally {
-                setIsLoading(false);
-            }
-        }, 50);
+        const data = await parseDxf(content, (progress) => {
+            setLoadingProgress(progress);
+        });
+        setEntities(data.entities);
+        setLayers(data.layers);
+        setBlocks(data.blocks);
+        setStyles(data.styles);
+        setLineTypes(data.lineTypes);
+        setLtScale(data.header?.ltScale ?? 1.0);
+        setWorldOffset(data.offset);
+        
+        // Fit view immediately with the new data
+        fitView(data.entities, data.blocks);
       } catch (err) {
+        alert("DXF Parse Error: " + (err as any).message);
+        console.error(err);
+      } finally {
         setIsLoading(false);
-        alert("File Read Error");
       }
     };
     reader.readAsArrayBuffer(file);
@@ -310,6 +297,8 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
         showProperties={showProperties}
         onToggleProperties={() => setShowProperties(!showProperties)}
         showOpen={showOpenMenu}
+        theme={theme}
+        onToggleTheme={() => setTheme(theme === 'black' ? 'white' : 'black')}
       />
       
       <div className="main-content" style={{ height: 'calc(100vh - 40px)' }}>
@@ -319,10 +308,11 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
             entities={entities} 
             selectedEntityIds={selectedEntityIds}
             onSelectIds={handleSidebarSelectIds}
+            theme={theme}
             />
         )}
         
-        <main className="viewer-container bg-[#212121] shadow-inner flex flex-col border-l border-r border-gray-300">
+        <main className={`viewer-container shadow-inner flex flex-col border-l border-r border-gray-300 ${theme === 'black' ? 'bg-[#212121]' : 'bg-white'}`}>
           <DxfViewer 
             entities={entities} 
             layers={layers}
@@ -336,6 +326,7 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
             onSelectIds={setSelectedEntityIds}
             onFitView={handleFitView}
             worldOffset={worldOffset}
+            theme={theme}
           />
         </main>
 
@@ -345,6 +336,7 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
                 layers={Object.values(layers)}
                 styles={styles}
                 offset={worldOffset}
+                theme={theme}
             />
         )}
       </div>

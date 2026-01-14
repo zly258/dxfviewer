@@ -47,9 +47,10 @@ interface PropertiesPanelProps {
   layers?: any[];
   styles?: Record<string, DxfStyle>;
   offset?: { x: number, y: number };
+  theme: 'black' | 'white';
 }
 
-const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, layers, styles = {}, offset }) => {
+const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, layers, styles = {}, offset, theme }) => {
   
   const renderPropertyRow = (label: string, value: React.ReactNode) => {
     const translatedLabel = LABEL_TRANSLATIONS[label] || label;
@@ -74,7 +75,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, layers, sty
     if (color === 256) return <span className="text-gray-500">随层 (ByLayer)</span>;
     if (color === 0) return <span className="text-gray-500">随块 (ByBlock)</span>;
     
-    const hex = getAutoCadColor(color || 7);
+    const hex = getAutoCadColor(color || 7, theme);
     return (
       <div className="color-preview-container">
         <span className="text-gray-400 text-xs">({color})</span>

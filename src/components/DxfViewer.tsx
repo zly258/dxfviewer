@@ -16,9 +16,10 @@ interface DxfViewerProps {
   onFitView: () => void;
   worldOffset?: Point2D;
   ltScale?: number;
+  theme: 'black' | 'white';
 }
 
-const DxfViewer: React.FC<DxfViewerProps> = ({ entities, layers, blocks = {}, styles = {}, lineTypes = {}, viewPort, onViewPortChange, selectedEntityIds, onSelectIds, worldOffset, ltScale = 1.0 }) => {
+const DxfViewer: React.FC<DxfViewerProps> = ({ entities, layers, blocks = {}, styles = {}, lineTypes = {}, viewPort, onViewPortChange, selectedEntityIds, onSelectIds, worldOffset, ltScale = 1.0, theme }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   
@@ -29,10 +30,17 @@ const DxfViewer: React.FC<DxfViewerProps> = ({ entities, layers, blocks = {}, st
 
   // Calculate World Coordinates from Screen Coordinates (Centered)
   const screenToWorld = (sx: number, sy: number) => {
+     const canvas = canvasRef.current;
+     if (!canvas) return { x: 0, y: 0 };
+     const rect = containerRef.current?.getBoundingClientRect() || { width: canvas.width, height: canvas.height };
+     
      const safeZoom = Math.max(Math.abs(viewPort.zoom), Number.MIN_VALUE);
-     // Return centered coordinates (0,0 is at viewPort.x, viewPort.y)
-     const wx = (sx - viewPort.x) / safeZoom;
-     const wy = -(sy - viewPort.y) / safeZoom;
+     
+     // worldX = (screenX - width / 2) / zoom + targetX
+     const wx = (sx - rect.width / 2) / safeZoom + viewPort.targetX;
+     // worldY = targetY - (screenY - height / 2) / zoom
+     const wy = viewPort.targetY - (sy - rect.height / 2) / safeZoom;
+     
      return {
          x: safeClamp(wx, -Number.MAX_VALUE, Number.MAX_VALUE),
          y: safeClamp(wy, -Number.MAX_VALUE, Number.MAX_VALUE)
@@ -83,7 +91,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({ entities, layers, blocks = {}, st
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.scale(dpr, dpr);
 
-        renderEntitiesToCanvas(ctx, entities, layers, blocks, styles, lineTypes, ltScale, viewPort, selectedEntityIds, rect.width, rect.height);
+        renderEntitiesToCanvas(ctx, entities, layers, blocks, styles, lineTypes, ltScale, viewPort, selectedEntityIds, rect.width, rect.height, theme);
      };
 
      if (renderRef.current) cancelAnimationFrame(renderRef.current);
@@ -117,9 +125,18 @@ const DxfViewer: React.FC<DxfViewerProps> = ({ entities, layers, blocks = {}, st
       // Clamp zoom to avoid Infinity values
       const safeZoom = Math.max(Math.min(newZoom, MAX_ZOOM), MIN_ZOOM);
 
-      const newX = mouseX - (mouseX - viewPort.x) * (safeZoom / viewPort.zoom);
-      const newY = mouseY - (mouseY - viewPort.y) * (safeZoom / viewPort.zoom);
-      onViewPortChange({ x: newX, y: newY, zoom: safeZoom });
+      const centerX = rect.width / 2;
+      const centerY = rect.height / 2;
+
+      // newTargetX = oldTargetX + (mouseX - screenCenterX) * (1/oldZoom - 1/newZoom)
+      const newTargetX = viewPort.targetX + (mouseX - centerX) * (1/viewPort.zoom - 1/safeZoom);
+      const newTargetY = viewPort.targetY - (mouseY - centerY) * (1/viewPort.zoom - 1/safeZoom);
+
+      onViewPortChange({ 
+        targetX: newTargetX, 
+        targetY: newTargetY, 
+        zoom: safeZoom 
+      });
     };
 
     container.addEventListener('wheel', onWheel as any, { passive: false });
@@ -155,12 +172,14 @@ const DxfViewer: React.FC<DxfViewerProps> = ({ entities, layers, blocks = {}, st
     if (isPanning) {
       const dx = e.clientX - dragStart.x;
       const dy = e.clientY - dragStart.y;
-      const newX = viewPort.x + dx;
-      const newY = viewPort.y + dy;
-      // Clamp to prevent infinite/NaN values
+      
+      // newTargetX = oldTargetX - dx / zoom
+      const newTargetX = viewPort.targetX - dx / viewPort.zoom;
+      const newTargetY = viewPort.targetY + dy / viewPort.zoom;
+
       onViewPortChange({
-        x: safeClamp(newX, -Number.MAX_VALUE, Number.MAX_VALUE),
-        y: safeClamp(newY, -Number.MAX_VALUE, Number.MAX_VALUE),
+        targetX: safeClamp(newTargetX, -Number.MAX_VALUE, Number.MAX_VALUE),
+        targetY: safeClamp(newTargetY, -Number.MAX_VALUE, Number.MAX_VALUE),
         zoom: viewPort.zoom
       });
       setDragStart({ x: e.clientX, y: e.clientY });
@@ -217,7 +236,11 @@ const DxfViewer: React.FC<DxfViewerProps> = ({ entities, layers, blocks = {}, st
     }
   };
 
-  return (
+  const safeTargetX = isNaN(viewPort.targetX) ? 0 : viewPort.targetX;
+    const safeTargetY = isNaN(viewPort.targetY) ? 0 : viewPort.targetY;
+    const safeZoom = isNaN(viewPort.zoom) || viewPort.zoom === 0 ? 1 : viewPort.zoom;
+
+    return (
     <div className="viewer-wrapper">
         <div 
         ref={containerRef}
@@ -230,8 +253,19 @@ const DxfViewer: React.FC<DxfViewerProps> = ({ entities, layers, blocks = {}, st
         >
         <svg className="grid-svg">
             <defs>
-            <pattern id="grid" width={Math.max(Math.min(GRID_SIZE * viewPort.zoom, 1e6), 5)} height={Math.max(Math.min(GRID_SIZE * viewPort.zoom, 1e6), 5)} patternUnits="userSpaceOnUse">
-                <path d={`M ${Math.max(Math.min(GRID_SIZE * viewPort.zoom, 1e6), 5)} 0 L 0 0 0 ${Math.max(Math.min(GRID_SIZE * viewPort.zoom, 1e6), 5)}`} fill="none" stroke="#444" strokeWidth="1"/>
+            <pattern 
+                id="grid" 
+                width={GRID_SIZE} 
+                height={GRID_SIZE} 
+                patternUnits="userSpaceOnUse"
+                patternTransform={`translate(${(containerRef.current?.clientWidth || 0)/2}, ${(containerRef.current?.clientHeight || 0)/2}) scale(${safeZoom}) translate(${-safeTargetX}, ${safeTargetY})`}
+            >
+                <path 
+                    d={`M ${GRID_SIZE} 0 L 0 0 0 ${GRID_SIZE}`} 
+                    fill="none" 
+                    stroke={theme === 'black' ? '#444' : '#ddd'} 
+                    strokeWidth={1 / safeZoom}
+                />
             </pattern>
             </defs>
             <rect width="100%" height="100%" fill="url(#grid)" />

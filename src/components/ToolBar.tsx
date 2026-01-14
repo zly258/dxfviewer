@@ -9,6 +9,8 @@ interface ToolBarProps {
   showProperties: boolean;
   onToggleProperties: () => void;
   showOpen?: boolean;
+  theme: 'black' | 'white';
+  onToggleTheme: () => void;
 }
 
 const ToolBar: React.FC<ToolBarProps> = ({ 
@@ -19,7 +21,9 @@ const ToolBar: React.FC<ToolBarProps> = ({
     onToggleSidebar, 
     showProperties, 
     onToggleProperties,
-    showOpen = true
+    showOpen = true,
+    theme,
+    onToggleTheme
 }) => {
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
 
@@ -65,6 +69,10 @@ const ToolBar: React.FC<ToolBarProps> = ({
             </div>
             <div onClick={onToggleProperties} className="dropdown-item">
                <span>属性</span>
+            </div>
+            <div className="divider"></div>
+            <div onClick={onToggleTheme} className="dropdown-item">
+              <span>切换背景 ({theme === 'black' ? '黑色' : '白色'})</span>
             </div>
           </div>
         )}

@@ -8,6 +8,7 @@ interface SidebarProps {
   entities: AnyEntity[];
   selectedEntityIds: Set<string>;
   onSelectIds: (ids: Set<string>) => void;
+  theme: 'black' | 'white';
 }
 
 const ROW_HEIGHT = 36; 
@@ -16,7 +17,7 @@ type FlatItem =
   | { type: 'layer'; name: string; layer: DxfLayer; count: number; expanded: boolean }
   | { type: 'entity'; id: string; entity: AnyEntity };
 
-const Sidebar: React.FC<SidebarProps> = ({ layers, entities, selectedEntityIds, onSelectIds }) => {
+const Sidebar: React.FC<SidebarProps> = ({ layers, entities, selectedEntityIds, onSelectIds, theme }) => {
   const [expandedLayers, setExpandedLayers] = useState<Set<string>>(new Set(Object.keys(layers)));
   const containerRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
@@ -102,7 +103,7 @@ const Sidebar: React.FC<SidebarProps> = ({ layers, entities, selectedEntityIds, 
   };
 
   const getEntityIcon = (type: EntityType) => <span className="entity-icon">{type.substring(0, 1)}</span>;
-  const getLayerColorHex = (layer: DxfLayer) => getAutoCadColor(layer.color);
+  const getLayerColorHex = (layer: DxfLayer) => getAutoCadColor(layer.color, theme);
 
   const ChevronIcon = ({ expanded }: { expanded: boolean }) => (
     <svg 

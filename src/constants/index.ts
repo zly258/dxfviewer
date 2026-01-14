@@ -1,6 +1,6 @@
 export const DEFAULT_VIEWPORT = {
-  x: 0,
-  y: 0,
+  targetX: 0,
+  targetY: 0,
   zoom: 1
 };
 

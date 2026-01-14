@@ -8,12 +8,20 @@ export const AUTO_CAD_COLORS: Record<number, string> = {
 
 /**
  * ACI to RGB Conversion Algorithm
+ * @param index ACI color index
+ * @param theme Current background theme ('black' or 'white')
  */
-export const getAutoCadColor = (index: number): string => {
-  if (index <= 0 || index === 256) return DEFAULT_COLOR; // ByBlock / ByLayer handled by caller usually
+export const getAutoCadColor = (index: number, theme: 'black' | 'white' = 'black'): string => {
+  if (index <= 0 || index === 256) return theme === 'black' ? '#FFFFFF' : '#000000'; // ByBlock / ByLayer handled by caller usually
   
+  // Special handling for Color 7 (White/Black)
+  if (index === 7) {
+      return theme === 'black' ? '#FFFFFF' : '#000000';
+  }
+
   // Standard colors 1-9
-  if (index >= 1 && index <= 9) return AUTO_CAD_COLORS[index];
+  if (index >= 1 && index <= 6) return AUTO_CAD_COLORS[index];
+  if (index >= 8 && index <= 9) return AUTO_CAD_COLORS[index];
 
   // Grayscale 250-255
   if (index >= 250 && index <= 255) {

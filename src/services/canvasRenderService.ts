@@ -1,4 +1,4 @@
-import { AnyEntity, EntityType, DxfLayer, DxfBlock, DxfStyle, Point2D, DxfInsert, HatchLoop, DxfText, DxfLineType } from '../types';
+import { AnyEntity, EntityType, DxfLayer, DxfBlock, DxfStyle, Point2D, DxfInsert, HatchLoop, DxfText, DxfLineType, ViewPort } from '../types';
 import { DEFAULT_COLOR } from '../constants';
 import { getAutoCadColor, AUTO_CAD_COLORS } from '../utils/colorUtils';
 import { getBSplinePoints } from './dxfService';
@@ -6,12 +6,12 @@ import { getStyleFontFamily, FONT_STACKS, mapCadFontToWebFont } from './fontServ
 
 const SELECTION_COLOR = '#0078d4'; 
 
-const getColor = (entColor: number | undefined, layer: DxfLayer | undefined, parentColor: string | undefined): string => {
+const getColor = (entColor: number | undefined, layer: DxfLayer | undefined, parentColor: string | undefined, theme: 'black' | 'white'): string => {
     if (entColor === 0 && parentColor) return parentColor; // ByBlock
     if (entColor === 256 || entColor === undefined) { // ByLayer
-        return layer ? getAutoCadColor(layer.color) : DEFAULT_COLOR;
+        return layer ? getAutoCadColor(layer.color, theme) : (theme === 'black' ? '#FFFFFF' : '#000000');
     }
-    return getAutoCadColor(entColor);
+    return getAutoCadColor(entColor, theme);
 };
 
 const getCanvasFont = (ent: AnyEntity, styles: Record<string, DxfStyle> | undefined): string => {
@@ -273,24 +273,35 @@ export const renderEntitiesToCanvas = (
     styles: Record<string, DxfStyle>,
     lineTypes: Record<string, DxfLineType>,
     ltScale: number,
-    viewPort: { x: number, y: number, zoom: number },
+    viewPort: ViewPort,
     selectedIds: Set<string>,
     width: number,
-    height: number
+    height: number,
+    theme: 'black' | 'white'
 ) => {
-    // Clear canvas - use absolute coordinates to avoid precision issues
-    ctx.clearRect(0, 0, width * window.devicePixelRatio || 1, height * window.devicePixelRatio || 1);
+    // Clear canvas with background color
+    ctx.fillStyle = theme === 'black' ? '#212121' : '#FFFFFF';
+    ctx.fillRect(0, 0, width, height);
 
     ctx.save();
-    ctx.translate(viewPort.x, viewPort.y);
-    ctx.scale(viewPort.zoom, -viewPort.zoom);
+    
+    // Step 1: Move screen origin to the center of the viewport
+    ctx.translate(width / 2, height / 2);
+    
+    // Step 2: Apply zoom and flip Y axis
+    const safeZoom = isNaN(viewPort.zoom) || viewPort.zoom === 0 ? 1 : viewPort.zoom;
+    ctx.scale(safeZoom, -safeZoom);
+    
+    // Step 3: Move the world target point to the current origin (screen center)
+    const safeTargetX = isNaN(viewPort.targetX) ? 0 : viewPort.targetX;
+    const safeTargetY = isNaN(viewPort.targetY) ? 0 : viewPort.targetY;
+    ctx.translate(-safeTargetX, -safeTargetY);
 
     // Calculate viewport bounds in world coordinates for culling
-    // viewPort.x/y is screen position of world (0,0)
-    const worldLeft = -viewPort.x / viewPort.zoom;
-    const worldRight = (width - viewPort.x) / viewPort.zoom;
-    const worldTop = viewPort.y / viewPort.zoom;
-    const worldBottom = -(height - viewPort.y) / viewPort.zoom;
+    const worldLeft = (0 - width / 2) / safeZoom + safeTargetX;
+    const worldRight = (width - width / 2) / safeZoom + safeTargetX;
+    const worldTop = (0 - height / 2) / (-safeZoom) + safeTargetY;
+    const worldBottom = (height - height / 2) / (-safeZoom) + safeTargetY;
 
     const vMinX = Math.min(worldLeft, worldRight);
     const vMaxX = Math.max(worldLeft, worldRight);
@@ -315,33 +326,27 @@ export const renderEntitiesToCanvas = (
 
         const isSelected = selectedIds.has(ent.id) || parentSelected;
 
-        const color = isSelected ? SELECTION_COLOR : getColor(ent.color, layer, parentColor);
+        const color = isSelected ? SELECTION_COLOR : getColor(ent.color, layer, parentColor, theme);
         
         ctx.strokeStyle = color;
         ctx.fillStyle = color;
 
     // Calculate lineweight
     // DXF lineweight is in hundredths of mm. e.g. 25 = 0.25mm.
-    // Standard default is usually 25 (0.25mm).
     let lw = ent.lineweight;
     if (lw === undefined || lw === -1) { // ByLayer
         lw = layer?.lineweight !== undefined ? layer.lineweight : -3; // Default
     }
-    if (lw === -3) lw = 25; // Default 0.25mm
-    if (lw === -2) lw = 25; // ByBlock -> treat as default for now
+    if (lw === -3 || lw === -2) lw = 25; // Default 0.25mm
 
-    // Convert mm to screen pixels.
-    // A simple heuristic: 0.25mm -> 1.0 pixel, 0.50mm -> 2.0 pixels, etc.
-    // Lineweight in DXF is fixed-width on screen/paper, not world units.
-    // Use a slightly smaller base for better appearance on high-res screens
-    // Clamp base lineweight to avoid "giant lines" from extreme DXF values
-    let baseLw = lw > 0 ? (lw / 25) : 0.5;
-    if (baseLw > 3.0) baseLw = 3.0; // Max 3 pixels base width for standard lines (was 5.0)
+    // Convert mm to screen pixels. 0.25mm -> 1.0 pixel is a standard mapping.
+    let baseLw = lw > 0 ? (lw / 25) : 0.8;
     
-    // Adaptive lineweight: when zoomed out, thin lines are harder to see.
-    // We want a minimum pixel width for visibility, but not too thick.
-    // When zoomed in, we want to respect the intended lineweight.
-    const screenLw = isSelected ? (baseLw + 1.0) : baseLw;
+    // Clamp base lineweight to a reasonable range for screen display
+    if (baseLw > 2.0) baseLw = 2.0; 
+    if (baseLw < 0.5) baseLw = 0.5;
+    
+    const screenLw = isSelected ? (baseLw + 1.5) : baseLw;
     
     // Convert screen pixels to world units for ctx.lineWidth
     let lineWidth = screenLw / Math.abs(currentScale);
@@ -352,8 +357,8 @@ export const renderEntitiesToCanvas = (
     }
     
     // Limit maximum screen width to avoid "giant lines" when zoomed out
-    // Max 10 pixels on screen regardless of zoom (was 20)
-    const maxScreenPixels = 10;
+    // Use a tighter limit for better appearance
+    const maxScreenPixels = isSelected ? 8 : 4; 
     const maxWorldWidth = maxScreenPixels / Math.abs(currentScale);
     
     ctx.lineWidth = Math.min(lineWidth, maxWorldWidth);
@@ -412,9 +417,13 @@ export const renderEntitiesToCanvas = (
                 ctx.stroke();
                 break;
             case EntityType.RAY: {
+                // Calculate a safe "infinity" distance based on viewport size
+                const diag = Math.sqrt(Math.pow(vMaxX - vMinX, 2) + Math.pow(vMaxY - vMinY, 2));
+                const infiniteDist = Math.max(diag * 2, 1e10); 
+                
                 const farPoint = {
-                    x: ent.basePoint.x + ent.direction.x * 1000000,
-                    y: ent.basePoint.y + ent.direction.y * 1000000
+                    x: ent.basePoint.x + ent.direction.x * infiniteDist,
+                    y: ent.basePoint.y + ent.direction.y * infiniteDist
                 };
                 ctx.beginPath();
                 ctx.moveTo(ent.basePoint.x, ent.basePoint.y);
@@ -423,13 +432,17 @@ export const renderEntitiesToCanvas = (
                 break;
             }
             case EntityType.XLINE: {
+                // Calculate a safe "infinity" distance based on viewport size
+                const diag = Math.sqrt(Math.pow(vMaxX - vMinX, 2) + Math.pow(vMaxY - vMinY, 2));
+                const infiniteDist = Math.max(diag * 2, 1e10);
+
                 const p1 = {
-                    x: ent.basePoint.x - ent.direction.x * 1000000,
-                    y: ent.basePoint.y - ent.direction.y * 1000000
+                    x: ent.basePoint.x - ent.direction.x * infiniteDist,
+                    y: ent.basePoint.y - ent.direction.y * infiniteDist
                 };
                 const p2 = {
-                    x: ent.basePoint.x + ent.direction.x * 1000000,
-                    y: ent.basePoint.y + ent.direction.y * 1000000
+                    x: ent.basePoint.x + ent.direction.x * infiniteDist,
+                    y: ent.basePoint.y + ent.direction.y * infiniteDist
                 };
                 ctx.beginPath();
                 ctx.moveTo(p1.x, p1.y);

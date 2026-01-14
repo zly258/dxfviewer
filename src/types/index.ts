@@ -290,8 +290,8 @@ export interface DxfData {
 }
 
 export interface ViewPort {
-  x: number;
-  y: number;
+  targetX: number; // World X coordinate at screen center
+  targetY: number; // World Y coordinate at screen center
   zoom: number;
 }
 

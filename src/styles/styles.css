@@ -89,6 +89,7 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  transition: background-color 0.3s ease;
 }
 
 /* DxfViewer Styles */
@@ -217,11 +218,11 @@ body {
 }
 
 .layer-icon {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  margin-right: 0.5rem;
-  border: 1px solid var(--bg-gray-200);
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  margin-right: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
   flex-shrink: 0;
 }
 
