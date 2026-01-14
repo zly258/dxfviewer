@@ -10,13 +10,16 @@ export const cleanText = (text: string): string => {
     if (!text) return "";
     return text
         .replace(/\\P/g, '\n') // AutoCAD newline
-        .replace(/\\\{/g, '{').replace(/\\\}/g, '}') 
+        .replace(/\\p/g, '\n') // Paragraph break (lowercase variant)
+        .replace(/\\\{/g, '{').replace(/\\\}/g, '}') // Escaped braces
         .replace(/\\U\+([0-9A-Fa-f]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16))) // Unicode \U+XXXX
         .replace(/\\[A-Z][^;]*;/gi, '') // Formatting codes like \fArial|b0|i0|c0|p34;
-        .replace(/\{|\}/g, '') 
-        .replace(/%%[cC]/g, 'Ø')
-        .replace(/%%[dD]/g, '°')
-        .replace(/%%[pP]/g, '±')
+        .replace(/\\\{[^}]*\}/g, '') // Remove formatting blocks with braces
+        .replace(/\{|\}/g, '') // Remove remaining braces
+        .replace(/%%[cC]/g, 'Ø') // Diameter symbol
+        .replace(/%%[dD]/g, '°') // Degree symbol
+        .replace(/%%[pP]/g, '±') // Plus-minus symbol
+        .replace(/%%\d{3}/g, '') // Remove other %% codes
         .trim();
 };
 
@@ -38,9 +41,18 @@ const extractContentWidthFactor = (text: string): number | null => {
  */
 const extractContentHeightFactor = (text: string): number | null => {
     // Matches \H1.5x; or \H2;
-    const matches = text.match(/\\H(\d+(\.\d+)?)(x?);/);
+    const matches = text.match(/\\H(\d+(\.\d+)?)(x?);/i);
     if (matches && matches[1]) {
-        return parseFloat(matches[1]);
+        const val = parseFloat(matches[1]);
+        // If it ends with 'x', it's a relative factor
+        if (matches[3] && matches[3].toLowerCase() === 'x') {
+            return val;
+        }
+        // Otherwise it's an absolute height, but we return it as a factor relative to entity height?
+        // Actually, in MText, \H inside a block sets the height for subsequent text.
+        // For simplicity, we'll treat it as a factor if it's small, but that's risky.
+        // Standard behavior is \H is absolute height.
+        return val; 
     }
     return null;
 }
@@ -50,12 +62,13 @@ const extractContentHeightFactor = (text: string): number | null => {
  * Also extracts bold/italic info if present.
  */
 const extractMTextFormatting = (text: string) => {
-    const matches = text.match(/\\f([^|;]+)([^;]*);/);
+    // Improved regex to handle various MText font formats
+    const matches = text.match(/\\f([^|;]+)([^;]*);/i);
     if (matches) {
-        const fontName = matches[1].replace(/\"/g, '');
-        const options = matches[2];
-        const isBold = options.includes('|b1');
-        const isItalic = options.includes('|i1');
+        const fontName = matches[1].replace(/\"/g, '').trim();
+        const options = matches[2].toLowerCase();
+        const isBold = options.includes('|b1') || options.includes('|b 1');
+        const isItalic = options.includes('|i1') || options.includes('|i 1');
         return { fontName, isBold, isItalic };
     }
     return null;
@@ -67,9 +80,13 @@ interface TextRendererProps {
     styles?: Record<string, DxfStyle>;
     onClick?: (e: React.MouseEvent) => void;
     isSelected?: boolean;
+    offset?: Point2D;
 }
 
-export const TextRenderer: React.FC<TextRendererProps> = ({ entity: ent, color, styles, onClick, isSelected }) => {
+export const TextRenderer: React.FC<TextRendererProps> = ({ entity: ent, color, styles, onClick, isSelected, offset }) => {
+    const ox = offset?.x || 0;
+    const oy = offset?.y || 0;
+
     const isMText = ent.type === EntityType.MTEXT;
     let fontFamily = getStyleFontFamily(ent.styleName, styles);
     let fontWeight = 'normal';
@@ -84,9 +101,12 @@ export const TextRenderer: React.FC<TextRendererProps> = ({ entity: ent, color, 
             if (isItalic) fontStyle = 'italic';
 
             // Map the inline font name to a web font stack
-            if (fontName.toLowerCase().includes('song') || fontName.toLowerCase().includes('simsun')) {
-                fontFamily = '"SimSun", "宋体", "Microsoft YaHei", sans-serif';
-            } else if (fontName.toLowerCase().includes('arial')) {
+            const fontLower = fontName.toLowerCase();
+            if (fontLower.includes('song') || fontLower.includes('simsun') || fontLower.includes('仿宋') || fontLower.includes('fangsong')) {
+                fontFamily = '"FangSong", "仿宋", "STFangsong", "SimSun", "宋体", "Microsoft YaHei", sans-serif';
+            } else if (fontLower.includes('hei') || fontLower.includes('simhei') || fontLower.includes('黑体')) {
+                fontFamily = '"SimHei", "黑体", "Microsoft YaHei", "微软雅黑", sans-serif';
+            } else if (fontLower === 'arial') {
                 fontFamily = 'Arial, Helvetica, sans-serif';
             } else {
                 fontFamily = `"${fontName}", ${fontFamily}`;
@@ -144,7 +164,7 @@ export const TextRenderer: React.FC<TextRendererProps> = ({ entity: ent, color, 
 
     if (isMText) {
         return (
-            <g transform={`translate(${ent.position.x}, ${ent.position.y}) rotate(${ent.rotation || 0}) scale(${widthFactor}, -1)`}>
+            <g transform={`translate(${ent.position.x - ox}, ${ent.position.y - oy}) rotate(${ent.rotation || 0}) scale(${widthFactor}, -1)`}>
                 <foreignObject 
                     x={0} 
                     y={0} 
@@ -199,7 +219,7 @@ export const TextRenderer: React.FC<TextRendererProps> = ({ entity: ent, color, 
     if (vAlign === 3) alignmentBaseline = 'hanging'; 
 
     return (
-        <g transform={`translate(${pos.x}, ${pos.y}) rotate(${ent.rotation || 0}) scale(${widthFactor}, -1)`}>
+        <g transform={`translate(${pos.x - ox}, ${pos.y - oy}) rotate(${ent.rotation || 0}) scale(${widthFactor}, -1)`}>
             <text
                 x={0}
                 y={0}

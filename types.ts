@@ -174,6 +174,10 @@ export interface DxfDimension extends DxfEntity {
   text?: string;
   dimType?: number;
   styleName?: string;
+  linearP1?: Point2D;
+  linearP2?: Point2D;
+  arcP1?: Point2D;
+  arcP2?: Point2D;
 }
 
 export interface DxfLeader extends DxfEntity {

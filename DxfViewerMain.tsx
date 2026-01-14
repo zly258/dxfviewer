@@ -127,30 +127,48 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
      if (visibleEnts.length === 0) return;
 
      const extents = calculateExtents(visibleEnts, blks);
-     
+
      const sidebarWidth = showSidebar ? 256 : 0; // 64 (w-64) = 256px
      const propsWidth = showProperties ? 320 : 0; // 80 (w-80) = 320px
      const containerW = window.innerWidth - sidebarWidth - propsWidth;
      const containerH = window.innerHeight - 40 - 24; // Toolbar (40) + Status (24)
-     
+
      if (extents.width <= 0 && extents.height <= 0) {
-        setViewPort({ x: containerW/2 - extents.center.x, y: containerH/2 + extents.center.y, zoom: 1 });
+        // For single point, center it and use default zoom
+        const offsetX = worldOffset?.x || 0;
+        const offsetY = worldOffset?.y || 0;
+        const centeredX = extents.center.x - offsetX;
+        const centeredY = extents.center.y - offsetY;
+        setViewPort({ x: containerW/2, y: containerH/2, zoom: 1 });
         return;
      }
 
-     const w = extents.width || 1;
-     const h = extents.height || 1;
+     const w = Math.max(extents.width, Number.MIN_VALUE);
+     const h = Math.max(extents.height, Number.MIN_VALUE);
 
-     const zoomX = containerW / w;
-     const zoomY = containerH / h;
-     // Support much higher zoom levels for small details and much lower for large coordinates
-     const zoom = Math.min(zoomX, zoomY) * 0.9;
-     
+     // Calculate zoom with consistent 5% margin on all sides
+     const marginFactor = 0.95; // 5% margin -> fill 95%
+     const zoomX = (containerW / w) * marginFactor;
+     const zoomY = (containerH / h) * marginFactor;
+     let zoom = Math.min(zoomX, zoomY);
+
+     // Clamp zoom to prevent extreme values
+     const MIN_ZOOM = Number.MIN_VALUE;
+     const MAX_ZOOM = Number.MAX_VALUE;
+     zoom = Math.max(Math.min(zoom, MAX_ZOOM), MIN_ZOOM);
+
      const screenCenterX = containerW / 2;
      const screenCenterY = containerH / 2;
-     
-     const x = screenCenterX - extents.center.x * zoom;
-     const y = screenCenterY + extents.center.y * zoom;
+     const offsetX = worldOffset?.x || 0;
+     const offsetY = worldOffset?.y || 0;
+
+     // Calculate position with offset to center the view
+     // The offset should bring the world center to near the origin for rendering precision
+     const centeredExtentsX = extents.center.x - offsetX;
+     const centeredExtentsY = extents.center.y - offsetY;
+
+     const x = screenCenterX - centeredExtentsX * zoom;
+     const y = screenCenterY + centeredExtentsY * zoom;
 
      setViewPort({ x, y, zoom });
   };
@@ -162,29 +180,35 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
           const ent = entities.find(e => e.id === id);
           if (ent) {
               const extents = calculateExtents([ent], blocks);
-              
+
               const sidebarWidth = showSidebar ? 256 : 0;
               const propsWidth = showProperties ? 320 : 0;
               const containerW = window.innerWidth - sidebarWidth - propsWidth;
               const containerH = window.innerHeight - 64;
 
-              let zoom = viewPort.zoom;
-              const w = extents.width;
-              const h = extents.height;
-              
-              if (w > 0 || h > 0) {
-                  const targetW = Math.max(w, 1);
-                  const targetH = Math.max(h, 1);
-                  const zoomX = containerW / targetW;
-                  const zoomY = containerH / targetH;
-                  zoom = Math.min(zoomX, zoomY, 200) * 0.6; 
-              }
+              const w = Math.max(extents.width || 1, Number.MIN_VALUE);
+              const h = Math.max(extents.height || 1, Number.MIN_VALUE);
+              const offsetX = worldOffset?.x || 0;
+              const offsetY = worldOffset?.y || 0;
 
-              const screenCenterX = containerW / 2;
-              const screenCenterY = containerH / 2;
-              const x = screenCenterX - extents.center.x * zoom;
-              const y = screenCenterY + extents.center.y * zoom;
-              setViewPort({ x, y, zoom });
+              if (w > 0 || h > 0) {
+                  const marginFactor = 0.8; // More margin for single entity focus
+                  const zoomX = (containerW / w) * marginFactor;
+                  const zoomY = (containerH / h) * marginFactor;
+                  // Clamp zoom to prevent excessive zoom on small entities
+                  let zoom = Math.min(zoomX, zoomY, 1e6);
+                  zoom = Math.max(zoom, 1e-6);
+
+                  const screenCenterX = containerW / 2;
+                  const screenCenterY = containerH / 2;
+                  const centeredExtentsX = extents.center.x - offsetX;
+                  const centeredExtentsY = extents.center.y - offsetY;
+
+                  const x = screenCenterX - centeredExtentsX * zoom;
+                  const y = screenCenterY + centeredExtentsY * zoom;
+
+                  setViewPort({ x, y, zoom });
+              }
           }
       }
   };
@@ -277,19 +301,18 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
         </div>
       )}
 
-      {showOpenMenu && (
-        <ToolBar 
-          onImport={handleImport}
-          onClear={handleClear}
-          onFitView={handleFitView}
-          showSidebar={showSidebar}
-          onToggleSidebar={() => setShowSidebar(!showSidebar)}
-          showProperties={showProperties}
-          onToggleProperties={() => setShowProperties(!showProperties)}
-        />
-      )}
+      <ToolBar 
+        onImport={handleImport}
+        onClear={handleClear}
+        onFitView={handleFitView}
+        showSidebar={showSidebar}
+        onToggleSidebar={() => setShowSidebar(!showSidebar)}
+        showProperties={showProperties}
+        onToggleProperties={() => setShowProperties(!showProperties)}
+        showOpen={showOpenMenu}
+      />
       
-      <div className="main-content" style={{ height: showOpenMenu ? 'calc(100vh - 40px)' : '100vh' }}>
+      <div className="main-content" style={{ height: 'calc(100vh - 40px)' }}>
         {showSidebar && (
             <Sidebar 
             layers={layers} 

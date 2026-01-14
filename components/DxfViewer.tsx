@@ -29,13 +29,25 @@ const DxfViewer: React.FC<DxfViewerProps> = ({ entities, layers, blocks = {}, st
 
   // Calculate World Coordinates from Screen Coordinates
   const screenToWorld = (sx: number, sy: number) => {
+     // Protect against division by zero or infinite zoom
+     const safeZoom = Math.max(Math.abs(viewPort.zoom), Number.MIN_VALUE);
+     const offsetX = worldOffset?.x || 0;
+     const offsetY = worldOffset?.y || 0;
+     const wx = (sx - viewPort.x) / safeZoom + offsetX;
+     const wy = -(sy - viewPort.y) / safeZoom + offsetY;
      return {
-         x: (sx - viewPort.x) / viewPort.zoom,
-         y: -(sy - viewPort.y) / viewPort.zoom // Flip Y
+         x: safeClamp(wx, -Number.MAX_VALUE, Number.MAX_VALUE),
+         y: safeClamp(wy, -Number.MAX_VALUE, Number.MAX_VALUE) // Flip Y
      };
   };
 
   const [mouseWorldPos, setMouseWorldPos] = useState({ x: 0, y: 0 });
+
+  // Clamp values to prevent Infinity/NaN issues
+  const safeClamp = (value: number, min: number, max: number): number => {
+    if (!isFinite(value)) return 0;
+    return Math.max(Math.min(value, max), min);
+  };
 
   // Canvas Render Loop
   useLayoutEffect(() => {
@@ -61,8 +73,8 @@ const DxfViewer: React.FC<DxfViewerProps> = ({ entities, layers, blocks = {}, st
      ctx.setTransform(1, 0, 0, 1, 0, 0);
      ctx.scale(dpr, dpr);
 
-     renderEntitiesToCanvas(ctx, entities, layers, blocks, styles, lineTypes, ltScale, viewPort, selectedEntityIds, rect.width, rect.height);
-  }, [entities, layers, blocks, styles, lineTypes, ltScale, viewPort, selectedEntityIds]);
+     renderEntitiesToCanvas(ctx, entities, layers, blocks, styles, lineTypes, ltScale, viewPort, selectedEntityIds, rect.width, rect.height, worldOffset || {x:0, y:0});
+  }, [entities, layers, blocks, styles, lineTypes, ltScale, viewPort, selectedEntityIds, worldOffset]);
 
   // Handle Wheel Event with passive: false to allow preventDefault
   useEffect(() => {
@@ -73,17 +85,23 @@ const DxfViewer: React.FC<DxfViewerProps> = ({ entities, layers, blocks = {}, st
       e.preventDefault();
       const scaleFactor = 1.2;
       const newZoom = e.deltaY < 0 ? viewPort.zoom * scaleFactor : viewPort.zoom / scaleFactor;
-      
-      // Loosen zoom limits to support extreme coordinates/scales
-      if (newZoom < 1e-12 || newZoom > 1e12) return;
+
+      // Widen zoom limits significantly to support extreme coordinates
+      // Use Number.MAX_SAFE_INTEGER as upper bound for practical purposes
+      const MIN_ZOOM = Number.MIN_VALUE;
+      const MAX_ZOOM = Number.MAX_VALUE;
+      if (newZoom < MIN_ZOOM || newZoom > MAX_ZOOM) return;
 
       const rect = container.getBoundingClientRect();
       const mouseX = e.clientX - rect.left;
       const mouseY = e.clientY - rect.top;
-      
-      const newX = mouseX - (mouseX - viewPort.x) * (newZoom / viewPort.zoom);
-      const newY = mouseY - (mouseY - viewPort.y) * (newZoom / viewPort.zoom);
-      onViewPortChange({ x: newX, y: newY, zoom: newZoom });
+
+      // Clamp zoom to avoid Infinity values
+      const safeZoom = Math.max(Math.min(newZoom, MAX_ZOOM), MIN_ZOOM);
+
+      const newX = mouseX - (mouseX - viewPort.x) * (safeZoom / viewPort.zoom);
+      const newY = mouseY - (mouseY - viewPort.y) * (safeZoom / viewPort.zoom);
+      onViewPortChange({ x: newX, y: newY, zoom: safeZoom });
     };
 
     container.addEventListener('wheel', onWheel as any, { passive: false });
@@ -119,7 +137,14 @@ const DxfViewer: React.FC<DxfViewerProps> = ({ entities, layers, blocks = {}, st
     if (isPanning) {
       const dx = e.clientX - dragStart.x;
       const dy = e.clientY - dragStart.y;
-      onViewPortChange({ ...viewPort, x: viewPort.x + dx, y: viewPort.y + dy });
+      const newX = viewPort.x + dx;
+      const newY = viewPort.y + dy;
+      // Clamp to prevent infinite/NaN values
+      onViewPortChange({
+        x: safeClamp(newX, -Number.MAX_VALUE, Number.MAX_VALUE),
+        y: safeClamp(newY, -Number.MAX_VALUE, Number.MAX_VALUE),
+        zoom: viewPort.zoom
+      });
       setDragStart({ x: e.clientX, y: e.clientY });
     } else if (isBoxSelecting) {
       setCurrentMousePos({ x: mouseX, y: mouseY });
@@ -142,7 +167,9 @@ const DxfViewer: React.FC<DxfViewerProps> = ({ entities, layers, blocks = {}, st
 
       if (dist < 5) {
          // Increase hit test threshold to make selection easier, especially for text
-         const threshold = 12 / viewPort.zoom;
+         // Protect against extreme zoom values
+         const safeZoom = Math.max(Math.abs(viewPort.zoom), Number.MIN_VALUE);
+         const threshold = Math.min(Math.max(12 / safeZoom, 1e-12), 1e12);
          const hitId = hitTest(wPos.x, wPos.y, threshold, entities, blocks, layers, styles);
          
          if (hitId) {
@@ -187,8 +214,8 @@ const DxfViewer: React.FC<DxfViewerProps> = ({ entities, layers, blocks = {}, st
         >
         <svg className="grid-svg">
             <defs>
-            <pattern id="grid" width={Math.max(GRID_SIZE * viewPort.zoom, 10)} height={Math.max(GRID_SIZE * viewPort.zoom, 10)} patternUnits="userSpaceOnUse">
-                <path d={`M ${Math.max(GRID_SIZE * viewPort.zoom, 10)} 0 L 0 0 0 ${Math.max(GRID_SIZE * viewPort.zoom, 10)}`} fill="none" stroke="#444" strokeWidth="1"/>
+            <pattern id="grid" width={Math.max(Math.min(GRID_SIZE * viewPort.zoom, 1e6), 5)} height={Math.max(Math.min(GRID_SIZE * viewPort.zoom, 1e6), 5)} patternUnits="userSpaceOnUse">
+                <path d={`M ${Math.max(Math.min(GRID_SIZE * viewPort.zoom, 1e6), 5)} 0 L 0 0 0 ${Math.max(Math.min(GRID_SIZE * viewPort.zoom, 1e6), 5)}`} fill="none" stroke="#444" strokeWidth="1"/>
             </pattern>
             </defs>
             <rect width="100%" height="100%" fill="url(#grid)" />
@@ -215,8 +242,8 @@ const DxfViewer: React.FC<DxfViewerProps> = ({ entities, layers, blocks = {}, st
         {/* Status Bar */}
         <div className="status-bar">
             <div className="status-coords">
-                <span>X: <span className="status-value">{(mouseWorldPos.x + (worldOffset?.x || 0)).toFixed(3)}</span></span>
-                <span>Y: <span className="status-value">{(mouseWorldPos.y + (worldOffset?.y || 0)).toFixed(3)}</span></span>
+                <span>X: <span className="status-value">{mouseWorldPos.x.toFixed(3)}</span></span>
+                <span>Y: <span className="status-value">{mouseWorldPos.y.toFixed(3)}</span></span>
             </div>
             <div className="status-spacer"></div>
             <div>

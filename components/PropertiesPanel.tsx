@@ -119,8 +119,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, layers, sty
   };
 
   const formatCoord = (val: number, axis: 'x' | 'y') => {
-    const originalVal = offset ? (val + (axis === 'x' ? offset.x : offset.y)) : val;
-    return originalVal.toFixed(3);
+    return val.toFixed(3);
   };
 
   const renderEntityProperties = (ent: AnyEntity) => {
@@ -135,10 +134,6 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, layers, sty
           renderPropertyRow("Linetype Scale", (ent.lineTypeScale !== undefined ? ent.lineTypeScale : 1.0).toFixed(2)),
           renderPropertyRow("Lineweight", renderLineweight(ent.lineweight)),
       ];
-
-      if (offset && (offset.x !== 0 || offset.y !== 0)) {
-          commonRows.push(renderPropertyRow("Global Offset", `${offset.x.toFixed(0)}, ${offset.y.toFixed(0)}`));
-      }
 
       let specificRows: React.ReactNode[] = [];
 

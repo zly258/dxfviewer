@@ -1,5 +1,4 @@
-import React from 'react';
-import { DxfInsert, DxfBlock, DxfLayer, DxfStyle, EntityType } from '../../types';
+import { DxfInsert, DxfBlock, DxfLayer, DxfStyle, EntityType, Point2D } from '../../types';
 import { EntityRenderer } from './EntityRenderer';
 
 interface InsertRendererProps {
@@ -13,11 +12,15 @@ interface InsertRendererProps {
     onSelect?: (id: string, multi: boolean) => void;
     onClick?: (e: React.MouseEvent) => void;
     depth?: number;
+    offset?: Point2D;
 }
 
 export const InsertRenderer: React.FC<InsertRendererProps> = ({ 
-    entity: ent, blocks, layers, styles, color, layerName, selectedIds, onSelect, onClick, depth = 0 
+    entity: ent, blocks, layers, styles, color, layerName, selectedIds, onSelect, onClick, depth = 0, offset
 }) => {
+    const ox = offset?.x || 0;
+    const oy = offset?.y || 0;
+
     // Limit recursion depth to prevent crashes on circular references
     if (depth > 20) return null;
 
@@ -66,6 +69,8 @@ export const InsertRenderer: React.FC<InsertRendererProps> = ({
                                 parentLayer={layerName} 
                                 parentColor={color}
                                 depth={depth + 1}
+                                // Children of a block are in local space, so we don't pass the global offset.
+                                // The global offset is already handled by the translate of the parent INSERT.
                             />
                         ))}
                     </g>
@@ -76,6 +81,7 @@ export const InsertRenderer: React.FC<InsertRendererProps> = ({
 
     // Attributes attached to the Insert (ATTRIB)
     // These contain the actual values for the block instance.
+    // Attributes are in world coordinates, so they need the global offset.
     const attributes = ent.attributes?.map(attr => (
         <EntityRenderer 
             key={attr.id}
@@ -88,12 +94,13 @@ export const InsertRenderer: React.FC<InsertRendererProps> = ({
             parentLayer={layerName}
             parentColor={color}
             depth={depth + 1}
+            offset={offset}
         />
     ));
 
     return (
         <g onClick={(e) => { e.stopPropagation(); onClick && onClick(e); }} className="cursor-pointer">
-            <g transform={`translate(${ent.position.x}, ${ent.position.y}) rotate(${ent.rotation}) scale(${ent.scale.x}, ${ent.scale.y})`}>
+            <g transform={`translate(${ent.position.x - ox}, ${ent.position.y - oy}) rotate(${ent.rotation}) scale(${ent.scale.x}, ${ent.scale.y})`}>
                 {instances}
             </g>
             {attributes && <g>{attributes}</g>}

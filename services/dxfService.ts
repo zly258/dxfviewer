@@ -407,91 +407,13 @@ export const parseDxf = async (dxfString: string, onProgress?: (percent: number)
   // We MUST do this before calculating initial extents because INSERT extents depend on block extents
   precomputeBlockExtents(blocks);
 
-  // Calculate extents to determine if we need an offset for large coordinates
-  const initialExtents = calculateExtents(entities, blocks);
-  let offset: Point2D | undefined;
-
-  // If coordinates are large or far from origin, apply an offset to bring them closer to origin
-  // This helps with floating point precision in canvas transforms.
-  const LARGE_COORD_THRESHOLD = 1000;
-  if (Math.abs(initialExtents.center.x) > LARGE_COORD_THRESHOLD || Math.abs(initialExtents.center.y) > LARGE_COORD_THRESHOLD) {
-      offset = { x: initialExtents.center.x, y: initialExtents.center.y };
-      
-      const applyOffset = (p: Point2D | Point3D) => {
-          if (!p) return;
-          p.x -= offset!.x;
-          p.y -= offset!.y;
-      };
-
-      const processEntityOffset = (ent: AnyEntity) => {
-          if ('position' in ent) applyOffset(ent.position);
-          if ('start' in ent) applyOffset(ent.start);
-          if ('end' in ent) applyOffset(ent.end);
-          if ('center' in ent) applyOffset(ent.center);
-          if ('points' in ent && ent.points) ent.points.forEach(applyOffset);
-          
-          if ('secondPosition' in ent && ent.secondPosition) applyOffset(ent.secondPosition);
-          if ('definitionPoint' in ent) applyOffset(ent.definitionPoint);
-          if ('textMidPoint' in ent) applyOffset(ent.textMidPoint);
-          
-          if (ent.type === EntityType.HATCH) {
-              ent.loops.forEach(loop => {
-                  if (loop.points) loop.points.forEach(applyOffset);
-                  loop.edges.forEach(edge => {
-                      if (edge.start) applyOffset(edge.start);
-                      if (edge.end) applyOffset(edge.end);
-                      if (edge.center) applyOffset(edge.center);
-                      if (edge.controlPoints) edge.controlPoints.forEach(applyOffset);
-                      if (edge.calculatedPoints) edge.calculatedPoints.forEach(applyOffset);
-                  });
-              });
-          }
-
-          if (ent.type === EntityType.SPLINE) {
-              if (ent.controlPoints) ent.controlPoints.forEach(applyOffset);
-              if (ent.fitPoints) ent.fitPoints.forEach(applyOffset);
-              if (ent.calculatedPoints) ent.calculatedPoints.forEach(applyOffset);
-          }
-
-          if (ent.type === EntityType.LEADER) {
-              if (ent.points) ent.points.forEach(applyOffset);
-          }
-
-          if (ent.type === EntityType.RAY || ent.type === EntityType.XLINE) {
-              if (ent.basePoint) applyOffset(ent.basePoint);
-          }
-
-          if ((ent.type === EntityType.INSERT || ent.type === EntityType.ACAD_TABLE) && (ent as any).attributes) {
-              (ent as any).attributes.forEach(processEntityOffset);
-          }
-      };
-
-      entities.forEach(processEntityOffset);
-      
-      // Also shift all entities inside blocks
-      Object.values(blocks).forEach(block => {
-          if (block.basePoint) applyOffset(block.basePoint);
-          block.entities.forEach(processEntityOffset);
-      });
-      
-      if (header) {
-          applyOffset(header.extMin);
-          applyOffset(header.extMax);
-      }
-      
-      // Clear block extents so they are re-calculated based on shifted coordinates
-      Object.values(blocks).forEach(b => {
-          delete b.extents;
-      });
-  }
-
-  // Precompute block extents for culling and global extents
-  precomputeBlockExtents(blocks);
-
-  // Re-calculate global extents for the shifted entities.
+  // Calculate extents
   const extents = calculateExtents(entities, blocks);
+  
+  // Use the center as the offset for large coordinates to maintain precision during rendering
+  const offset = { x: extents.center.x, y: extents.center.y };
 
-  return { header, entities, layers, blocks, styles, lineTypes, offset: offset || {x:0, y:0}, extents };
+  return { header, entities, layers, blocks, styles, lineTypes, offset, extents };
 };
 
 const parsePoint = (state: DxfParserState): Point2D => {
@@ -1208,11 +1130,15 @@ const parseDimension = (state: DxfParserState, common: any): AnyEntity => {
         blockName: '', 
         definitionPoint: {x:0, y:0}, 
         textMidPoint: {x:0, y:0}, 
+        linearP1: {x:0, y:0},
+        linearP2: {x:0, y:0},
+        arcP1: {x:0, y:0},
+        arcP2: {x:0, y:0},
         dimType: 0, 
         text: '', 
         measurement: 0 
     };
-    let z1=0, z2=0;
+    let z1=0, z2=0, z3=0, z4=0, z5=0, z6=0;
     while(state.hasNext) {
         const p = state.peek();
         if (!p || p.code === 0) break;
@@ -1226,6 +1152,18 @@ const parseDimension = (state: DxfParserState, common: any): AnyEntity => {
             case 11: entity.textMidPoint.x = parseFloat(g.value); break;
             case 21: entity.textMidPoint.y = parseFloat(g.value); break;
             case 31: z2 = parseFloat(g.value); break;
+            case 13: if (!entity.linearP1) entity.linearP1 = {x:0, y:0}; entity.linearP1.x = parseFloat(g.value); break;
+            case 23: if (!entity.linearP1) entity.linearP1 = {x:0, y:0}; entity.linearP1.y = parseFloat(g.value); break;
+            case 33: z3 = parseFloat(g.value); break;
+            case 14: if (!entity.linearP2) entity.linearP2 = {x:0, y:0}; entity.linearP2.x = parseFloat(g.value); break;
+            case 24: if (!entity.linearP2) entity.linearP2 = {x:0, y:0}; entity.linearP2.y = parseFloat(g.value); break;
+            case 34: z4 = parseFloat(g.value); break;
+            case 15: if (!entity.arcP1) entity.arcP1 = {x:0, y:0}; entity.arcP1.x = parseFloat(g.value); break;
+            case 25: if (!entity.arcP1) entity.arcP1 = {x:0, y:0}; entity.arcP1.y = parseFloat(g.value); break;
+            case 35: z5 = parseFloat(g.value); break;
+            case 16: if (!entity.arcP2) entity.arcP2 = {x:0, y:0}; entity.arcP2.x = parseFloat(g.value); break;
+            case 26: if (!entity.arcP2) entity.arcP2 = {x:0, y:0}; entity.arcP2.y = parseFloat(g.value); break;
+            case 36: z6 = parseFloat(g.value); break;
             case 70: entity.dimType = parseInt(g.value); break;
             case 1: entity.text = g.value; break;
             case 42: entity.measurement = parseFloat(g.value); break;
@@ -1235,6 +1173,10 @@ const parseDimension = (state: DxfParserState, common: any): AnyEntity => {
     const ocs = getOcsToWcsMatrix(entity.extrusion.x, entity.extrusion.y, entity.extrusion.z);
     entity.definitionPoint = applyOcs(entity.definitionPoint, ocs, z1);
     entity.textMidPoint = applyOcs(entity.textMidPoint, ocs, z2);
+    if (entity.linearP1) entity.linearP1 = applyOcs(entity.linearP1, ocs, z3);
+    if (entity.linearP2) entity.linearP2 = applyOcs(entity.linearP2, ocs, z4);
+    if (entity.arcP1) entity.arcP1 = applyOcs(entity.arcP1, ocs, z5);
+    if (entity.arcP2) entity.arcP2 = applyOcs(entity.arcP2, ocs, z6);
     return entity;
 }
 
@@ -1377,6 +1319,18 @@ const parseHatch = (state: DxfParserState, common: any): DxfHatch => {
     return entity;
 }
 
+const stripMTextFormatting = (text: string): string => {
+    // Remove formatting like \fArial|b0|i0|c00|p39; or \H1x; or \W0.8;
+    // Also remove braces {} used for grouping
+    return text
+        .replace(/\\P/g, '\n') // New line
+        .replace(/\\{/g, '') // Open brace
+        .replace(/\\}/g, '') // Close brace
+        .replace(/\\[fHWSLCOQTVA].*?;/g, '') // Formatting codes
+        .replace(/\{/g, '')
+        .replace(/\}/g, '');
+};
+
 const getEntityExtents = (ent: AnyEntity, blocks: Record<string, DxfBlock>): { min: Point2D, max: Point2D } | null => {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     const update = (x: number, y: number) => {
@@ -1406,15 +1360,32 @@ const getEntityExtents = (ent: AnyEntity, blocks: Record<string, DxfBlock>): { m
             update(ent.position.x, ent.position.y);
             if (ent.type !== EntityType.POINT) {
                 const h = (ent as any).height || 2.5;
-                const text = (ent as any).value || "";
+                let text = (ent as any).value || "";
+                if (ent.type === EntityType.MTEXT) {
+                    text = stripMTextFormatting(text);
+                }
                 const widthFactor = Math.abs((ent as any).widthFactor || 1);
                 const rotation = (ent as any).rotation || 0;
+                // Average char width is ~0.7 * height
                 const approxWidth = h * 0.7 * text.length * widthFactor;
                 const rad = rotation * Math.PI / 180;
                 const cos = Math.cos(rad);
                 const sin = Math.sin(rad);
-                const corners = [{x:0,y:0}, {x:approxWidth,y:0}, {x:0,y:h}, {x:approxWidth,y:h}];
+                // MText can have multiple lines
+                const lines = text.split('\n');
+                const maxLineLen = Math.max(...lines.map(l => l.length), 1);
+                const totalHeight = lines.length * h * 1.2; // 1.2 for line spacing
+                const totalWidth = h * 0.7 * maxLineLen * widthFactor;
+
+                const corners = [
+                    {x:0, y:0}, 
+                    {x:totalWidth, y:0}, 
+                    {x:0, y:totalHeight}, 
+                    {x:totalWidth, y:totalHeight}
+                ];
                 corners.forEach(c => {
+                    // For MText, the position is usually the top-left or top-center etc. 
+                    // For simplicity, we assume top-left for extents calculation
                     update(ent.position.x + c.x * cos - c.y * sin, ent.position.y + c.x * sin + c.y * cos);
                 });
             }
@@ -1473,13 +1444,17 @@ const getEntityExtents = (ent: AnyEntity, blocks: Record<string, DxfBlock>): { m
             break;
         }
         case EntityType.DIMENSION:
+            update(ent.definitionPoint.x, ent.definitionPoint.y);
+            if (ent.textMidPoint) update(ent.textMidPoint.x, ent.textMidPoint.y);
+            if (ent.linearP1) update(ent.linearP1.x, ent.linearP1.y);
+            if (ent.linearP2) update(ent.linearP2.x, ent.linearP2.y);
+            if (ent.arcP1) update(ent.arcP1.x, ent.arcP1.y);
+            if (ent.arcP2) update(ent.arcP2.x, ent.arcP2.y);
+            
             if (ent.blockName && blocks[ent.blockName] && blocks[ent.blockName].extents) {
                 const b = blocks[ent.blockName];
                 update(b.extents!.min.x, b.extents!.min.y);
                 update(b.extents!.max.x, b.extents!.max.y);
-            } else {
-                update(ent.definitionPoint.x, ent.definitionPoint.y);
-                if (ent.textMidPoint) update(ent.textMidPoint.x, ent.textMidPoint.y);
             }
             break;
         case EntityType.LEADER:

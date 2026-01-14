@@ -8,6 +8,7 @@ interface ToolBarProps {
   onToggleSidebar: () => void;
   showProperties: boolean;
   onToggleProperties: () => void;
+  showOpen?: boolean;
 }
 
 const ToolBar: React.FC<ToolBarProps> = ({ 
@@ -17,7 +18,8 @@ const ToolBar: React.FC<ToolBarProps> = ({
     showSidebar, 
     onToggleSidebar, 
     showProperties, 
-    onToggleProperties 
+    onToggleProperties,
+    showOpen = true
 }) => {
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
 
@@ -32,10 +34,12 @@ const ToolBar: React.FC<ToolBarProps> = ({
         <span>文件</span>
         {activeMenu === 'file' && (
           <div className="dropdown-menu">
-            <label className="dropdown-item">
-              <span>打开...</span>
-              <input type="file" accept=".dxf" className="hidden" onChange={onImport} />
-            </label>
+            {showOpen && (
+              <label className="dropdown-item">
+                <span>打开...</span>
+                <input type="file" accept=".dxf" className="hidden" onChange={onImport} />
+              </label>
+            )}
             <div onClick={onClear} className="dropdown-item">
                <span>清空</span>
             </div>
@@ -57,10 +61,10 @@ const ToolBar: React.FC<ToolBarProps> = ({
             </div>
             <div className="divider"></div>
             <div onClick={onToggleSidebar} className="dropdown-item">
-              <span>结构 ({showSidebar ? '显示' : '隐藏'})</span>
+              <span>图层</span>
             </div>
             <div onClick={onToggleProperties} className="dropdown-item">
-               <span>属性 ({showProperties ? '显示' : '隐藏'})</span>
+               <span>属性</span>
             </div>
           </div>
         )}
