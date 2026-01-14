@@ -100,7 +100,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({ entities, layers, blocks = {}, st
      return () => {
         if (renderRef.current) cancelAnimationFrame(renderRef.current);
      };
-  }, [entities, layers, blocks, styles, lineTypes, ltScale, viewPort, selectedEntityIds, worldOffset]);
+  }, [entities, layers, blocks, styles, lineTypes, ltScale, viewPort, selectedEntityIds, worldOffset, theme]);
 
   // Handle Wheel Event with passive: false to allow preventDefault
   useEffect(() => {
@@ -244,33 +244,13 @@ const DxfViewer: React.FC<DxfViewerProps> = ({ entities, layers, blocks = {}, st
     <div className="viewer-wrapper">
         <div 
         ref={containerRef}
-        className="canvas-container"
+        className={`viewer-main flex-1 relative overflow-hidden cursor-crosshair ${theme === 'black' ? 'bg-[#212121]' : 'bg-white'}`}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
         onContextMenu={(e) => e.preventDefault()}
         >
-        <svg className="grid-svg">
-            <defs>
-            <pattern 
-                id="grid" 
-                width={GRID_SIZE} 
-                height={GRID_SIZE} 
-                patternUnits="userSpaceOnUse"
-                patternTransform={`translate(${(containerRef.current?.clientWidth || 0)/2}, ${(containerRef.current?.clientHeight || 0)/2}) scale(${safeZoom}) translate(${-safeTargetX}, ${safeTargetY})`}
-            >
-                <path 
-                    d={`M ${GRID_SIZE} 0 L 0 0 0 ${GRID_SIZE}`} 
-                    fill="none" 
-                    stroke={theme === 'black' ? '#444' : '#ddd'} 
-                    strokeWidth={1 / safeZoom}
-                />
-            </pattern>
-            </defs>
-            <rect width="100%" height="100%" fill="url(#grid)" />
-        </svg>
-        
         <canvas 
             ref={canvasRef}
             className="main-canvas"

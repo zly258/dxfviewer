@@ -167,6 +167,7 @@ const createHatchPattern = (ctx: CanvasRenderingContext2D, color: string) => {
 interface RenderTransform {
     project: (p: Point2D) => Point2D;
     scale: number; // Cumulative scale factor to screen pixels
+    rotation: number; // Cumulative rotation in radians
 }
 
 const drawHatchLoop = (ctx: CanvasRenderingContext2D, loop: HatchLoop, transform: RenderTransform) => {
@@ -319,7 +320,8 @@ export const renderEntitiesToCanvas = (
             x: (p.x - safeTargetX) * safeZoom + width / 2,
             y: height / 2 - (p.y - safeTargetY) * safeZoom
         }),
-        scale: safeZoom
+        scale: safeZoom,
+        rotation: 0
     };
 
     // Calculate viewport bounds in world coordinates for culling
@@ -547,9 +549,10 @@ export const renderEntitiesToCanvas = (
                 const sPos = transform.project(pos);
                 ctx.translate(sPos.x, sPos.y);
                 
-                if (ent.rotation) {
+                const totalRotation = ((ent.rotation || 0) * Math.PI / 180) + transform.rotation;
+                if (totalRotation !== 0) {
                     // Y-flip means rotation direction is negated
-                    ctx.rotate(-ent.rotation * Math.PI / 180);
+                    ctx.rotate(-totalRotation);
                 }
                 
                 // Scale text height to pixels
@@ -638,7 +641,8 @@ export const renderEntitiesToCanvas = (
                         // 5. Apply parent project
                         return transform.project({ x: tx, y: ty });
                     },
-                    scale: transform.scale * Math.abs(scale.x) // Simplified scale for nested lineweights
+                    scale: transform.scale * Math.abs(scale.x), // Simplified scale for nested lineweights
+                    rotation: transform.rotation + rotation
                 };
 
                 const layerName = (ent.layer === '0' && parentLayerName) ? parentLayerName : ent.layer;
@@ -675,7 +679,8 @@ export const renderEntitiesToCanvas = (
                     // Dimensions are essentially INSERTS of their block with identity transform
                     const nestedTransform: RenderTransform = {
                         project: (p: Point2D) => transform.project(p),
-                        scale: transform.scale
+                        scale: transform.scale,
+                        rotation: transform.rotation
                     };
                     block.entities.forEach(child => drawEntity(child, nestedTransform, layerName, color, isSelected, depth + 1));
                 }
