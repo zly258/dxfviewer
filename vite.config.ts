@@ -1,6 +1,7 @@
 import path from 'path';
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
+import dts from 'vite-plugin-dts';
 
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
@@ -27,7 +28,15 @@ export default defineConfig(({ mode }) => {
         port: 3000,
         host: '0.0.0.0',
       },
-      plugins: [react()],
+      plugins: [
+        react(),
+        dts({ 
+          rollupTypes: true,
+          insertTypesEntry: true,
+          include: ['src/**/*.ts', 'src/**/*.tsx'],
+          exclude: ['src/main.tsx', 'src/App.tsx']
+        })
+      ],
       resolve: {
         alias: {
           '@': path.resolve(__dirname, './src'),

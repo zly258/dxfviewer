@@ -9,7 +9,7 @@ import { DEFAULT_VIEWPORT } from './constants';
 import { Language } from './constants/i18n';
 
 interface DxfViewerMainProps {
-  initFiles?: string | File;
+  initFile?: string | File;
   showOpenMenu?: boolean;
   onError?: (err: Error) => void;
   onLoad?: (data: any) => void;
@@ -19,7 +19,7 @@ interface DxfViewerMainProps {
 }
 
 const DxfViewerMain: React.FC<DxfViewerMainProps> = ({ 
-  initFiles, 
+  initFile, 
   showOpenMenu = true, 
   onError, 
   onLoad,
@@ -191,14 +191,14 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
 
   // Load initial file if provided
   useEffect(() => {
-    if (initFiles) {
-        if (typeof initFiles === 'string') {
-            loadFromUrl(initFiles);
-        } else if (initFiles instanceof File) {
-            loadFromFile(initFiles);
+    if (initFile) {
+        if (typeof initFile === 'string') {
+            loadFromUrl(initFile);
+        } else if (initFile instanceof File) {
+            loadFromFile(initFile);
         }
     }
-  }, [initFiles]);
+  }, [initFile]);
 
   const handleSidebarSelectIds = (ids: Set<string>) => {
       setSelectedEntityIds(ids);

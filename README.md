@@ -37,9 +37,11 @@ function App() {
 
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
-| `defaultLanguage` | `'en' \| 'zh'` | `'zh'` | Default UI language |
+| `initFile` | `string \| File` | `undefined` | Initial DXF file URL or File object to load |
+| `defaultLanguage` | `'en' \| 'zh'` | `'zh'` | Default UI language (uncontrolled) |
+| `lang` | `'en' \| 'zh'` | `undefined` | Current UI language (controlled) |
+| `onLanguageChange` | `(lang: Language) => void` | `undefined` | Callback when language is changed |
 | `showOpenMenu` | `boolean` | `true` | Whether to show the "Open File" menu item |
-| `initFiles` | `string \| File` | `undefined` | Initial DXF file URL or File object to load |
 | `onLoad` | `(data: any) => void` | `undefined` | Callback when DXF data is successfully loaded |
 | `onError` | `(err: Error) => void` | `undefined` | Callback when an error occurs during loading or parsing |
 
@@ -62,18 +64,20 @@ yarn add @zhangly1403/dxfviewer
 ### 基础示例
 
 ```tsx
-import React from 'react';
+import React, { useState } from 'react';
 import { DxfViewerMain } from '@zhangly1403/dxfviewer';
 import '@zhangly1403/dxfviewer/style.css';
 
 function App() {
+  const [lang, setLang] = useState('zh');
+
   return (
     <div style={{ width: '100vw', height: '100vh' }}>
       <DxfViewerMain 
-        defaultLanguage="zh"
-        showOpenMenu={true}
+        lang={lang}
+        onLanguageChange={setLang}
+        initFile="https://example.com/test.dxf"
         onLoad={(data) => console.log('DXF 加载成功:', data)}
-        onError={(err) => console.error('加载失败:', err)}
       />
     </div>
   );
@@ -84,8 +88,10 @@ function App() {
 
 | 属性名 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
-| `defaultLanguage` | `'en' \| 'zh'` | `'zh'` | 默认界面语言 |
+| `initFile` | `string \| File` | `undefined` | 初始加载的 DXF 文件 URL 或 File 对象 |
+| `defaultLanguage` | `'en' \| 'zh'` | `'zh'` | 默认界面语言 (非受控) |
+| `lang` | `'en' \| 'zh'` | `undefined` | 当前界面语言 (受控) |
+| `onLanguageChange` | `(lang: Language) => void` | `undefined` | 语言切换时的回调 |
 | `showOpenMenu` | `boolean` | `true` | 是否显示“打开文件”菜单项 |
-| `initFiles` | `string \| File` | `undefined` | 初始加载的 DXF 文件 URL 或 File 对象 |
 | `onLoad` | `(data: any) => void` | `undefined` | DXF 数据加载成功后的回调 |
 | `onError` | `(err: Error) => void` | `undefined` | 加载或解析出错时的回调 |
