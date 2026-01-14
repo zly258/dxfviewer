@@ -1,31 +1,8 @@
 import React from 'react';
 import { AnyEntity, EntityType, DxfStyle } from '../types';
-import { getAutoCadColor } from '../constants';
+import { getAutoCadColor } from '../utils/colorUtils';
+import { ENTITY_TYPE_TRANSLATIONS } from '../constants';
 import { getStyleFontFamily } from '../services/fontService';
-
-export const ENTITY_TYPE_TRANSLATIONS: Record<string, string> = {
-  [EntityType.LINE]: "线 (LINE)",
-  [EntityType.ARC]: "弧 (ARC)",
-  [EntityType.CIRCLE]: "圆 (CIRCLE)",
-  [EntityType.LWPOLYLINE]: "多段线 (LWPOLYLINE)",
-  [EntityType.POLYLINE]: "多段线 (POLYLINE)",
-  [EntityType.TEXT]: "单行文字 (TEXT)",
-  [EntityType.MTEXT]: "多行文字 (MTEXT)",
-  [EntityType.INSERT]: "块参照 (INSERT)",
-  [EntityType.HATCH]: "填充 (HATCH)",
-  [EntityType.DIMENSION]: "标注 (DIMENSION)",
-  [EntityType.SPLINE]: "样条曲线 (SPLINE)",
-  [EntityType.ELLIPSE]: "椭圆 (ELLIPSE)",
-  [EntityType.SOLID]: "二维填充 (SOLID)",
-  [EntityType.THREEDFACE]: "三维面 (3DFACE)",
-  [EntityType.POINT]: "点 (POINT)",
-  [EntityType.LEADER]: "引线 (LEADER)",
-  [EntityType.RAY]: "射线 (RAY)",
-  [EntityType.XLINE]: "构造线 (XLINE)",
-  [EntityType.ATTDEF]: "属性定义 (ATTDEF)",
-  [EntityType.ATTRIB]: "属性 (ATTRIB)",
-  [EntityType.ACAD_TABLE]: "表格 (TABLE)",
-};
 
 const LABEL_TRANSLATIONS: Record<string, string> = {
   "Type": "类型 (Type)",
@@ -119,8 +96,8 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, layers, sty
   };
 
   const formatCoord = (val: number, axis: 'x' | 'y') => {
-    // No offset needed - using original coordinates
-    return val.toFixed(3);
+    const originalVal = val + (offset ? (axis === 'x' ? offset.x : offset.y) : 0);
+    return originalVal.toFixed(3);
   };
 
   const renderEntityProperties = (ent: AnyEntity) => {

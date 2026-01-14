@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { AnyEntity, EntityType, DxfLayer } from '../types';
-import { AUTO_CAD_COLORS, DEFAULT_COLOR } from '../constants';
-import { ENTITY_TYPE_TRANSLATIONS } from './PropertiesPanel';
+import { getAutoCadColor } from '../utils/colorUtils';
+import { ENTITY_TYPE_TRANSLATIONS } from '../constants';
 
 interface SidebarProps {
   layers: Record<string, DxfLayer>;
@@ -102,7 +102,7 @@ const Sidebar: React.FC<SidebarProps> = ({ layers, entities, selectedEntityIds, 
   };
 
   const getEntityIcon = (type: EntityType) => <span className="entity-icon">{type.substring(0, 1)}</span>;
-  const getLayerColorHex = (layer: DxfLayer) => AUTO_CAD_COLORS[layer.color] || '#000000';
+  const getLayerColorHex = (layer: DxfLayer) => getAutoCadColor(layer.color);
 
   const ChevronIcon = ({ expanded }: { expanded: boolean }) => (
     <svg 

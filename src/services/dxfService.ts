@@ -407,11 +407,93 @@ export const parseDxf = async (dxfString: string, onProgress?: (percent: number)
   // We MUST do this before calculating initial extents because INSERT extents depend on block extents
   precomputeBlockExtents(blocks);
 
-  // Calculate extents
+  // Calculate initial global extents to find the center
+  const initialExtents = calculateExtents(entities, blocks);
+  const offset = { x: initialExtents.center.x, y: initialExtents.center.y };
+
+  // Offset all top-level entities to center them around (0,0)
+  // This is the "Industrial Standard" approach to fix floating point precision issues
+  entities.forEach(ent => offsetEntity(ent, offset));
+
+  // Re-calculate extents for the offset entities
   const extents = calculateExtents(entities, blocks);
 
-  // Return original data without offset - rendering will handle large coordinates
-  return { header, entities, layers, blocks, styles, lineTypes, offset: {x: 0, y: 0}, extents };
+  return { header, entities, layers, blocks, styles, lineTypes, offset, extents };
+};
+
+const offsetEntity = (ent: AnyEntity, offset: Point2D) => {
+    const ox = offset.x;
+    const oy = offset.y;
+
+    switch (ent.type) {
+        case EntityType.LINE:
+            ent.start.x -= ox; ent.start.y -= oy;
+            ent.end.x -= ox; ent.end.y -= oy;
+            break;
+        case EntityType.CIRCLE:
+        case EntityType.ARC:
+        case EntityType.ELLIPSE:
+            ent.center.x -= ox; ent.center.y -= oy;
+            break;
+        case EntityType.LWPOLYLINE:
+        case EntityType.POLYLINE:
+        case EntityType.LEADER:
+        case EntityType.SOLID:
+        case EntityType.THREEDFACE:
+            if (ent.points) {
+                ent.points.forEach(p => { p.x -= ox; p.y -= oy; });
+            }
+            break;
+        case EntityType.SPLINE:
+            if (ent.controlPoints) ent.controlPoints.forEach(p => { p.x -= ox; p.y -= oy; });
+            if (ent.fitPoints) ent.fitPoints.forEach(p => { p.x -= ox; p.y -= oy; });
+            if (ent.calculatedPoints) ent.calculatedPoints.forEach(p => { p.x -= ox; p.y -= oy; });
+            break;
+        case EntityType.POINT:
+        case EntityType.TEXT:
+        case EntityType.MTEXT:
+        case EntityType.ATTRIB:
+        case EntityType.ATTDEF:
+        case EntityType.INSERT:
+        case EntityType.ACAD_TABLE:
+            ent.position.x -= ox; ent.position.y -= oy;
+            if ((ent as any).secondPosition) {
+                (ent as any).secondPosition.x -= ox;
+                (ent as any).secondPosition.y -= oy;
+            }
+            break;
+        case EntityType.RAY:
+        case EntityType.XLINE:
+            ent.basePoint.x -= ox; ent.basePoint.y -= oy;
+            break;
+        case EntityType.HATCH:
+            if (ent.loops) {
+                ent.loops.forEach(loop => {
+                    if (loop.points) loop.points.forEach(p => { p.x -= ox; p.y -= oy; });
+                    if (loop.edges) loop.edges.forEach(edge => {
+                        if (edge.start) { edge.start.x -= ox; edge.start.y -= oy; }
+                        if (edge.end) { edge.end.x -= ox; edge.end.y -= oy; }
+                        if (edge.center) { edge.center.x -= ox; edge.center.y -= oy; }
+                        if (edge.controlPoints) edge.controlPoints.forEach(p => { p.x -= ox; p.y -= oy; });
+                        if (edge.calculatedPoints) edge.calculatedPoints.forEach(p => { p.x -= ox; p.y -= oy; });
+                    });
+                });
+            }
+            break;
+        case EntityType.DIMENSION:
+            ent.definitionPoint.x -= ox; ent.definitionPoint.y -= oy;
+            if (ent.textMidPoint) { ent.textMidPoint.x -= ox; ent.textMidPoint.y -= oy; }
+            if (ent.linearP1) { ent.linearP1.x -= ox; ent.linearP1.y -= oy; }
+            if (ent.linearP2) { ent.linearP2.x -= ox; ent.linearP2.y -= oy; }
+            if (ent.arcP1) { ent.arcP1.x -= ox; ent.arcP1.y -= oy; }
+            if (ent.arcP2) { ent.arcP2.x -= ox; ent.arcP2.y -= oy; }
+            break;
+    }
+    // Update extents for the offset entity
+    if (ent.extents) {
+        ent.extents.min.x -= ox; ent.extents.min.y -= oy;
+        ent.extents.max.x -= ox; ent.extents.max.y -= oy;
+    }
 };
 
 const parsePoint = (state: DxfParserState): Point2D => {
@@ -802,6 +884,7 @@ const parseLwPolyline = (state: DxfParserState, common: any): DxfPolyline => {
         switch(g.code) {
             case 38: elevation = parseFloat(g.value); break;
             case 70: closed = (parseInt(g.value) & 1) === 1; break;
+            case 43: common.constantWidth = parseFloat(g.value); break;
             case 10: flushVertex(); currX = parseFloat(g.value); break;
             case 20: currY = parseFloat(g.value); break;
             case 42: currBulge = parseFloat(g.value); break;
@@ -837,6 +920,7 @@ const parsePolyline = (state: DxfParserState, common: any): DxfPolyline => {
              closed = (flags & 1) === 1;
              is3DPolyline = (flags & 8) === 8;
         }
+        if (g.code === 40 || g.code === 41) common.constantWidth = parseFloat(g.value);
         if (g.code === 30) elevation = parseFloat(g.value);
     }
 

@@ -99,6 +99,7 @@ export interface DxfPolyline extends DxfEntity {
   points: Point2D[];
   bulges?: number[]; 
   closed: boolean;
+  constantWidth?: number;
 }
 
 export interface DxfText extends DxfEntity {

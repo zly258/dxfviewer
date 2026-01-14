@@ -1,7 +1,10 @@
 {
-  "name": "dxfviewer",
-  "private": true,
-  "version": "0.0.0",
+  "name": "@zhangly1403/dxfviewer",
+  "version": "1.0.0",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",

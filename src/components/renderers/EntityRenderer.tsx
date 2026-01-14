@@ -1,6 +1,7 @@
 import React from 'react';
 import { AnyEntity, EntityType, DxfLayer, DxfBlock, DxfStyle, Point2D } from '../../types';
-import { AUTO_CAD_COLORS, DEFAULT_COLOR, LINE_TYPE_MAP } from '../../constants';
+import { DEFAULT_COLOR, LINE_TYPE_MAP } from '../../constants';
+import { AUTO_CAD_COLORS } from '../../utils/colorUtils';
 import { TextRenderer, MTextRenderer } from './TextRenderer';
 import { HatchRenderer } from './HatchRenderer';
 import { InsertRenderer } from './InsertRenderer';

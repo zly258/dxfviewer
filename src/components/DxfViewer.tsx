@@ -27,22 +27,28 @@ const DxfViewer: React.FC<DxfViewerProps> = ({ entities, layers, blocks = {}, st
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 }); // Screen coords
   const [currentMousePos, setCurrentMousePos] = useState({ x: 0, y: 0 }); // Screen coords
 
-  // Calculate World Coordinates from Screen Coordinates
+  // Calculate World Coordinates from Screen Coordinates (Centered)
   const screenToWorld = (sx: number, sy: number) => {
-     // Protect against division by zero or infinite zoom
      const safeZoom = Math.max(Math.abs(viewPort.zoom), Number.MIN_VALUE);
-     const offsetX = worldOffset?.x || 0;
-     const offsetY = worldOffset?.y || 0;
-     // Using original coordinates
-     const wx = (sx - viewPort.x) / safeZoom + offsetX;
-     const wy = -(sy - viewPort.y) / safeZoom + offsetY;
+     // Return centered coordinates (0,0 is at viewPort.x, viewPort.y)
+     const wx = (sx - viewPort.x) / safeZoom;
+     const wy = -(sy - viewPort.y) / safeZoom;
      return {
          x: safeClamp(wx, -Number.MAX_VALUE, Number.MAX_VALUE),
-         y: safeClamp(wy, -Number.MAX_VALUE, Number.MAX_VALUE) // Flip Y
+         y: safeClamp(wy, -Number.MAX_VALUE, Number.MAX_VALUE)
      };
   };
 
   const [mouseWorldPos, setMouseWorldPos] = useState({ x: 0, y: 0 });
+
+  // Display coordinates (Original)
+  const displayX = mouseWorldPos.x + (worldOffset?.x || 0);
+  const displayY = mouseWorldPos.y + (worldOffset?.y || 0);
+
+  // Memoize visible count for performance
+  const visibleCount = React.useMemo(() => {
+    return entities.filter(e => e.visible !== false).length;
+  }, [entities]);
 
   // Clamp values to prevent Infinity/NaN issues
   const safeClamp = (value: number, min: number, max: number): number => {
@@ -50,31 +56,42 @@ const DxfViewer: React.FC<DxfViewerProps> = ({ entities, layers, blocks = {}, st
     return Math.max(Math.min(value, max), min);
   };
 
-  // Canvas Render Loop
+  // Canvas Render Loop with requestAnimationFrame for smoothness
+  const renderRef = useRef<number>();
+  
   useLayoutEffect(() => {
-     const canvas = canvasRef.current;
-     if (!canvas || !containerRef.current) return;
-     
-     const ctx = canvas.getContext('2d');
-     if (!ctx) return;
+     const render = () => {
+        const canvas = canvasRef.current;
+        if (!canvas || !containerRef.current) return;
+        
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
 
-     // Handle High DPI
-     const rect = containerRef.current.getBoundingClientRect();
-     const dpr = window.devicePixelRatio || 1;
-     
-     // Resize if needed
-     if (canvas.width !== rect.width * dpr || canvas.height !== rect.height * dpr) {
-         canvas.width = rect.width * dpr;
-         canvas.height = rect.height * dpr;
-         canvas.style.width = `${rect.width}px`;
-         canvas.style.height = `${rect.height}px`;
-     }
+        // Handle High DPI
+        const rect = containerRef.current.getBoundingClientRect();
+        const dpr = window.devicePixelRatio || 1;
+        
+        // Resize if needed
+        if (canvas.width !== rect.width * dpr || canvas.height !== rect.height * dpr) {
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            canvas.style.width = `${rect.width}px`;
+            canvas.style.height = `${rect.height}px`;
+        }
 
-     // Reset scale for DPI
-     ctx.setTransform(1, 0, 0, 1, 0, 0);
-     ctx.scale(dpr, dpr);
+        // Reset scale for DPI
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.scale(dpr, dpr);
 
-     renderEntitiesToCanvas(ctx, entities, layers, blocks, styles, lineTypes, ltScale, viewPort, selectedEntityIds, rect.width, rect.height, worldOffset || {x:0, y:0});
+        renderEntitiesToCanvas(ctx, entities, layers, blocks, styles, lineTypes, ltScale, viewPort, selectedEntityIds, rect.width, rect.height);
+     };
+
+     if (renderRef.current) cancelAnimationFrame(renderRef.current);
+     renderRef.current = requestAnimationFrame(render);
+
+     return () => {
+        if (renderRef.current) cancelAnimationFrame(renderRef.current);
+     };
   }, [entities, layers, blocks, styles, lineTypes, ltScale, viewPort, selectedEntityIds, worldOffset]);
 
   // Handle Wheel Event with passive: false to allow preventDefault
@@ -200,8 +217,6 @@ const DxfViewer: React.FC<DxfViewerProps> = ({ entities, layers, blocks = {}, st
     }
   };
 
-  const visibleCount = entities.filter(e => e.visible !== false).length;
-
   return (
     <div className="viewer-wrapper">
         <div 
@@ -243,8 +258,8 @@ const DxfViewer: React.FC<DxfViewerProps> = ({ entities, layers, blocks = {}, st
         {/* Status Bar */}
         <div className="status-bar">
             <div className="status-coords">
-                <span>X: <span className="status-value">{mouseWorldPos.x.toFixed(3)}</span></span>
-                <span>Y: <span className="status-value">{mouseWorldPos.y.toFixed(3)}</span></span>
+                <span>X: <span className="status-value">{displayX.toFixed(3)}</span></span>
+                <span>Y: <span className="status-value">{displayY.toFixed(3)}</span></span>
             </div>
             <div className="status-spacer"></div>
             <div>

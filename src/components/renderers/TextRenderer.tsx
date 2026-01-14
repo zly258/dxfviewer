@@ -1,6 +1,7 @@
 import React from 'react';
 import { DxfStyle, DxfText, EntityType } from '../../types';
-import { AUTO_CAD_COLORS, DEFAULT_COLOR } from '../../constants';
+import { DEFAULT_COLOR } from '../../constants';
+import { AUTO_CAD_COLORS } from '../../utils/colorUtils';
 import { getStyleFontFamily } from '../../services/fontService';
 
 /**

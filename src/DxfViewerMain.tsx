@@ -38,6 +38,17 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
 
   const [viewPort, setViewPort] = useState<ViewPort>(DEFAULT_VIEWPORT);
 
+  // Add resize listener
+  useEffect(() => {
+    const handleResize = () => {
+        if (entities.length > 0) {
+            fitView(entities, blocks);
+        }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [entities, blocks]);
+
   // Load initial file if provided
   useEffect(() => {
     if (initFiles) {
@@ -54,14 +65,13 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
     setLoadingProgress(0);
     try {
         const response = await fetch(url);
-        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        if (!response.ok) throw new Error(`Failed to fetch ${url}: ${response.statusText}`);
         const buffer = await response.arrayBuffer();
         await processBuffer(buffer);
     } catch (err) {
         const error = err instanceof Error ? err : new Error(String(err));
         onError?.(error);
-        alert("Load Error: " + error.message);
-    } finally {
+        alert(error.message);
         setIsLoading(false);
     }
   };
@@ -107,10 +117,9 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
         setLtScale(data.header?.ltScale ?? 1.0);
         setWorldOffset(data.offset);
         onLoad?.(data);
-        // Wait for state updates to propagate before fitting view
-        setTimeout(() => {
-            fitView(data.entities, data.blocks);
-        }, 100);
+        
+        // Use data.offset directly to avoid dependency on state update
+        fitView(data.entities, data.blocks, data.offset);
     } catch (err) {
         const error = err instanceof Error ? err : new Error(String(err));
         onError?.(error);
@@ -121,22 +130,22 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
     }
   };
 
-  const fitView = (ents: AnyEntity[], blks: Record<string, DxfBlock>) => {
+  const fitView = useCallback((ents: AnyEntity[], blks: Record<string, DxfBlock>, overrideOffset?: Point2D) => {
      if (ents.length === 0) return;
      const visibleEnts = ents.filter(e => e.visible !== false && e.type !== EntityType.ATTDEF);
      if (visibleEnts.length === 0) return;
 
      const extents = calculateExtents(visibleEnts, blks);
 
-     const sidebarWidth = showSidebar ? 256 : 0; // 64 (w-64) = 256px
-     const propsWidth = showProperties ? 320 : 0; // 80 (w-80) = 320px
+     const sidebarWidth = showSidebar ? 256 : 0;
+     const propsWidth = showProperties ? 320 : 0;
      const containerW = window.innerWidth - sidebarWidth - propsWidth;
-     const containerH = window.innerHeight - 40 - 24; // Toolbar (40) + Status (24)
+     const containerH = window.innerHeight - 40; // Only subtract Toolbar height
 
      if (extents.width <= 0 && extents.height <= 0) {
         // For single point, center it and use default zoom
-        const offsetX = worldOffset?.x || 0;
-        const offsetY = worldOffset?.y || 0;
+        const offsetX = (overrideOffset || worldOffset)?.x || 0;
+        const offsetY = (overrideOffset || worldOffset)?.y || 0;
         setViewPort({
             x: containerW/2 - (extents.center.x - offsetX),
             y: containerH/2 + (extents.center.y - offsetY),
@@ -145,32 +154,28 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
         return;
      }
 
-     const w = Math.max(extents.width, Number.MIN_VALUE);
-     const h = Math.max(extents.height, Number.MIN_VALUE);
+     const w = Math.max(extents.width, 1e-9);
+     const h = Math.max(extents.height, 1e-9);
 
      // Calculate zoom with consistent 5% margin on all sides
-     const marginFactor = 0.95; // 5% margin -> fill 95%
+     const marginFactor = 0.95; 
      const zoomX = (containerW / w) * marginFactor;
      const zoomY = (containerH / h) * marginFactor;
      let zoom = Math.min(zoomX, zoomY);
 
-     // Clamp zoom to prevent extreme values
-     const MIN_ZOOM = Number.MIN_VALUE;
-     const MAX_ZOOM = Number.MAX_VALUE;
-     zoom = Math.max(Math.min(zoom, MAX_ZOOM), MIN_ZOOM);
+     // Clamp zoom to prevent extreme values that cause rendering artifacts
+     zoom = Math.max(Math.min(zoom, 1e10), 1e-10);
 
      const screenCenterX = containerW / 2;
      const screenCenterY = containerH / 2;
 
-     // Use original coordinates - offset is zero
-     const offsetX = worldOffset?.x || 0;
-     const offsetY = worldOffset?.y || 0;
-
-     const x = screenCenterX - (extents.center.x - offsetX) * zoom;
-     const y = screenCenterY + (extents.center.y - offsetY) * zoom;
+     // The entities are already centered around (0,0) in world space by parseDxf
+     // So extents.center is already the center in the current coordinate system.
+     const x = screenCenterX - extents.center.x * zoom;
+     const y = screenCenterY + extents.center.y * zoom;
 
      setViewPort({ x, y, zoom });
-  };
+  }, [showSidebar, showProperties]);
 
   const handleSidebarSelectIds = (ids: Set<string>) => {
       setSelectedEntityIds(ids);
@@ -183,12 +188,10 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
               const sidebarWidth = showSidebar ? 256 : 0;
               const propsWidth = showProperties ? 320 : 0;
               const containerW = window.innerWidth - sidebarWidth - propsWidth;
-              const containerH = window.innerHeight - 64;
+              const containerH = window.innerHeight - 40;
 
-              const w = Math.max(extents.width || 1, Number.MIN_VALUE);
-              const h = Math.max(extents.height || 1, Number.MIN_VALUE);
-              const offsetX = worldOffset?.x || 0;
-              const offsetY = worldOffset?.y || 0;
+              const w = Math.max(extents.width || 0, 1e-9);
+              const h = Math.max(extents.height || 0, 1e-9);
 
               if (w > 0 || h > 0) {
                   const marginFactor = 0.8; // More margin for single entity focus
@@ -196,13 +199,13 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
                   const zoomY = (containerH / h) * marginFactor;
                   // Clamp zoom to prevent excessive zoom on small entities
                   let zoom = Math.min(zoomX, zoomY, 1e6);
-                  zoom = Math.max(zoom, 1e-6);
+                  zoom = Math.max(zoom, 1e-10);
 
                   const screenCenterX = containerW / 2;
                   const screenCenterY = containerH / 2;
 
-                  const x = screenCenterX - (extents.center.x - offsetX) * zoom;
-                  const y = screenCenterY + (extents.center.y - offsetY) * zoom;
+                  const x = screenCenterX - extents.center.x * zoom;
+                  const y = screenCenterY + extents.center.y * zoom;
 
                   setViewPort({ x, y, zoom });
               }
