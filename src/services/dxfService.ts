@@ -1662,3 +1662,113 @@ export const calculateExtents = (entities: AnyEntity[], blocks: Record<string, D
         max: { x: maxX, y: maxY }
     };
 };
+
+/**
+ * Calculates extents intelligently by ignoring outliers and focusing on the most dense area.
+ */
+export const calculateSmartExtents = (entities: AnyEntity[], blocks: Record<string, DxfBlock>): { center: Point2D, width: number, height: number, min: Point2D, max: Point2D } => {
+    const validExtents: {min: Point2D, max: Point2D, center: Point2D}[] = [];
+    
+    entities.forEach(ent => {
+        if (ent.visible === false || ent.type === EntityType.ATTDEF) return;
+        const ext = getEntityExtents(ent, blocks);
+        if (ext) {
+            const isValid = (v: number) => isFinite(v) && Math.abs(v) < 1e50;
+            if (isValid(ext.min.x) && isValid(ext.max.x) && isValid(ext.min.y) && isValid(ext.max.y)) {
+                validExtents.push({
+                    min: ext.min,
+                    max: ext.max,
+                    center: { x: (ext.min.x + ext.max.x) / 2, y: (ext.min.y + ext.max.y) / 2 }
+                });
+                ent.extents = ext;
+            }
+        }
+    });
+
+    if (validExtents.length === 0) {
+        return { center: { x: 0, y: 0 }, width: 0, height: 0, min: { x: 0, y: 0 }, max: { x: 0, y: 0 } };
+    }
+
+    if (validExtents.length <= 2) {
+        return calculateExtents(entities, blocks);
+    }
+
+    // 1. Calculate full bounding box
+    let fullMinX = Infinity, fullMinY = Infinity, fullMaxX = -Infinity, fullMaxY = -Infinity;
+    validExtents.forEach(ext => {
+        fullMinX = Math.min(fullMinX, ext.min.x);
+        fullMaxX = Math.max(fullMaxX, ext.max.x);
+        fullMinY = Math.min(fullMinY, ext.min.y);
+        fullMaxY = Math.max(fullMaxY, ext.max.y);
+    });
+
+    // 2. Statistical filtering for outliers
+    // Use X and Y centers to find the "dense" area
+    const centersX = validExtents.map(e => e.center.x).sort((a, b) => a - b);
+    const centersY = validExtents.map(e => e.center.y).sort((a, b) => a - b);
+    
+    // Get the Interquartile Range (IQR) for centers
+    const q1Idx = Math.floor(centersX.length * 0.25);
+    const q3Idx = Math.floor(centersX.length * 0.75);
+    
+    const iqrX = centersX[q3Idx] - centersX[q1Idx];
+    const iqrY = centersY[q3Idx] - centersY[q1Idx];
+    
+    // Outlier threshold: 1.5 * IQR is standard, but we'll be more generous (e.g., 5.0 * IQR)
+    // or just use 5th and 95th percentiles to be safe but focused.
+    const lowIdx = Math.floor(centersX.length * 0.05);
+    const highIdx = Math.floor(centersX.length * 0.95);
+    
+    const p5X = centersX[lowIdx];
+    const p95X = centersX[highIdx];
+    const p5Y = centersY[lowIdx];
+    const p95Y = centersY[highIdx];
+
+    // If the full range is much larger than the percentile range (e.g., > 10x), 
+    // it's highly likely there are outliers.
+    const pWidth = p95X - p5X;
+    const pHeight = p95Y - p5Y;
+    const fWidth = fullMaxX - fullMinX;
+    const fHeight = fullMaxY - fullMinY;
+
+    let finalMinX = fullMinX, finalMaxX = fullMaxX, finalMinY = fullMinY, finalMaxY = fullMaxY;
+
+    // If full range is significantly larger than percentile range, focus on the "bulk"
+    if (fWidth > pWidth * 10 || fHeight > pHeight * 10) {
+        // Filter entities that fall within a reasonable distance of the p5-p95 box
+        // We'll use p5-p95 with a margin as our "smart" box
+        const marginX = Math.max(pWidth * 0.5, fWidth * 0.01);
+        const marginY = Math.max(pHeight * 0.5, fHeight * 0.01);
+        
+        finalMinX = Infinity; finalMaxX = -Infinity;
+        finalMinY = Infinity; finalMaxY = -Infinity;
+        
+        validExtents.forEach(ext => {
+            // If the entity is somewhat close to the core region, include it in the fit calculation
+            if (ext.center.x >= p5X - marginX && ext.center.x <= p95X + marginX &&
+                ext.center.y >= p5Y - marginY && ext.center.y <= p95Y + marginY) {
+                finalMinX = Math.min(finalMinX, ext.min.x);
+                finalMaxX = Math.max(finalMaxX, ext.max.x);
+                finalMinY = Math.min(finalMinY, ext.min.y);
+                finalMaxY = Math.max(finalMaxY, ext.max.y);
+            }
+        });
+        
+        // Safety: if filtering resulted in nothing (shouldn't happen), revert to full
+        if (finalMinX === Infinity) {
+            finalMinX = fullMinX; finalMaxX = fullMaxX;
+            finalMinY = fullMinY; finalMaxY = fullMaxY;
+        }
+    }
+
+    const width = finalMaxX - finalMinX;
+    const height = finalMaxY - finalMinY;
+    
+    return {
+        center: { x: finalMinX + width / 2, y: finalMinY + height / 2 },
+        width: width,
+        height: height,
+        min: { x: finalMinX, y: finalMinY },
+        max: { x: finalMaxX, y: finalMaxY }
+    };
+};

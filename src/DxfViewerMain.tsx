@@ -3,7 +3,7 @@ import DxfViewer from './components/DxfViewer';
 import Sidebar from './components/Sidebar';
 import PropertiesPanel from './components/PropertiesPanel';
 import ToolBar from './components/ToolBar';
-import { parseDxf, calculateExtents } from './services/dxfService';
+import { parseDxf, calculateExtents, calculateSmartExtents } from './services/dxfService';
 import { AnyEntity, ViewPort, DxfLayer, DxfBlock, EntityType, DxfStyle, DxfLineType, Point2D } from './types';
 import { DEFAULT_VIEWPORT } from './constants';
 
@@ -44,29 +44,32 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
     const visibleEnts = ents.filter(e => e.visible !== false && e.type !== EntityType.ATTDEF);
     if (visibleEnts.length === 0) return;
 
-    // Step 1: Calculate world bounding box (min/max)
-    const extents = calculateExtents(visibleEnts, blks);
+    // Step 1: Calculate world bounding box (min/max) using smart logic to ignore outliers
+    const extents = calculateSmartExtents(visibleEnts, blks);
 
-    // Step 2: Calculate world center (must-have for precision)
+    // Step 2: Calculate world center
     const centerX = extents.center.x;
     const centerY = extents.center.y;
 
-    // Step 3: Calculate scale (only based on range)
+    // Step 3: Calculate scale
     const sidebarWidth = showSidebar ? 256 : 0;
     const propsWidth = showProperties ? 320 : 0;
-    // Account for potential scrollbars and padding - use a safer margin
-    const containerW = Math.max(window.innerWidth - sidebarWidth - propsWidth - 40, 100);
-    const containerH = Math.max(window.innerHeight - 40 - 40, 100); 
+    
+    // Get actual container dimensions
+    const containerW = Math.max(window.innerWidth - sidebarWidth - propsWidth, 100);
+    const containerH = Math.max(window.innerHeight - 40, 100); // 40 is header height
 
     if (extents.width <= 0 && extents.height <= 0) {
         setViewPort({ targetX: centerX, targetY: centerY, zoom: 1 });
         return;
     }
 
-    const worldW = Math.max(extents.width, 1e-6);
-    const worldH = Math.max(extents.height, 1e-6);
+    const worldW = extents.width;
+    const worldH = extents.height;
 
-    const marginFactor = 0.95;
+    // marginFactor: 1.0 means exact fit, 0.95 means 5% total margin.
+    // User wants it to "correctly fill", so we use a very small margin.
+    const marginFactor = 0.98; 
     const scaleX = (containerW / worldW) * marginFactor;
     const scaleY = (containerH / worldH) * marginFactor;
     let zoom = Math.min(scaleX, scaleY);
@@ -189,22 +192,22 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
           const id = Array.from(ids)[0];
           const ent = entities.find(e => e.id === id);
           if (ent) {
-              const extents = calculateExtents([ent], blocks);
+              const extents = calculateSmartExtents([ent], blocks);
 
               const sidebarWidth = showSidebar ? 256 : 0;
               const propsWidth = showProperties ? 320 : 0;
               const containerW = window.innerWidth - sidebarWidth - propsWidth;
               const containerH = window.innerHeight - 40;
 
-              const w = Math.max(extents.width || 0, 1e-9);
-              const h = Math.max(extents.height || 0, 1e-9);
+              const w = extents.width;
+              const h = extents.height;
 
               if (w > 0 || h > 0) {
-                  const marginFactor = 0.8; // More margin for single entity focus
+                  const marginFactor = 0.9; // Slightly more margin for single entity focus
                   const zoomX = (containerW / w) * marginFactor;
                   const zoomY = (containerH / h) * marginFactor;
-                  // Clamp zoom to prevent excessive zoom on small entities
-                  let zoom = Math.min(zoomX, zoomY, 100);
+                  // Clamp zoom to prevent excessive zoom on tiny entities
+                  let zoom = Math.min(zoomX, zoomY, 1000000);
 
                   setViewPort({
                     targetX: extents.center.x,
