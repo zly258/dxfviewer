@@ -16,11 +16,27 @@ interface DxfViewerProps {
   onFitView: () => void;
   worldOffset?: Point2D;
   ltScale?: number;
-  theme: 'black' | 'white';
+  theme: 'black' | 'white' | 'gray';
   lang: Language;
+  onMouseMoveWorld?: (x: number, y: number) => void;
 }
 
-const DxfViewer: React.FC<DxfViewerProps> = ({ entities, layers, blocks = {}, styles = {}, lineTypes = {}, viewPort, onViewPortChange, selectedEntityIds, onSelectIds, worldOffset, ltScale = 1.0, theme, lang }) => {
+const DxfViewer: React.FC<DxfViewerProps> = ({ 
+    entities, 
+    layers, 
+    blocks = {}, 
+    styles = {}, 
+    lineTypes = {}, 
+    viewPort, 
+    onViewPortChange, 
+    selectedEntityIds, 
+    onSelectIds, 
+    worldOffset, 
+    ltScale = 1.0, 
+    theme, 
+    lang,
+    onMouseMoveWorld
+}) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const t = UI_TRANSLATIONS[lang];
@@ -170,6 +186,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({ entities, layers, blocks = {}, st
     
     const worldPos = screenToWorld(mouseX, mouseY);
     setMouseWorldPos(worldPos);
+    onMouseMoveWorld?.(worldPos.x + (worldOffset?.x || 0), worldPos.y + (worldOffset?.y || 0));
 
     if (isPanning) {
       const dx = e.clientX - dragStart.x;
@@ -242,11 +259,18 @@ const DxfViewer: React.FC<DxfViewerProps> = ({ entities, layers, blocks = {}, st
     const safeTargetY = isNaN(viewPort.targetY) ? 0 : viewPort.targetY;
     const safeZoom = isNaN(viewPort.zoom) || viewPort.zoom === 0 ? 1 : viewPort.zoom;
 
+    const getCanvasBg = () => {
+        if (theme === 'white') return '#ffffff';
+        if (theme === 'gray') return '#808080';
+        return '#212121';
+    };
+
     return (
     <div className="viewer-wrapper">
         <div 
         ref={containerRef}
-        className={`viewer-main flex-1 relative overflow-hidden cursor-crosshair ${theme === 'black' ? 'bg-[#212121]' : 'bg-white'}`}
+        className="canvas-container"
+        style={{ '--canvas-bg': getCanvasBg() } as React.CSSProperties}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
@@ -269,18 +293,6 @@ const DxfViewer: React.FC<DxfViewerProps> = ({ entities, layers, blocks = {}, st
             }}
             />
         )}
-        </div>
-
-        {/* Status Bar */}
-        <div className="status-bar">
-            <div className="status-coords">
-                <span>X: <span className="status-value">{displayX.toFixed(3)}</span></span>
-                <span>Y: <span className="status-value">{displayY.toFixed(3)}</span></span>
-            </div>
-            <div className="status-spacer"></div>
-            <div>
-                {lang === 'zh' ? '实体数' : 'Entities'}: <span className="status-value">{visibleCount}</span>
-            </div>
         </div>
     </div>
   );

@@ -9,7 +9,7 @@ interface PropertiesPanelProps {
   layers?: any[];
   styles?: Record<string, DxfStyle>;
   offset?: { x: number, y: number };
-  theme: 'black' | 'white';
+  theme: 'black' | 'white' | 'gray';
   lang: Language;
 }
 
@@ -39,13 +39,13 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, layers, sty
   };
 
   const renderColorValue = (color: number | undefined) => {
-    if (color === 256) return <span className="text-gray-500">随层 (ByLayer)</span>;
-    if (color === 0) return <span className="text-gray-500">随块 (ByBlock)</span>;
+    if (color === 256) return <span style={{ color: 'var(--text-secondary)' }}>随层 (ByLayer)</span>;
+    if (color === 0) return <span style={{ color: 'var(--text-secondary)' }}>随块 (ByBlock)</span>;
     
     const hex = getAutoCadColor(color || 7, theme);
     return (
       <div className="color-preview-container">
-        <span className="text-gray-400 text-xs">({color})</span>
+        <span style={{ color: 'var(--text-secondary)', fontSize: '10px' }}>({color})</span>
         <span className="color-hex">{hex}</span>
         <div 
           className="color-swatch" 
@@ -56,9 +56,9 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, layers, sty
   };
 
   const renderLineweight = (lw: number | undefined) => {
-    if (lw === undefined || lw === -1) return <span className="text-gray-500">随层 (ByLayer)</span>;
-    if (lw === -2) return <span className="text-gray-500">随块 (ByBlock)</span>;
-    if (lw === -3) return <span className="text-gray-500">默认 (Default)</span>;
+    if (lw === undefined || lw === -1) return <span style={{ color: 'var(--text-secondary)' }}>随层 (ByLayer)</span>;
+    if (lw === -2) return <span style={{ color: 'var(--text-secondary)' }}>随块 (ByBlock)</span>;
+    if (lw === -3) return <span style={{ color: 'var(--text-secondary)' }}>默认 (Default)</span>;
     if (lw === 0) return "0.00 mm";
     return `${(lw / 100).toFixed(2)} mm`;
   };
@@ -72,7 +72,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, layers, sty
       const typeDisplay = entNames[ent.type] || ent.type;
       
       const commonRows = [
-          renderPropertyRow("Type", <span className="text-blue-600 font-bold">{typeDisplay}</span>),
+          renderPropertyRow("Type", <span style={{ color: 'var(--accent-blue)', fontWeight: 'bold' }}>{typeDisplay}</span>),
           renderPropertyRow("Handle", formatHandle(ent.handle)),
           renderPropertyRow("Layer", ent.layer),
           renderPropertyRow("Color", renderColorValue(ent.color)),

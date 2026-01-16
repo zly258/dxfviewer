@@ -6,13 +6,14 @@ import { getStyleFontFamily, FONT_STACKS, mapCadFontToWebFont } from './fontServ
 
 const SELECTION_COLOR = '#0078d4'; 
 
-const getColor = (ent: AnyEntity, layer: DxfLayer | undefined, parentColor: string | undefined, theme: 'black' | 'white'): string => {
+const getColor = (ent: AnyEntity, layer: DxfLayer | undefined, parentColor: string | undefined, theme: 'black' | 'white' | 'gray'): string => {
     if (ent.trueColor !== undefined) return trueColorToHex(ent.trueColor);
     const entColor = ent.color;
     if (entColor === 0 && parentColor) return parentColor; // ByBlock
     if (entColor === 256 || entColor === undefined) { // ByLayer
         if (layer?.trueColor !== undefined) return trueColorToHex(layer.trueColor);
-        return layer ? getAutoCadColor(layer.color, theme) : (theme === 'black' ? '#FFFFFF' : '#000000');
+        const bgIsDark = theme === 'black' || theme === 'gray';
+        return layer ? getAutoCadColor(layer.color, theme) : (bgIsDark ? '#FFFFFF' : '#000000');
     }
     return getAutoCadColor(entColor, theme);
 };
@@ -305,10 +306,12 @@ export const renderEntitiesToCanvas = (
     selectedIds: Set<string>,
     width: number,
     height: number,
-    theme: 'black' | 'white'
+    theme: 'black' | 'white' | 'gray'
 ) => {
     // Clear canvas with background color
-    ctx.fillStyle = theme === 'black' ? '#212121' : '#FFFFFF';
+    if (theme === 'white') ctx.fillStyle = '#FFFFFF';
+    else if (theme === 'gray') ctx.fillStyle = '#808080';
+    else ctx.fillStyle = '#212121';
     ctx.fillRect(0, 0, width, height);
 
     const safeZoom = isNaN(viewPort.zoom) || viewPort.zoom === 0 ? 1 : viewPort.zoom;

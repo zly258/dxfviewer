@@ -19,14 +19,15 @@ export const trueColorToHex = (trueColor: number): string => {
 /**
  * ACI to RGB Conversion Algorithm
  * @param index ACI color index
- * @param theme Current background theme ('black' or 'white')
+ * @param theme Current background theme ('black', 'white' or 'gray')
  */
-export const getAutoCadColor = (index: number, theme: 'black' | 'white' = 'black'): string => {
-  if (index <= 0 || index === 256) return theme === 'black' ? '#FFFFFF' : '#000000'; // ByBlock / ByLayer handled by caller usually
+export const getAutoCadColor = (index: number, theme: 'black' | 'white' | 'gray' = 'black'): string => {
+  const bgIsDark = theme === 'black' || theme === 'gray';
+  if (index <= 0 || index === 256) return bgIsDark ? '#FFFFFF' : '#000000'; // ByBlock / ByLayer handled by caller usually
   
   // Special handling for Color 7 (White/Black)
   if (index === 7) {
-      return theme === 'black' ? '#FFFFFF' : '#000000';
+      return bgIsDark ? '#FFFFFF' : '#000000';
   }
 
   // Standard colors 1-9

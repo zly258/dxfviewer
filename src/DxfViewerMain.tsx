@@ -44,8 +44,11 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
   const [showProperties, setShowProperties] = useState(true);
 
   const [viewPort, setViewPort] = useState<ViewPort>(DEFAULT_VIEWPORT);
-  const [theme, setTheme] = useState<'black' | 'white'>('black');
+  const [uiTheme, setUiTheme] = useState<'light' | 'dark'>('light');
+  const [canvasTheme, setCanvasTheme] = useState<'black' | 'white' | 'gray'>('black');
   const [internalLang, setInternalLang] = useState<Language>(defaultLanguage);
+  const [mouseCoords, setMouseCoords] = useState<{x: number, y: number}>({x: 0, y: 0});
+  const [isExporting, setIsExporting] = useState(false);
 
   const lang = controlledLang || internalLang;
   const handleSetLang = useCallback((newLang: Language) => {
@@ -71,7 +74,7 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
     
     // Get actual container dimensions
     const containerW = Math.max(window.innerWidth - sidebarWidth - propsWidth, 100);
-    const containerH = Math.max(window.innerHeight - 40, 100); // 40 is header height
+    const containerH = Math.max(window.innerHeight - 30 - 24, 100); // 30 header, 24 status bar
 
     if (extents.width <= 0 && extents.height <= 0) {
         setViewPort({ targetX: centerX, targetY: centerY, zoom: 1 });
@@ -211,7 +214,7 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
               const sidebarWidth = showSidebar ? 256 : 0;
               const propsWidth = showProperties ? 320 : 0;
               const containerW = window.innerWidth - sidebarWidth - propsWidth;
-              const containerH = window.innerHeight - 40;
+              const containerH = window.innerHeight - 30 - 24;
 
               const w = extents.width;
               const h = extents.height;
@@ -299,7 +302,7 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
   const selectedEntities = entities.filter(e => selectedEntityIds.has(e.id));
 
   return (
-    <div className="app-container">
+    <div className={`app-container ${uiTheme === 'dark' ? 'theme-dark' : ''}`}>
       {isLoading && (
         <div className="loading-overlay">
           <div className="loading-box">
@@ -324,25 +327,27 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
         showProperties={showProperties}
         onToggleProperties={() => setShowProperties(!showProperties)}
         showOpen={showOpenMenu}
-        theme={theme}
-        onToggleTheme={() => setTheme(theme === 'black' ? 'white' : 'black')}
+        uiTheme={uiTheme}
+        onSetUiTheme={setUiTheme}
+        canvasTheme={canvasTheme}
+        onSetCanvasTheme={setCanvasTheme}
         lang={lang}
         onSetLang={handleSetLang}
       />
       
-      <div className="main-content" style={{ height: 'calc(100vh - 40px)' }}>
+      <div className="main-content">
         {showSidebar && (
             <Sidebar 
             layers={layers} 
             entities={entities} 
             selectedEntityIds={selectedEntityIds}
             onSelectIds={handleSidebarSelectIds}
-            theme={theme}
+            theme={canvasTheme}
             lang={lang}
             />
         )}
         
-        <main className={`viewer-container shadow-inner flex flex-col border-l border-r border-gray-300 ${theme === 'black' ? 'bg-[#212121]' : 'bg-white'}`}>
+        <main className="viewer-container">
           <DxfViewer 
             entities={entities} 
             layers={layers}
@@ -356,8 +361,9 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
             onSelectIds={setSelectedEntityIds}
             onFitView={handleFitView}
             worldOffset={worldOffset}
-            theme={theme}
+            theme={canvasTheme}
             lang={lang}
+            onMouseMoveWorld={(x, y) => setMouseCoords({x, y})}
           />
         </main>
 
@@ -367,10 +373,46 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
                 layers={Object.values(layers)}
                 styles={styles}
                 offset={worldOffset}
-                theme={theme}
+                theme={canvasTheme}
                 lang={lang}
             />
         )}
+      </div>
+
+      {/* Status Bar */}
+      <div className="status-bar">
+        <div className="status-left">
+          <div className="status-coords">
+            <span>X: <span className="status-value">{mouseCoords.x.toFixed(3)}</span></span>
+            <span>Y: <span className="status-value">{mouseCoords.y.toFixed(3)}</span></span>
+          </div>
+        </div>
+
+        <div className="status-center">
+          {selectedEntityIds.size === 0 ? (
+            <span>{lang === 'zh' ? '未选择对象' : 'No objects selected'}</span>
+          ) : (
+            <div style={{ display: 'flex', gap: '15px' }}>
+              <span>{lang === 'zh' ? `已选择 ${selectedEntityIds.size} 个对象` : `Selected ${selectedEntityIds.size} objects`}</span>
+              {selectedEntityIds.size === 1 && (
+                <span style={{ opacity: 0.8 }}>
+                  {lang === 'zh' ? '选择单个对象以查看详细属性' : 'Select a single object to view detailed properties'}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="status-right">
+          <div style={{ display: 'flex', gap: '20px' }}>
+            <div>
+              {lang === 'zh' ? '实体数' : 'Entities'}: <span className="status-value">{entities.length}</span>
+            </div>
+            <div style={{ opacity: 0.8 }}>
+              {lang === 'zh' ? '就绪' : 'Ready'}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

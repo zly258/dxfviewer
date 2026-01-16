@@ -10,8 +10,10 @@ interface ToolBarProps {
   showProperties: boolean;
   onToggleProperties: () => void;
   showOpen?: boolean;
-  theme: 'black' | 'white';
-  onToggleTheme: () => void;
+  uiTheme: 'light' | 'dark';
+  onSetUiTheme: (theme: 'light' | 'dark') => void;
+  canvasTheme: 'black' | 'white' | 'gray';
+  onSetCanvasTheme: (theme: 'black' | 'white' | 'gray') => void;
   lang: Language;
   onSetLang: (lang: Language) => void;
 }
@@ -25,8 +27,10 @@ const ToolBar: React.FC<ToolBarProps> = ({
     showProperties, 
     onToggleProperties,
     showOpen = true,
-    theme,
-    onToggleTheme,
+    uiTheme,
+    onSetUiTheme,
+    canvasTheme,
+    onSetCanvasTheme,
     lang,
     onSetLang
 }) => {
@@ -37,7 +41,7 @@ const ToolBar: React.FC<ToolBarProps> = ({
     <div className="toolbar">
       {/* 文件 Menu */}
       <div 
-        className="menu-item"
+        className={`menu-item ${activeMenu === 'file' ? 'active' : ''}`}
         onMouseEnter={() => setActiveMenu('file')}
         onMouseLeave={() => setActiveMenu(null)}
       >
@@ -59,7 +63,7 @@ const ToolBar: React.FC<ToolBarProps> = ({
 
       {/* 视图 Menu */}
       <div 
-        className="menu-item"
+        className={`menu-item ${activeMenu === 'view' ? 'active' : ''}`}
         onMouseEnter={() => setActiveMenu('view')}
         onMouseLeave={() => setActiveMenu(null)}
       >
@@ -70,19 +74,59 @@ const ToolBar: React.FC<ToolBarProps> = ({
               <span>{t.fitView}</span>
             </div>
             <div className="divider"></div>
-            <div onClick={onToggleSidebar} className="dropdown-item">
-              <span>{t.layers} ({showSidebar ? t.off : t.on})</span>
-            </div>
-            <div onClick={onToggleProperties} className="dropdown-item">
-               <span>{t.properties} ({showProperties ? t.off : t.on})</span>
-            </div>
-            <div className="divider"></div>
-            <div onClick={onToggleTheme} className="dropdown-item">
-              <span>{t.theme} ({theme === 'black' ? t.black : t.white})</span>
-            </div>
-            <div className="divider"></div>
             <div onClick={() => onSetLang(lang === 'zh' ? 'en' : 'zh')} className="dropdown-item">
               <span>{t.language}: {lang === 'zh' ? 'English' : '简体中文'}</span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 界面 Menu (Ref 3DBrowser) */}
+      <div 
+        className={`menu-item ${activeMenu === 'interface' ? 'active' : ''}`}
+        onMouseEnter={() => setActiveMenu('interface')}
+        onMouseLeave={() => setActiveMenu(null)}
+      >
+        <span>{lang === 'zh' ? '界面' : 'Interface'}</span>
+        {activeMenu === 'interface' && (
+          <div className="dropdown-menu" style={{ minWidth: '180px' }}>
+            <div onClick={onToggleSidebar} className={`dropdown-item ${showSidebar ? 'checked' : ''}`}>
+              <span>{t.layers}</span>
+            </div>
+            <div onClick={onToggleProperties} className={`dropdown-item ${showProperties ? 'checked' : ''}`}>
+               <span>{t.properties}</span>
+            </div>
+            <div className="divider"></div>
+            <div onClick={() => onSetUiTheme('light')} className={`dropdown-item ${uiTheme === 'light' ? 'checked' : ''}`}>
+              <span>{lang === 'zh' ? '浅色模式' : 'Light Mode'}</span>
+            </div>
+            <div onClick={() => onSetUiTheme('dark')} className={`dropdown-item ${uiTheme === 'dark' ? 'checked' : ''}`}>
+              <span>{lang === 'zh' ? '深色模式' : 'Dark Mode'}</span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 设置 Menu (Background) */}
+      <div 
+        className={`menu-item ${activeMenu === 'settings' ? 'active' : ''}`}
+        onMouseEnter={() => setActiveMenu('settings')}
+        onMouseLeave={() => setActiveMenu(null)}
+      >
+        <span>{lang === 'zh' ? '设置' : 'Settings'}</span>
+        {activeMenu === 'settings' && (
+          <div className="dropdown-menu" style={{ minWidth: '180px' }}>
+            <div className="dropdown-header" style={{ padding: '4px 12px', fontSize: '10px', color: 'var(--text-secondary)' }}>
+              {lang === 'zh' ? '背景颜色' : 'Background Color'}
+            </div>
+            <div onClick={() => onSetCanvasTheme('black')} className={`dropdown-item ${canvasTheme === 'black' ? 'checked' : ''}`}>
+              <span>{lang === 'zh' ? '黑色' : 'Black'}</span>
+            </div>
+            <div onClick={() => onSetCanvasTheme('white')} className={`dropdown-item ${canvasTheme === 'white' ? 'checked' : ''}`}>
+              <span>{lang === 'zh' ? '白色' : 'White'}</span>
+            </div>
+            <div onClick={() => onSetCanvasTheme('gray')} className={`dropdown-item ${canvasTheme === 'gray' ? 'checked' : ''}`}>
+              <span>{lang === 'zh' ? '灰色' : 'Gray'}</span>
             </div>
           </div>
         )}

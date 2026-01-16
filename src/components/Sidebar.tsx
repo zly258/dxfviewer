@@ -8,11 +8,11 @@ interface SidebarProps {
   entities: AnyEntity[];
   selectedEntityIds: Set<string>;
   onSelectIds: (ids: Set<string>) => void;
-  theme: 'black' | 'white';
+  theme: 'black' | 'white' | 'gray';
   lang: Language;
 }
 
-const ROW_HEIGHT = 36; 
+const ROW_HEIGHT = 26; 
 
 type FlatItem = 
   | { type: 'layer'; name: string; layer: DxfLayer; count: number; expanded: boolean }
