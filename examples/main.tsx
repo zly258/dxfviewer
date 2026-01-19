@@ -34,7 +34,6 @@ const ExampleApp = () => {
       }}>
         <div style={{ fontSize: '13px', fontWeight: 'bold', display: 'flex', gap: '20px' }}>
           <span>标题: DXF Viewer</span>
-          <span>版本: 1.1.0</span>
           <span>作者: zhangly1403</span>
         </div>
       </div>
