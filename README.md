@@ -2,6 +2,8 @@
 
 A high-performance DXF viewer component for React, based on Canvas 2D.
 
+**[Live Demo](https://zly258.github.io/dxfviewer/)**
+
 ## Usage as a Library
 
 ### Installation
@@ -50,6 +52,8 @@ function App() {
 # DXF 查看器组件
 
 一个基于 Canvas 2D 的高性能 React DXF 查看器组件。
+
+**[在线预览](https://zly258.github.io/dxfviewer/)**
 
 ## 作为库使用
 
