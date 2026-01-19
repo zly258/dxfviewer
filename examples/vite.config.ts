@@ -4,6 +4,7 @@ import path from 'path';
 
 export default defineConfig({
   root: path.resolve(__dirname),
+  base: process.env.NODE_ENV === 'production' ? '/dxfviewer/' : '/',
   plugins: [react()],
   resolve: {
     alias: {
@@ -12,5 +13,9 @@ export default defineConfig({
   },
   server: {
     port: 5174,
+  },
+  build: {
+    outDir: path.resolve(__dirname, '../dist-example'),
+    emptyOutDir: true,
   },
 });
