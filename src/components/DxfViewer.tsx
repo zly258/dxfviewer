@@ -39,6 +39,9 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const viewPortRef = useRef(viewPort);
+  viewPortRef.current = viewPort;
+  
   const t = UI_TRANSLATIONS[lang];
   
   const [isPanning, setIsPanning] = useState(false);
@@ -128,38 +131,36 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       const scaleFactor = 1.2;
-      const newZoom = e.deltaY < 0 ? viewPort.zoom * scaleFactor : viewPort.zoom / scaleFactor;
+      const currentVP = viewPortRef.current;
+      const newZoom = e.deltaY < 0 ? currentVP.zoom * scaleFactor : currentVP.zoom / scaleFactor;
 
       // Widen zoom limits significantly to support extreme coordinates
-      // Use Number.MAX_SAFE_INTEGER as upper bound for practical purposes
-      const MIN_ZOOM = Number.MIN_VALUE;
-      const MAX_ZOOM = Number.MAX_VALUE;
+      const MIN_ZOOM = 1e-50;
+      const MAX_ZOOM = 1e20;
       if (newZoom < MIN_ZOOM || newZoom > MAX_ZOOM) return;
 
       const rect = container.getBoundingClientRect();
       const mouseX = e.clientX - rect.left;
       const mouseY = e.clientY - rect.top;
 
-      // Clamp zoom to avoid Infinity values
       const safeZoom = Math.max(Math.min(newZoom, MAX_ZOOM), MIN_ZOOM);
 
       const centerX = rect.width / 2;
       const centerY = rect.height / 2;
 
-      // newTargetX = oldTargetX + (mouseX - screenCenterX) * (1/oldZoom - 1/newZoom)
-      const newTargetX = viewPort.targetX + (mouseX - centerX) * (1/viewPort.zoom - 1/safeZoom);
-      const newTargetY = viewPort.targetY - (mouseY - centerY) * (1/viewPort.zoom - 1/safeZoom);
+      const newTargetX = currentVP.targetX + (mouseX - centerX) * (1/currentVP.zoom - 1/safeZoom);
+      const newTargetY = currentVP.targetY - (mouseY - centerY) * (1/currentVP.zoom - 1/safeZoom);
 
-      onViewPortChange({ 
-        targetX: newTargetX, 
-        targetY: newTargetY, 
-        zoom: safeZoom 
+      onViewPortChange({
+        targetX: newTargetX,
+        targetY: newTargetY,
+        zoom: safeZoom
       });
     };
 
     container.addEventListener('wheel', onWheel as any, { passive: false });
     return () => container.removeEventListener('wheel', onWheel as any);
-  }, [viewPort, onViewPortChange]);
+  }, [onViewPortChange]);
 
   const handleMouseDown = (e: MouseEvent) => {
     const rect = containerRef.current?.getBoundingClientRect();
