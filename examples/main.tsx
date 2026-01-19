@@ -9,21 +9,13 @@ const ExampleApp = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch('http://localhost:3001/api/files')
-      .then(res => {
-        if (!res.ok) throw new Error('无法连接到 DXF 服务端，请确保运行了 npm run example:server');
-        return res.json();
-      })
-      .then(data => {
-        setFiles(data);
-        if (data.length > 0) {
-          setSelectedFile(data[0]);
-        }
-      })
-      .catch(err => {
-        console.error(err);
-        setError(err.message);
-      });
+    // 既然去除了 server，我们直接指定 public/dxf 目录下的文件
+    // 在实际应用中，可以通过接口获取或直接硬编码
+    const availableFiles = ['test.dxf']; 
+    setFiles(availableFiles);
+    if (availableFiles.length > 0) {
+      setSelectedFile(availableFiles[0]);
+    }
   }, []);
 
   if (error) {
@@ -32,8 +24,8 @@ const ExampleApp = () => {
         <h3>错误: {error}</h3>
         <p>请按照以下步骤操作：</p>
         <ol style={{ display: 'inline-block', textAlign: 'left' }}>
-          <li>确保在 <code>examples/dxf</code> 目录下有 DXF 文件</li>
-          <li>运行 <code>npm run example:server</code> 启动文件服务</li>
+          <li>确保在 <code>examples/public/dxf</code> 目录下有 DXF 文件</li>
+          <li>运行 <code>npm run example</code> 启动</li>
           <li>刷新此页面</li>
         </ol>
       </div>
@@ -41,7 +33,7 @@ const ExampleApp = () => {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', fontFamily: 'sans-serif' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', fontFamily: 'sans-serif', overflow: 'hidden' }}>
       <div style={{ 
         padding: '0 15px', 
         height: '40px',
@@ -70,19 +62,19 @@ const ExampleApp = () => {
           {files.map(f => <option key={f} value={f}>{f}</option>)}
         </select>
         <span style={{ marginLeft: '15px', fontSize: '12px', color: '#6c757d' }}>
-          文件目录: <code>/examples/dxf/</code>
+          文件目录: <code>/examples/public/dxf/</code>
         </span>
       </div>
-      <div style={{ flex: 1, position: 'relative' }}>
+      <div style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
         {selectedFile ? (
           <DxfViewerMain 
             key={selectedFile}
-            initFile={`http://localhost:3001/dxf/${encodeURIComponent(selectedFile)}`} 
+            initFile={`/dxf/${encodeURIComponent(selectedFile)}`} 
             showOpenMenu={true}
           />
         ) : (
           <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', color: '#999' }}>
-            请在 examples/dxf 目录下放入 DXF 文件后刷新
+            请在 examples/public/dxf 目录下放入 DXF 文件后刷新
           </div>
         )}
       </div>

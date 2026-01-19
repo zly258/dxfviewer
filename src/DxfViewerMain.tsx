@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import DxfViewer from './components/DxfViewer';
 import Sidebar from './components/Sidebar';
 import PropertiesPanel from './components/PropertiesPanel';
@@ -49,6 +49,8 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
   const [internalLang, setInternalLang] = useState<Language>(defaultLanguage);
   const [mouseCoords, setMouseCoords] = useState<{x: number, y: number}>({x: 0, y: 0});
   const [isExporting, setIsExporting] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const viewerRef = useRef<HTMLDivElement>(null);
 
   const lang = controlledLang || internalLang;
   const handleSetLang = useCallback((newLang: Language) => {
@@ -61,47 +63,52 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
     const visibleEnts = ents.filter(e => e.visible !== false && e.type !== EntityType.ATTDEF);
     if (visibleEnts.length === 0) return;
 
-    // Step 1: Calculate world bounding box (min/max) using smart logic to ignore outliers
+    // Step 1: Calculate world bounding box
     const extents = calculateSmartExtents(visibleEnts, blks);
 
     // Step 2: Calculate world center
     const centerX = extents.center.x;
     const centerY = extents.center.y;
 
-    // Step 3: Calculate scale
-    const sidebarWidth = showSidebar ? 256 : 0;
-    const propsWidth = showProperties ? 320 : 0;
-    
-    // Get actual container dimensions
-    const containerW = Math.max(window.innerWidth - sidebarWidth - propsWidth, 100);
-    const containerH = Math.max(window.innerHeight - 30 - 24, 100); // 30 header, 24 status bar
+    // Step 3: Get actual container dimensions from viewerRef
+    let containerW = window.innerWidth;
+    let containerH = window.innerHeight;
+
+    if (viewerRef.current) {
+      const rect = viewerRef.current.getBoundingClientRect();
+      containerW = rect.width;
+      containerH = rect.height;
+    } else if (containerRef.current) {
+      // Fallback to app-container minus estimated bars if viewerRef not yet ready
+      const rect = containerRef.current.getBoundingClientRect();
+      const sidebarWidth = showSidebar ? 256 : 0;
+      const propsWidth = showProperties ? 320 : 0;
+      containerW = rect.width - sidebarWidth - propsWidth;
+      containerH = rect.height - 30 - 24;
+    }
+
+    containerW = Math.max(containerW, 100);
+    containerH = Math.max(containerH, 100);
 
     if (extents.width <= 0 && extents.height <= 0) {
-        setViewPort({ targetX: centerX, targetY: centerY, zoom: 1 });
+        setViewPort(prev => ({ ...prev, targetX: centerX, targetY: centerY, zoom: 1 }));
         return;
     }
 
     const worldW = extents.width;
     const worldH = extents.height;
 
-    // marginFactor: 1.0 means exact fit, 0.95 means 5% total margin.
-    // User wants it to "correctly fill", so we use a very small margin.
     const marginFactor = 0.98; 
     const scaleX = (containerW / worldW) * marginFactor;
     const scaleY = (containerH / worldH) * marginFactor;
     let zoom = Math.min(scaleX, scaleY);
     
-    // Final safety check for zoom
     if (isNaN(zoom) || !isFinite(zoom) || zoom <= 0) {
         zoom = 1.0;
     }
 
-    // Clamp zoom to reasonable values (extended for extreme coordinates)
     zoom = Math.max(Math.min(zoom, 1e20), 1e-50);
 
-    // Step 4: Set Viewport (will be used by renderer's setTransform)
-    // Using targetX/targetY as the world center ensures the "subtract first" principle
-    // is applied during rendering.
     setViewPort({ 
         targetX: centerX, 
         targetY: centerY, 
@@ -186,11 +193,31 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
         fitView(entities, blocks);
       }
     };
+    
+    // Observe viewerRef for more accurate resize detection
+    const observer = new ResizeObserver((entries) => {
+      // Use requestAnimationFrame to avoid "ResizeObserver loop limit exceeded" error
+      requestAnimationFrame(() => {
+        handleResize();
+      });
+    });
+
+    if (viewerRef.current) {
+      observer.observe(viewerRef.current);
+    } else if (containerRef.current) {
+      observer.observe(containerRef.current);
+    }
+    
     window.addEventListener('resize', handleResize);
-    // Also trigger on sidebar/properties toggle
+    
+    // Initial fit
     handleResize();
-    return () => window.removeEventListener('resize', handleResize);
-  }, [entities, blocks, fitView, showSidebar, showProperties]);
+    
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      observer.disconnect();
+    };
+  }, [entities, blocks, fitView]);
 
   // Load initial file if provided
   useEffect(() => {
@@ -302,7 +329,7 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
   const selectedEntities = entities.filter(e => selectedEntityIds.has(e.id));
 
   return (
-    <div className={`app-container ${uiTheme === 'dark' ? 'theme-dark' : ''}`}>
+    <div ref={containerRef} className={`app-container ${uiTheme === 'dark' ? 'theme-dark' : ''}`}>
       {isLoading && (
         <div className="loading-overlay">
           <div className="loading-box">
@@ -347,7 +374,7 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
             />
         )}
         
-        <main className="viewer-container">
+        <main ref={viewerRef} className="viewer-container">
           <DxfViewer 
             entities={entities} 
             layers={layers}
@@ -392,10 +419,10 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
           {selectedEntityIds.size === 0 ? (
             <span>{lang === 'zh' ? '未选择对象' : 'No objects selected'}</span>
           ) : (
-            <div style={{ display: 'flex', gap: '15px' }}>
+            <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
               <span>{lang === 'zh' ? `已选择 ${selectedEntityIds.size} 个对象` : `Selected ${selectedEntityIds.size} objects`}</span>
               {selectedEntityIds.size === 1 && (
-                <span style={{ opacity: 0.8 }}>
+                <span style={{ opacity: 0.8, fontSize: '10px' }}>
                   {lang === 'zh' ? '选择单个对象以查看详细属性' : 'Select a single object to view detailed properties'}
                 </span>
               )}

@@ -24,8 +24,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "example:server": "node examples/server.cjs",
-    "example:dev": "vite --config examples/vite.config.ts"
+    "example": "vite --config examples/vite.config.ts"
   },
   "dependencies": {
     "react": "^19.2.3",
