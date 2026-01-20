@@ -227,11 +227,11 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
       const wPos = screenToWorld(mouseX, mouseY);
 
       if (dist < 5) {
-         // 增加点选判定阈值使选择更容易，特别是对于文本
-         // 防止极端的缩放值
          const safeZoom = Math.max(Math.abs(viewPort.zoom), Number.MIN_VALUE);
-         // 增加点击判定范围，从 12 像素增加到 20 像素，使点选更灵敏
-         const threshold = Math.min(Math.max(20 / safeZoom, 1e-12), 1e12);
+         const worldPerPixel = 1 / safeZoom;
+         const viewWorldSpan = Math.max(rect.width, rect.height) * worldPerPixel;
+         const thresholdCap = Math.max(viewWorldSpan * 0.02, 1e-9);
+         const threshold = Math.min(Math.max(20 * worldPerPixel, 1e-12), thresholdCap);
          const hitId = hitTest(wPos.x, wPos.y, threshold, entities, blocks, layers, styles);
          
          if (hitId) {
