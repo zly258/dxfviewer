@@ -193,7 +193,43 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, layers, sty
                   renderPropertyRow("Pos Y", formatCoord(ent.position.y, 'y')),
                   ent.type === EntityType.INSERT && renderPropertyRow("Scale", `${ent.scale.x.toFixed(2)}, ${ent.scale.y.toFixed(2)}`),
                   ent.type === EntityType.INSERT && renderPropertyRow("Rotation", `${ent.rotation.toFixed(1)}°`),
-              ].filter(Boolean);
+              ];
+              
+              if (ent.type === EntityType.ACAD_TABLE) {
+                   const table = ent as any;
+                   specificRows.push(renderPropertyRow("Rows", table.rowCount || 1));
+                   specificRows.push(renderPropertyRow("Columns", table.columnCount || 1));
+                   specificRows.push(renderPropertyRow("Row Spacing", (table.rowSpacing || 0).toFixed(2)));
+                   specificRows.push(renderPropertyRow("Col Spacing", (table.columnSpacing || 0).toFixed(2)));
+                   specificRows.push(renderPropertyRow("Rotation", `${(table.rotation || 0).toFixed(1)}°`));
+                   
+                   // 显示单元格内容摘要
+                   if (table.cells && table.cells.length > 0) {
+                       specificRows.push(
+                           <tr key="cells-header" className="property-row" style={{ backgroundColor: 'var(--bg-secondary)' }}>
+                               <td colSpan={2} style={{ padding: '4px 8px', fontSize: '11px', fontWeight: 'bold' }}>
+                                   {lang === 'zh' ? '单元格内容' : 'Cell Contents'}
+                               </td>
+                           </tr>
+                       );
+                       table.cells.forEach((cell: string, idx: number) => {
+                           const r = Math.floor(idx / (table.columnCount || 1));
+                           const c = idx % (table.columnCount || 1);
+                           // 仅显示前 10 个非空单元格以避免面板过长
+                           if (idx < 10 && cell && cell.trim()) {
+                               specificRows.push(
+                                   renderPropertyRow(`R${r+1}:C${c+1}`, cell)
+                               );
+                           }
+                       });
+                       if (table.cells.length > 10) {
+                           specificRows.push(
+                               renderPropertyRow("...", `Total ${table.cells.length} cells`)
+                           );
+                       }
+                   }
+              }
+              specificRows = specificRows.filter(Boolean);
               break;
            case EntityType.HATCH:
               specificRows = [

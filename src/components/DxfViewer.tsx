@@ -247,59 +247,61 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
          const startW = screenToWorld(dragStart.x, dragStart.y);
          const endW = wPos;
          
+         // CAD 风格选择：
+         // 从左向右 (endW.x > startW.x): 包含选择 (Window Selection) - 仅选中完全在框内的实体
+         // 从右向左 (endW.x < startW.x): 交叉选择 (Crossing Selection) - 选中框内或相交的实体
+         const isCrossing = wPos.x < screenToWorld(dragStart.x, dragStart.y).x;
+
          const boxIds = hitTestBox(
              { x1: startW.x, y1: startW.y, x2: endW.x, y2: endW.y },
              entities,
              layers,
-             blocks
+             blocks,
+             isCrossing // 传递选择模式
          );
-         
-         const newSelection = new Set<string>(e.ctrlKey || e.shiftKey ? selectedEntityIds : []);
-         boxIds.forEach(id => newSelection.add(id));
-         onSelectIds(newSelection);
+
+         if (e.ctrlKey || e.shiftKey) {
+             const newSet = new Set(selectedEntityIds);
+             boxIds.forEach(id => newSet.add(id));
+             onSelectIds(newSet);
+         } else {
+             onSelectIds(boxIds);
+         }
       }
+      setDragStart({ x: 0, y: 0 }); // 重置拖拽起始点
     }
   };
 
-  const safeTargetX = isNaN(viewPort.targetX) ? 0 : viewPort.targetX;
-    const safeTargetY = isNaN(viewPort.targetY) ? 0 : viewPort.targetY;
-    const safeZoom = isNaN(viewPort.zoom) || viewPort.zoom === 0 ? 1 : viewPort.zoom;
-
-    const getCanvasBg = () => {
-        if (theme === 'white') return '#ffffff';
-        if (theme === 'gray') return '#808080';
-        return '#212121';
-    };
-
-    return (
-    <div className="viewer-wrapper">
-        <div 
-        ref={containerRef}
-        className="canvas-container"
-        style={{ '--canvas-bg': getCanvasBg() } as React.CSSProperties}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
-        onContextMenu={(e) => e.preventDefault()}
-        >
-        <canvas 
-            ref={canvasRef}
-            className="main-canvas"
+  return (
+    <div 
+      ref={containerRef} 
+      className="canvas-container"
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={() => {
+        setIsPanning(false);
+        setIsBoxSelecting(false);
+      }}
+      style={{ cursor: isPanning ? 'grabbing' : 'default' }}
+    >
+      <canvas ref={canvasRef} />
+      
+      {/* 框选视觉反馈 */}
+      {isBoxSelecting && (
+        <div
+          style={{
+            position: 'absolute',
+            left: Math.min(dragStart.x, currentMousePos.x),
+            top: Math.min(dragStart.y, currentMousePos.y),
+            width: Math.abs(currentMousePos.x - dragStart.x),
+            height: Math.abs(currentMousePos.y - dragStart.y),
+            backgroundColor: currentMousePos.x < dragStart.x ? 'rgba(0, 255, 0, 0.1)' : 'rgba(0, 0, 255, 0.1)', // 左移绿色(交叉)，右移蓝色(包含)
+            border: `1px ${currentMousePos.x < dragStart.x ? 'dashed' : 'solid'} ${currentMousePos.x < dragStart.x ? '#00ff00' : '#0078d4'}`, // 虚线/实线
+            pointerEvents: 'none'
+          }}
         />
-
-        {isBoxSelecting && (
-            <div 
-            className="selection-box"
-            style={{
-                left: Math.min(dragStart.x, currentMousePos.x),
-                top: Math.min(dragStart.y, currentMousePos.y),
-                width: Math.abs(currentMousePos.x - dragStart.x),
-                height: Math.abs(currentMousePos.y - dragStart.y)
-            }}
-            />
-        )}
-        </div>
+      )}
     </div>
   );
 };

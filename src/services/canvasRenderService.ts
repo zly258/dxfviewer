@@ -672,55 +672,59 @@ export const renderEntitiesToCanvas = (
                             const colCount = table.columnCount || 1;
                             const rowSpacing = table.rowSpacing || 10;
                             const colSpacing = table.columnSpacing || 50;
-                            const scale = table.scale || { x: 1, y: 1, z: 1 };
-                            
-                            ctx.save();
-                            const sPos = transform.project(ent.position);
-                            ctx.translate(sPos.x, sPos.y);
-                            const rotation = (table.rotation || 0) * Math.PI / 180;
-                            ctx.rotate(-rotation);
-                            
-                            // 绘制表格外边框和内部网格
-                            ctx.beginPath();
-                            const totalWidth = colCount * colSpacing * scale.x;
-                            const totalHeight = rowCount * rowSpacing * scale.y;
-                            
-                            const sScale = transform.scale;
-                            
-                            // 绘制横线 (水平线)
-                            for (let i = 0; i <= rowCount; i++) {
-                                const y = -i * rowSpacing * scale.y * sScale;
-                                ctx.moveTo(0, y);
-                                ctx.lineTo(totalWidth * sScale, y);
-                            }
-                            // 绘制竖线 (垂直线)
-                            for (let j = 0; j <= colCount; j++) {
-                                const x = j * colSpacing * scale.x * sScale;
-                                ctx.moveTo(x, 0);
-                                ctx.lineTo(x, -totalHeight * sScale);
-                            }
-                            ctx.stroke();
+                const scale = ent.scale || { x: 1, y: 1, z: 1 };
+                
+                ctx.save();
+                const sPos = transform.project(ent.position);
+                ctx.translate(sPos.x, sPos.y);
+                const rotation = (table.rotation || 0) * Math.PI / 180;
+                ctx.rotate(-rotation);
+                
+                // 绘制表格外边框和内部网格
+                ctx.beginPath();
+                const totalWidth = colCount * colSpacing * scale.x;
+                const totalHeight = rowCount * rowSpacing * scale.y;
+                
+                const sScale = transform.scale;
+                
+                // 绘制横线 (水平线)
+                for (let i = 0; i <= rowCount; i++) {
+                    const y = -i * rowSpacing * scale.y * sScale;
+                    ctx.moveTo(0, y);
+                    ctx.lineTo(totalWidth * sScale, y);
+                }
+                // 绘制竖线 (垂直线)
+                for (let j = 0; j <= colCount; j++) {
+                    const x = j * colSpacing * scale.x * sScale;
+                    ctx.moveTo(x, 0);
+                    ctx.lineTo(x, -totalHeight * sScale);
+                }
+                ctx.stroke();
 
-                            // 绘制单元格文字内容
-                            if (table.cells && table.cells.length > 0) {
-                                ctx.fillStyle = color;
-                                const fontSize = (rowSpacing * scale.y * 0.6) * sScale;
-                                ctx.font = `${fontSize}px sans-serif`;
-                                ctx.textAlign = 'center';
-                                ctx.textBaseline = 'middle';
-                                
-                                table.cells.forEach((cell: string, i: number) => {
-                                    const r = Math.floor(i / colCount);
-                                    const c = i % colCount;
-                                    if (r < rowCount && c < colCount) {
-                                        const cleanedCell = cleanMText(cell);
-                                        const tx = (c + 0.5) * colSpacing * scale.x * sScale;
-                                        const ty = -(r + 0.5) * rowSpacing * scale.y * sScale;
-                                        ctx.fillText(cleanedCell, tx, ty);
-                                    }
-                                });
-                            }
-                            ctx.restore();
+                // 绘制单元格文字内容
+                if (table.cells && table.cells.length > 0) {
+                    ctx.fillStyle = color;
+                    // 字体大小调整为行距的 50%，留出更多边距
+                    const fontSize = (rowSpacing * scale.y * 0.5) * sScale;
+                    ctx.font = `${fontSize}px sans-serif`;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    
+                    // 默认边距（如果DXF中没有定义）
+                    const marginX = (colSpacing * scale.x * 0.1) * sScale;
+                    
+                    table.cells.forEach((cell: string, i: number) => {
+                        const r = Math.floor(i / colCount);
+                        const c = i % colCount;
+                        if (r < rowCount && c < colCount) {
+                            const cleanedCell = cleanMText(cell);
+                            const tx = (c + 0.5) * colSpacing * scale.x * sScale;
+                            const ty = -(r + 0.5) * rowSpacing * scale.y * sScale;
+                            ctx.fillText(cleanedCell, tx, ty, (colSpacing * scale.x * sScale) - 2 * marginX); // 限制最大宽度
+                        }
+                    });
+                }
+                ctx.restore();
                         }
                     break;
                 }
@@ -791,23 +795,28 @@ export const renderEntitiesToCanvas = (
                 const block = blocks[ent.blockName];
                 if (block) {
                     const layerName = (ent.layer === '0' && parentLayerName) ? parentLayerName : ent.layer;
-                    // 标注 (Dimension) 本质上是将其对应的匿名块在恒等变换下插入
-                    // 但有时标注块的 basePoint 可能不为 (0,0)，需要处理偏移
-                    // 此外，如果标注有明确的 definitionPoint，它有时被用作块的插入点
+                    // 标注 (Dimension) 修复逻辑：
+                    // DXF 标准中，标注对应的匿名块内容通常定义在 WCS 中（即与世界坐标系对齐）。
+                    // 因此，渲染标注块时，通常不需要应用额外的偏移或变换，直接使用当前视口的变换即可。
+                    // 之前的逻辑试图减去 block.basePoint，这在某些情况下会导致严重偏移。
+                    // 现在的逻辑：直接使用父级 transform（如果是顶层实体，这就是 WCS->Screen 变换），
+                    // 并忽略 ent.position（因为块内容已经是绝对坐标）。
+                    
+                    // 注意：有些特殊标注（如旋转标注）可能会有不同的处理，但绝大多数情况下，
+                    // 标注块内容是绝对定位的。
+                    
+                    // 我们使用一个“直通”变换，不叠加任何额外的位移或旋转，只保留视口变换。
+                    // 为了安全起见，我们克隆当前的 transform，确保不会意外继承之前的上下文（虽然在这里 transform 应该是纯视口变换）。
+                    
                     const nestedTransform: RenderTransform = {
                         project: (p: Point2D) => {
-                            // 标注块内容通常已经是世界坐标，但需要减去其基点偏移
-                            // 如果 basePoint 为 (0,0)，则 px = p.x
-                            const px = p.x - block.basePoint.x;
-                            const py = p.y - block.basePoint.y;
-                            
-                            // 大多数标注块是直接使用 WCS 坐标定义的，插入点为 (0,0)
-                            // 但有些特殊情况下，我们需要考虑 ent.definitionPoint 或其他位置
-                            return transform.project({ x: px, y: py });
+                             // 直接投影点，假设点坐标已经是 WCS
+                             return transform.project(p);
                         },
                         scale: transform.scale,
                         rotation: transform.rotation
                     };
+                    
                     block.entities.forEach(child => drawEntity(child, nestedTransform, layerName, color, isSelected, depth + 1));
                 }
                 break;
@@ -1174,8 +1183,16 @@ export const hitTest = (x: number, y: number, threshold: number, entities: AnyEn
 
 /**
  * 矩形框选测试
+ * @param box 选择框范围
+ * @param isCrossing 是否为交叉选择模式（true: 交叉选择/绿色框，选中相交或包含的; false: 窗口选择/蓝色框，仅选中完全包含的）
  */
-export const hitTestBox = (box: {x1:number, y1:number, x2:number, y2:number}, entities: AnyEntity[], layers: Record<string, DxfLayer>, blocks: Record<string, DxfBlock> = {}): Set<string> => {
+export const hitTestBox = (
+    box: {x1:number, y1:number, x2:number, y2:number}, 
+    entities: AnyEntity[], 
+    layers: Record<string, DxfLayer>, 
+    blocks: Record<string, DxfBlock> = {},
+    isCrossing: boolean = false
+): Set<string> => {
     const results = new Set<string>();
     const minX = Math.min(box.x1, box.x2), maxX = Math.max(box.x1, box.x2);
     const minY = Math.min(box.y1, box.y2), maxY = Math.max(box.y1, box.y2);
@@ -1186,10 +1203,19 @@ export const hitTestBox = (box: {x1:number, y1:number, x2:number, y2:number}, en
 
         if (ent.extents) {
             const { min, max } = ent.extents;
-            // 检查实体的包围盒是否与选择框相交
-            const overlap = !(max.x < minX || min.x > maxX || max.y < minY || min.y > maxY);
-            if (overlap) {
-                results.add(ent.id);
+            
+            if (isCrossing) {
+                // 交叉选择：只要包围盒相交即可
+                const overlap = !(max.x < minX || min.x > maxX || max.y < minY || min.y > maxY);
+                if (overlap) {
+                    results.add(ent.id);
+                }
+            } else {
+                // 窗口选择：必须完全包含
+                const contained = min.x >= minX && max.x <= maxX && min.y >= minY && max.y <= maxY;
+                if (contained) {
+                    results.add(ent.id);
+                }
             }
         } else {
             // 对于没有预计算包围盒的实体的兜底逻辑（如单纯的点）

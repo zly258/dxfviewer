@@ -333,7 +333,7 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
   const selectedEntities = entities.filter(e => selectedEntityIds.has(e.id));
 
   return (
-    <div ref={containerRef} className={`app-container ${uiTheme === 'dark' ? 'theme-dark' : ''}`}>
+    <div ref={containerRef} className={`app-container ${uiTheme === 'dark' ? 'theme-dark' : ''}`} style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       {isLoading && (
         <div className="loading-overlay">
           <div className="loading-box">
