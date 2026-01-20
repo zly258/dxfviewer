@@ -663,6 +663,33 @@ const parseAcadTable = (state: DxfParserState, common: any, blockHandleMap?: Rec
         entity.blockName = blockHandleMap[blockHandle] || '';
     }
 
+    // 修复异常的行数解析
+    // 某些情况下，组码 91 可能包含位掩码或其他非行数数据（例如 262129 = 0x40001）
+    // 如果行数异常大且与单元格数量不匹配，则尝试根据单元格数量和列数推断
+    if (entity.rowCount && entity.rowCount > 500 && entity.cells && entity.cells.length > 0) {
+        const calculatedRows = Math.ceil(entity.cells.length / (entity.columnCount || 1));
+        if (calculatedRows < entity.rowCount) {
+            entity.rowCount = calculatedRows;
+        }
+    }
+    
+    // 如果行列数未定义但有单元格，进行推断
+    if ((!entity.rowCount || entity.rowCount === 0) && entity.cells && entity.cells.length > 0) {
+        entity.columnCount = entity.columnCount || 1;
+        entity.rowCount = Math.ceil(entity.cells.length / entity.columnCount);
+    }
+
+    // 修复极小的间距（可能是单位问题或解析错误）
+    // 如果间距小于 0.1 且没有显著的缩放，这通常是不正确的，强制给一个默认值
+    // 这里假设图纸单位通常是 mm，文字高度通常在 2.5 左右
+    const minSpacing = 1.0;
+    if ((entity.rowSpacing || 0) < minSpacing && Math.abs(entity.scale!.y) > 0.1) {
+        entity.rowSpacing = 10; // 默认行距
+    }
+    if ((entity.columnSpacing || 0) < minSpacing && Math.abs(entity.scale!.x) > 0.1) {
+        entity.columnSpacing = 25; // 默认列距
+    }
+
     const ocs = getOcsToWcsMatrix(entity.extrusion!.x, entity.extrusion!.y, entity.extrusion!.z);
     entity.position = applyOcs(entity.position, ocs, z);
     if (entity.rotation) {

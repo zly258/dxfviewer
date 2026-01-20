@@ -682,20 +682,27 @@ export const renderEntitiesToCanvas = (
                 
                 // 绘制表格外边框和内部网格
                 ctx.beginPath();
-                const totalWidth = colCount * colSpacing * scale.x;
-                const totalHeight = rowCount * rowSpacing * scale.y;
+                
+                // 安全检查：防止过小的间距导致死循环或性能问题
+                // 确保最小间距为 0.1 像素（在屏幕空间中）
+                // 强制最小间距，如果解析出来的间距太小
+                const safeRowSpacing = Math.max(rowSpacing, 1.0);
+                const safeColSpacing = Math.max(colSpacing, 1.0);
+                
+                const totalWidth = colCount * safeColSpacing * scale.x;
+                const totalHeight = rowCount * safeRowSpacing * scale.y;
                 
                 const sScale = transform.scale;
                 
                 // 绘制横线 (水平线)
                 for (let i = 0; i <= rowCount; i++) {
-                    const y = -i * rowSpacing * scale.y * sScale;
+                    const y = -i * safeRowSpacing * scale.y * sScale;
                     ctx.moveTo(0, y);
                     ctx.lineTo(totalWidth * sScale, y);
                 }
                 // 绘制竖线 (垂直线)
                 for (let j = 0; j <= colCount; j++) {
-                    const x = j * colSpacing * scale.x * sScale;
+                    const x = j * safeColSpacing * scale.x * sScale;
                     ctx.moveTo(x, 0);
                     ctx.lineTo(x, -totalHeight * sScale);
                 }
@@ -705,22 +712,22 @@ export const renderEntitiesToCanvas = (
                 if (table.cells && table.cells.length > 0) {
                     ctx.fillStyle = color;
                     // 字体大小调整为行距的 50%，留出更多边距
-                    const fontSize = (rowSpacing * scale.y * 0.5) * sScale;
+                    const fontSize = (safeRowSpacing * scale.y * 0.5) * sScale;
                     ctx.font = `${fontSize}px sans-serif`;
                     ctx.textAlign = 'center';
                     ctx.textBaseline = 'middle';
                     
                     // 默认边距（如果DXF中没有定义）
-                    const marginX = (colSpacing * scale.x * 0.1) * sScale;
+                    const marginX = (safeColSpacing * scale.x * 0.1) * sScale;
                     
                     table.cells.forEach((cell: string, i: number) => {
                         const r = Math.floor(i / colCount);
                         const c = i % colCount;
                         if (r < rowCount && c < colCount) {
                             const cleanedCell = cleanMText(cell);
-                            const tx = (c + 0.5) * colSpacing * scale.x * sScale;
-                            const ty = -(r + 0.5) * rowSpacing * scale.y * sScale;
-                            ctx.fillText(cleanedCell, tx, ty, (colSpacing * scale.x * sScale) - 2 * marginX); // 限制最大宽度
+                            const tx = (c + 0.5) * safeColSpacing * scale.x * sScale;
+                            const ty = -(r + 0.5) * safeRowSpacing * scale.y * sScale;
+                            ctx.fillText(cleanedCell, tx, ty, (safeColSpacing * scale.x * sScale) - 2 * marginX); // 限制最大宽度
                         }
                     });
                 }
