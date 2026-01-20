@@ -340,7 +340,8 @@ export const renderEntitiesToCanvas = (
     selectedIds: Set<string>,
     width: number,
     height: number,
-    theme: 'black' | 'white' | 'gray'
+    theme: 'black' | 'white' | 'gray',
+    overlayExtents?: { min: Point2D, max: Point2D } | null
 ) => {
     // 使用背景颜色清除画布
     if (theme === 'white') ctx.fillStyle = '#FFFFFF';
@@ -828,7 +829,7 @@ export const renderEntitiesToCanvas = (
                 
                 // 处理块中的属性 (ATTRIB)
                 if ((ent as any).attributes) {
-                    (ent as any).attributes.forEach((attr: AnyEntity) => drawEntity(attr, nestedTransform, layerName, color, isSelected, depth + 1));
+                    (ent as any).attributes.forEach((attr: AnyEntity) => drawEntity(attr, transform, layerName, color, isSelected, depth + 1));
                 }
                 break;
             }
@@ -968,6 +969,39 @@ export const renderEntitiesToCanvas = (
     };
 
     entities.forEach(ent => drawEntity(ent, transform, undefined, undefined, false, 0));
+
+    if (overlayExtents) {
+        const corners = [
+            { x: overlayExtents.min.x, y: overlayExtents.min.y },
+            { x: overlayExtents.max.x, y: overlayExtents.min.y },
+            { x: overlayExtents.max.x, y: overlayExtents.max.y },
+            { x: overlayExtents.min.x, y: overlayExtents.max.y }
+        ].map(p => transform.project(p));
+
+        ctx.save();
+        ctx.setLineDash([6, 4]);
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = theme === 'white' ? '#1e40af' : '#60a5fa';
+        ctx.beginPath();
+        ctx.moveTo(corners[0].x, corners[0].y);
+        ctx.lineTo(corners[1].x, corners[1].y);
+        ctx.lineTo(corners[2].x, corners[2].y);
+        ctx.lineTo(corners[3].x, corners[3].y);
+        ctx.closePath();
+        ctx.stroke();
+
+        const cx = (overlayExtents.min.x + overlayExtents.max.x) / 2;
+        const cy = (overlayExtents.min.y + overlayExtents.max.y) / 2;
+        const c = transform.project({ x: cx, y: cy });
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.moveTo(c.x - 6, c.y);
+        ctx.lineTo(c.x + 6, c.y);
+        ctx.moveTo(c.x, c.y - 6);
+        ctx.lineTo(c.x, c.y + 6);
+        ctx.stroke();
+        ctx.restore();
+    }
 };
 
 const distanceToLine = (px: number, py: number, x1: number, y1: number, x2: number, y2: number) => {
@@ -1219,6 +1253,11 @@ export const hitTest = (x: number, y: number, threshold: number, entities: AnyEn
             for (const child of block.entities) {
                 if (checkEntity(child, tx, depth + 1)) return true;
             }
+            if ((ent as any).attributes) {
+                for (const attr of (ent as any).attributes) {
+                    if (checkEntity(attr, undefined, depth + 1)) return true;
+                }
+            }
         } else if (ent.type === EntityType.DIMENSION) {
             const block = blocks[ent.blockName];
             if (!block) return false;
@@ -1329,10 +1368,20 @@ export const hitTestBox = (
                 for (const child of block.entities) {
                     if (checkEntityBox(child, baseTx, depth + 1)) return true;
                 }
+                if ((ent as any).attributes) {
+                    for (const attr of (ent as any).attributes) {
+                        if (checkEntityBox(attr, tx, depth + 1)) return true;
+                    }
+                }
                 return false;
             }
             for (const child of block.entities) {
                 if (!checkEntityBox(child, baseTx, depth + 1)) return false;
+            }
+            if ((ent as any).attributes) {
+                for (const attr of (ent as any).attributes) {
+                    if (!checkEntityBox(attr, tx, depth + 1)) return false;
+                }
             }
             return true;
         }

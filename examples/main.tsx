@@ -6,13 +6,12 @@ import '../src/styles/styles.css';
 const App: React.FC = () => {
     const [lang, setLang] = useState<'zh' | 'en'>('zh');
     const fileParam = new URLSearchParams(window.location.search).get('file');
-    const initFile = fileParam ? `/${fileParam}` : '/table.dxf';
+    const initFile = fileParam ? `/${fileParam}` : '';
 
     const t = {
         title: lang === 'zh' ? 'DXF 浏览器' : 'DXF Viewer',
         langZh: '中文',
         langEn: 'English',
-        hint: lang === 'zh' ? '支持拖拽本地文件至浏览器' : 'Drag local files to browser'
     };
 
     const containerStyle: React.CSSProperties = {
@@ -56,9 +55,6 @@ const App: React.FC = () => {
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-                    <div style={{ fontSize: '12px', color: '#888' }}>
-                        {t.hint}
-                    </div>
                     <div style={{ display: 'flex', backgroundColor: '#1e1e1e', borderRadius: '6px', padding: '3px', gap: '2px' }}>
                         <button
                             style={buttonStyle(lang === 'zh')}

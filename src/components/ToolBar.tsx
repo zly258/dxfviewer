@@ -9,6 +9,8 @@ interface ToolBarProps {
   onImport: (e: React.ChangeEvent<HTMLInputElement>) => void; // 导入文件回调
   onClear: () => void; // 清空画布回调
   onFitView: () => void; // 缩放以适应屏幕回调
+  showDrawingExtents: boolean;
+  onToggleDrawingExtents: () => void;
   showSidebar: boolean; // 是否显示图层侧边栏
   onToggleSidebar: () => void; // 切换侧边栏显示回调
   showProperties: boolean; // 是否显示属性面板
@@ -26,6 +28,8 @@ const ToolBar: React.FC<ToolBarProps> = ({
     onImport, 
     onClear, 
     onFitView, 
+    showDrawingExtents,
+    onToggleDrawingExtents,
     showSidebar, 
     onToggleSidebar, 
     showProperties, 
@@ -76,6 +80,9 @@ const ToolBar: React.FC<ToolBarProps> = ({
           <div className="dropdown-menu" style={{ minWidth: '160px' }}>
             <div onClick={onFitView} className="dropdown-item">
               <span>{t.fitView}</span>
+            </div>
+            <div onClick={onToggleDrawingExtents} className={`dropdown-item ${showDrawingExtents ? 'checked' : ''}`}>
+              <span>{t.showDrawingExtents}</span>
             </div>
             <div className="divider"></div>
             <div onClick={() => onSetLang(lang === 'zh' ? 'en' : 'zh')} className="dropdown-item">
