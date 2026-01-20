@@ -373,7 +373,7 @@ export const renderEntitiesToCanvas = (
     const vMinY = Math.min(worldTop, worldBottom);
     const vMaxY = Math.max(worldTop, worldBottom);
 
-    const drawEntity = (ent: AnyEntity, transform: RenderTransform, parentLayerName?: string, parentColor?: string, parentSelected: boolean = false, depth: number = 0) => {
+    const drawEntity = (ent: AnyEntity, transform: RenderTransform, parentLayerName?: string, parentColor?: string, parentSelected: boolean = false, depth: number = 0, noMTextWrap: boolean = false) => {
         if (ent.visible === false || depth > 20) return;
 
         // 剔除 (Culling)：检查实体范围是否与视口重叠
@@ -612,8 +612,7 @@ export const renderEntitiesToCanvas = (
                 let dy = 0;
 
                 if (isMText) {
-                    const wrapW = (ent.width || 0) * transform.scale;
-                    const lines = wrapText(ctx, text, wrapW);
+                    const lines = noMTextWrap ? text.split('\n') : wrapText(ctx, text, (ent.width || 0) * transform.scale);
                     // 调整：行高倍数优化，使其更符合 CAD 渲染效果
                     const lineHeight = textHeightPixels * 1.2; 
                     const totalHeight = lines.length * lineHeight;
@@ -825,11 +824,12 @@ export const renderEntitiesToCanvas = (
 
                 const layerName = (ent.layer === '0' && parentLayerName) ? parentLayerName : ent.layer;
                 // 递归绘制块中的所有实体
-                block.entities.forEach(child => drawEntity(child, nestedTransform, layerName, color, isSelected, depth + 1));
+                const childNoWrap = noMTextWrap || ent.type === EntityType.ACAD_TABLE;
+                block.entities.forEach(child => drawEntity(child, nestedTransform, layerName, color, isSelected, depth + 1, childNoWrap));
                 
                 // 处理块中的属性 (ATTRIB)
                 if ((ent as any).attributes) {
-                    (ent as any).attributes.forEach((attr: AnyEntity) => drawEntity(attr, transform, layerName, color, isSelected, depth + 1));
+                    (ent as any).attributes.forEach((attr: AnyEntity) => drawEntity(attr, transform, layerName, color, isSelected, depth + 1, childNoWrap));
                 }
                 break;
             }
@@ -887,7 +887,7 @@ export const renderEntitiesToCanvas = (
                         rotation: transform.rotation
                     };
 
-                block.entities.forEach(child => drawEntity(child, nestedTransform, layerName, color, isSelected, depth + 1));
+                block.entities.forEach(child => drawEntity(child, nestedTransform, layerName, color, isSelected, depth + 1, noMTextWrap));
                 break;
             }
             case EntityType.SOLID:
@@ -968,7 +968,7 @@ export const renderEntitiesToCanvas = (
         }
     };
 
-    entities.forEach(ent => drawEntity(ent, transform, undefined, undefined, false, 0));
+    entities.forEach(ent => drawEntity(ent, transform, undefined, undefined, false, 0, false));
 
     if (overlayExtents) {
         const corners = [
