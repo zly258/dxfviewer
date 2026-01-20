@@ -2,22 +2,19 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './styles/styles.css';
 import DxfViewerMain from './DxfViewerMain';
+import App from './App';
 
-// Export for library use
+// 作为库使用时的导出
 export { DxfViewerMain };
 export type { AnyEntity, ViewPort, DxfLayer, DxfBlock, DxfStyle, DxfLineType, Point2D } from './types';
 
-// Default entry point for dev
+// 开发环境的默认入口点
 const rootElement = document.getElementById('root');
 if (rootElement) {
   const root = ReactDOM.createRoot(rootElement);
   root.render(
     <React.StrictMode>
-      <DxfViewerMain 
-        showOpenMenu={true}
-        onError={(err) => console.error('DXF Viewer Error:', err)}
-        onLoad={(data) => console.log('DXF Data Loaded:', data)}
-      />
+      <App />
     </React.StrictMode>
   );
 }

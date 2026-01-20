@@ -12,7 +12,7 @@ interface SidebarProps {
   lang: Language;
 }
 
-const ROW_HEIGHT = 26; 
+const ROW_HEIGHT = 26; // 列表项高度
 
 type FlatItem = 
   | { type: 'layer'; name: string; layer: DxfLayer; count: number; expanded: boolean }
@@ -26,6 +26,7 @@ const Sidebar: React.FC<SidebarProps> = ({ layers, entities, selectedEntityIds, 
   const t = UI_TRANSLATIONS[lang];
   const entNames = ENTITY_TYPE_NAMES[lang];
 
+  // 将实体按图层分组
   const entitiesByLayer = useMemo(() => {
     return entities.reduce((acc, ent) => {
       if (!acc[ent.layer]) acc[ent.layer] = [];
@@ -34,6 +35,7 @@ const Sidebar: React.FC<SidebarProps> = ({ layers, entities, selectedEntityIds, 
     }, {} as Record<string, AnyEntity[]>);
   }, [entities]);
 
+  // 生成扁平化的列表用于虚拟滚动
   const flatList = useMemo(() => {
     const list: FlatItem[] = [];
     const layerNames = Object.keys(layers).sort();
@@ -65,6 +67,7 @@ const Sidebar: React.FC<SidebarProps> = ({ layers, entities, selectedEntityIds, 
 
   const totalHeight = flatList.length * ROW_HEIGHT;
   
+  // 监听容器高度变化
   useEffect(() => {
       const resizeObserver = new ResizeObserver((entries) => {
           for (const entry of entries) {
@@ -81,12 +84,14 @@ const Sidebar: React.FC<SidebarProps> = ({ layers, entities, selectedEntityIds, 
       setScrollTop(e.currentTarget.scrollTop);
   };
 
+  // 计算可见范围索引
   const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - 2); 
   const endIndex = Math.min(flatList.length, Math.ceil((scrollTop + containerHeight) / ROW_HEIGHT) + 2); 
 
   const visibleItems = flatList.slice(startIndex, endIndex);
   const offsetY = startIndex * ROW_HEIGHT;
 
+  // 展开/收起图层
   const toggleLayer = (layerName: string) => {
     const next = new Set(expandedLayers);
     if (next.has(layerName)) next.delete(layerName);
@@ -94,6 +99,7 @@ const Sidebar: React.FC<SidebarProps> = ({ layers, entities, selectedEntityIds, 
     setExpandedLayers(next);
   };
 
+  // 处理项点击
   const handleItemClick = (id: string, multi: boolean) => {
       if (multi) {
           const newSet = new Set(selectedEntityIds);
@@ -105,7 +111,10 @@ const Sidebar: React.FC<SidebarProps> = ({ layers, entities, selectedEntityIds, 
       }
   };
 
+  // 获取实体图标
   const getEntityIcon = (type: EntityType) => <span className="entity-icon">{type.substring(0, 1)}</span>;
+  
+  // 获取图层颜色十六进制
   const getLayerColorHex = (layer: DxfLayer) => getAutoCadColor(layer.color, theme);
 
   const ChevronIcon = ({ expanded }: { expanded: boolean }) => (

@@ -1,21 +1,25 @@
 import React, { useState } from 'react';
 import { Language, UI_TRANSLATIONS } from '../constants/i18n';
 
+/**
+ * 工具栏组件
+ * 提供文件导入、视图调整、图层/属性面板切换、主题切换以及语言切换等功能
+ */
 interface ToolBarProps {
-  onImport: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  onClear: () => void;
-  onFitView: () => void;
-  showSidebar: boolean;
-  onToggleSidebar: () => void;
-  showProperties: boolean;
-  onToggleProperties: () => void;
-  showOpen?: boolean;
-  uiTheme: 'light' | 'dark';
-  onSetUiTheme: (theme: 'light' | 'dark') => void;
-  canvasTheme: 'black' | 'white' | 'gray';
-  onSetCanvasTheme: (theme: 'black' | 'white' | 'gray') => void;
-  lang: Language;
-  onSetLang: (lang: Language) => void;
+  onImport: (e: React.ChangeEvent<HTMLInputElement>) => void; // 导入文件回调
+  onClear: () => void; // 清空画布回调
+  onFitView: () => void; // 缩放以适应屏幕回调
+  showSidebar: boolean; // 是否显示图层侧边栏
+  onToggleSidebar: () => void; // 切换侧边栏显示回调
+  showProperties: boolean; // 是否显示属性面板
+  onToggleProperties: () => void; // 切换属性面板显示回调
+  showOpen?: boolean; // 是否显示打开文件按钮
+  uiTheme: 'light' | 'dark'; // UI 界面主题
+  onSetUiTheme: (theme: 'light' | 'dark') => void; // 设置 UI 主题回调
+  canvasTheme: 'black' | 'white' | 'gray'; // 画布背景主题
+  onSetCanvasTheme: (theme: 'black' | 'white' | 'gray') => void; // 设置画布主题回调
+  lang: Language; // 当前语言
+  onSetLang: (lang: Language) => void; // 设置语言回调
 }
 
 const ToolBar: React.FC<ToolBarProps> = ({ 
