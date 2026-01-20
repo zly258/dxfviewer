@@ -1057,10 +1057,7 @@ export const hitTest = (x: number, y: number, threshold: number, entities: AnyEn
                 EntityType.MTEXT, 
                 EntityType.ATTRIB, 
                 EntityType.ATTDEF,
-                EntityType.INSERT, 
-                EntityType.DIMENSION,
-                EntityType.HATCH,
-                EntityType.ACAD_TABLE
+                EntityType.HATCH
             ].includes(ent.type);
 
             if (isContainerOrText) return true;
@@ -1200,7 +1197,7 @@ export const hitTest = (x: number, y: number, threshold: number, entities: AnyEn
                 }
                 return s > e ? (param >= s || param <= e) : (param >= s && param <= e);
             }
-        } else if (ent.type === EntityType.INSERT) {
+        } else if (ent.type === EntityType.INSERT || ent.type === EntityType.ACAD_TABLE) {
             const block = blocks[ent.blockName];
             if (!block) return false;
             
@@ -1225,10 +1222,22 @@ export const hitTest = (x: number, y: number, threshold: number, entities: AnyEn
         } else if (ent.type === EntityType.DIMENSION) {
             const block = blocks[ent.blockName];
             if (!block) return false;
-            const tx = (pt: Point2D) => ({
-                x: pt.x - block.basePoint.x,
-                y: pt.y - block.basePoint.y
-            });
+
+            const dp = (ent as any).definitionPoint || { x: 0, y: 0 };
+            let treatAsLocal = false;
+            if (block.extents) {
+                const bw = block.extents.max.x - block.extents.min.x;
+                const bh = block.extents.max.y - block.extents.min.y;
+                const size = Math.max(Math.abs(bw), Math.abs(bh), 1);
+                const bc = { x: (block.extents.min.x + block.extents.max.x) / 2, y: (block.extents.min.y + block.extents.max.y) / 2 };
+                const dist = Math.hypot(bc.x - dp.x, bc.y - dp.y);
+                treatAsLocal = dist > size * 5;
+            }
+
+            const tx = treatAsLocal
+                ? (pt: Point2D) => ({ x: dp.x + (pt.x - block.basePoint.x), y: dp.y + (pt.y - block.basePoint.y) })
+                : (pt: Point2D) => pt;
+
             for (const child of block.entities) {
                 if (checkEntity(child, tx, depth + 1)) return true;
             }
@@ -1267,34 +1276,104 @@ export const hitTestBox = (
     const minX = Math.min(box.x1, box.x2), maxX = Math.max(box.x1, box.x2);
     const minY = Math.min(box.y1, box.y2), maxY = Math.max(box.y1, box.y2);
 
-    entities.forEach(ent => {
-        const layer = layers[ent.layer];
-        if (layer && layer.isVisible === false) return;
+    const overlaps = (ext: { min: Point2D, max: Point2D }) => !(ext.max.x < minX || ext.min.x > maxX || ext.max.y < minY || ext.min.y > maxY);
+    const contained = (ext: { min: Point2D, max: Point2D }) => ext.min.x >= minX && ext.max.x <= maxX && ext.min.y >= minY && ext.max.y <= maxY;
+    const transformExtents = (ext: { min: Point2D, max: Point2D }, tx: (p: Point2D) => Point2D) => {
+        const corners = [
+            tx({ x: ext.min.x, y: ext.min.y }),
+            tx({ x: ext.max.x, y: ext.min.y }),
+            tx({ x: ext.max.x, y: ext.max.y }),
+            tx({ x: ext.min.x, y: ext.max.y })
+        ];
+        let bMinX = Infinity, bMinY = Infinity, bMaxX = -Infinity, bMaxY = -Infinity;
+        corners.forEach(c => {
+            if (c.x < bMinX) bMinX = c.x; if (c.x > bMaxX) bMaxX = c.x;
+            if (c.y < bMinY) bMinY = c.y; if (c.y > bMaxY) bMaxY = c.y;
+        });
+        return { min: { x: bMinX, y: bMinY }, max: { x: bMaxX, y: bMaxY } };
+    };
 
-        if (ent.extents) {
-            const { min, max } = ent.extents;
-            
+    const checkEntityBox = (ent: AnyEntity, tx?: (p: Point2D) => Point2D, depth: number = 0): boolean => {
+        if (ent.visible === false || depth > 20) return isCrossing ? false : true;
+        const layer = layers[ent.layer];
+        if (layer && layer.isVisible === false) return isCrossing ? false : true;
+
+        const ext = ent.extents ? (tx ? transformExtents(ent.extents, tx) : ent.extents) : null;
+        if (ext) {
             if (isCrossing) {
-                // 交叉选择：只要包围盒相交即可
-                const overlap = !(max.x < minX || min.x > maxX || max.y < minY || min.y > maxY);
-                if (overlap) {
-                    results.add(ent.id);
-                }
+                if (!overlaps(ext)) return false;
             } else {
-                // 窗口选择：必须完全包含
-                const contained = min.x >= minX && max.x <= maxX && min.y >= minY && max.y <= maxY;
-                if (contained) {
-                    results.add(ent.id);
-                }
+                if (!contained(ext)) return false;
             }
-        } else {
-            // 对于没有预计算包围盒的实体的兜底逻辑（如单纯的点）
-            if (ent.type === EntityType.POINT && ent.position) {
-                if (ent.position.x >= minX && ent.position.x <= maxX && ent.position.y >= minY && ent.position.y <= maxY) {
-                    results.add(ent.id);
-                }
-            }
+        } else if (ent.type === EntityType.POINT && ent.position) {
+            const p = tx ? tx(ent.position) : ent.position;
+            const inside = p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY;
+            return isCrossing ? inside : inside;
         }
+
+        if (ent.type === EntityType.INSERT || ent.type === EntityType.ACAD_TABLE) {
+            const block = blocks[ent.blockName];
+            if (!block) return ext ? (isCrossing ? overlaps(ext) : contained(ext)) : false;
+            const scale = (ent as any).scale || { x: 1, y: 1, z: 1 };
+            const rotation = ((ent as any).rotation || 0) * Math.PI / 180;
+            const cos = Math.cos(rotation), sin = Math.sin(rotation);
+            const baseTx = (pt: Point2D) => {
+                const bx = pt.x - block.basePoint.x;
+                const by = pt.y - block.basePoint.y;
+                const sx = bx * scale.x;
+                const sy = by * scale.y;
+                const world = { x: (ent as any).position.x + sx * cos - sy * sin, y: (ent as any).position.y + sx * sin + sy * cos };
+                return tx ? tx(world) : world;
+            };
+            if (isCrossing) {
+                for (const child of block.entities) {
+                    if (checkEntityBox(child, baseTx, depth + 1)) return true;
+                }
+                return false;
+            }
+            for (const child of block.entities) {
+                if (!checkEntityBox(child, baseTx, depth + 1)) return false;
+            }
+            return true;
+        }
+
+        if (ent.type === EntityType.DIMENSION) {
+            const block = blocks[ent.blockName];
+            if (!block) return ext ? (isCrossing ? overlaps(ext) : contained(ext)) : false;
+            const dp = (ent as any).definitionPoint || { x: 0, y: 0 };
+            let treatAsLocal = false;
+            if (block.extents) {
+                const bw = block.extents.max.x - block.extents.min.x;
+                const bh = block.extents.max.y - block.extents.min.y;
+                const size = Math.max(Math.abs(bw), Math.abs(bh), 1);
+                const bc = { x: (block.extents.min.x + block.extents.max.x) / 2, y: (block.extents.min.y + block.extents.max.y) / 2 };
+                const dist = Math.hypot(bc.x - dp.x, bc.y - dp.y);
+                treatAsLocal = dist > size * 5;
+            }
+            const baseTx = treatAsLocal
+                ? (pt: Point2D) => {
+                    const world = { x: dp.x + (pt.x - block.basePoint.x), y: dp.y + (pt.y - block.basePoint.y) };
+                    return tx ? tx(world) : world;
+                }
+                : (pt: Point2D) => (tx ? tx(pt) : pt);
+
+            if (isCrossing) {
+                for (const child of block.entities) {
+                    if (checkEntityBox(child, baseTx, depth + 1)) return true;
+                }
+                return false;
+            }
+            for (const child of block.entities) {
+                if (!checkEntityBox(child, baseTx, depth + 1)) return false;
+            }
+            return true;
+        }
+
+        return ext ? (isCrossing ? overlaps(ext) : contained(ext)) : false;
+    };
+
+    entities.forEach(ent => {
+        if (checkEntityBox(ent)) results.add(ent.id);
     });
     return results;
 };
