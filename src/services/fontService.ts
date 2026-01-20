@@ -1,7 +1,7 @@
 import { DxfStyle } from '../types';
 
 /**
- * Optimized font stacks for CAD display
+ * 针对 CAD 显示优化的字体栈
  */
 export const FONT_STACKS = {
     CHINESE: '"FangSong", "仿宋", "STFangsong", "SimSun", "宋体", "Microsoft YaHei", "微软雅黑", sans-serif',
@@ -15,23 +15,23 @@ export const FONT_STACKS = {
 };
 
 /**
- * Maps CAD font file names to Web-compatible font families.
- * Handles SHX, TTF, and OTF files.
+ * 将 CAD 字体文件名映射到 Web 兼容的字体系列。
+ * 处理 SHX、TTF 和 OTF 文件。
  */
 export const mapCadFontToWebFont = (fontFileName: string | undefined, bigFontFileName?: string | undefined): string => {
     const f = (fontFileName || "").toLowerCase();
     const bf = (bigFontFileName || "").toLowerCase();
     
-    let result = FONT_STACKS.CHINESE; // Default for many CAD drawings
+    let result = FONT_STACKS.CHINESE; // 许多 CAD 图纸的默认值
 
-    // 1. Direct checks for common Chinese fonts
+    // 1. 直接检查常见的中文字体
     const combined = (f + "|" + bf).toLowerCase();
     
     if (combined.includes('tssd') || combined.includes('wcad') || combined.includes('fs') || combined.includes('fang') || combined.includes('simsun') || combined.includes('song')) {
-        // TSSD, WCAD, and Simsun/Song all remap to FangSong for better quality
+        // TSSD、WCAD 和 Simsun/Song 都映射到仿宋以获得更好的质量
         result = FONT_STACKS.FANGSONG;
     } else if (combined.includes('hztxt') || combined.includes('hz') || combined.includes('gb') || combined.includes('ext')) {
-        result = FONT_STACKS.FANGSONG; // Prefer FangSong even for common Chinese SHX fallbacks
+        result = FONT_STACKS.FANGSONG; // 即使对于常见的中文 SHX 回退也首选仿宋
     } else if (combined.includes('txt') || combined.includes('simplex') || combined.includes('romans') || combined.includes('tssdeng') || combined.includes('wcadeng')) {
         result = FONT_STACKS.SANS_SERIF;
     } else if (combined.includes('simhei') || combined.includes('hei')) {
@@ -48,7 +48,7 @@ export const mapCadFontToWebFont = (fontFileName: string | undefined, bigFontFil
     } else if (combined.includes('txt') || combined.includes('mono') || combined.includes('iso') || combined.includes('simplex')) {
         result = FONT_STACKS.SANS_SERIF;
     } else {
-        // Check if either font file suggests Chinese/CJK support in a more general way
+        // 检查任一字体文件是否以更通用的方式建议中文/CJK 支持
         const isChinese = (str: string) => {
             return str.includes('big') || 
                    str.includes('chines') ||
@@ -60,7 +60,7 @@ export const mapCadFontToWebFont = (fontFileName: string | undefined, bigFontFil
         if (isChinese(f) || isChinese(bf)) {
             result = FONT_STACKS.CHINESE;
         } else {
-            // Extract name from path if possible
+            // 如果可能，从路径中提取名称
             const extractName = (path: string) => {
                 const lastSlash = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
                 let name = path.substring(lastSlash + 1).replace(/\.(ttf|otf|shx)$/i, '');
@@ -85,10 +85,10 @@ export const mapCadFontToWebFont = (fontFileName: string | undefined, bigFontFil
 };
 
 /**
- * Resolves the font family for a given style, considering both font and big font.
+ * 解析给定样式的字体系列，同时考虑字体和字体。
  */
 export const getStyleFontFamily = (styleName: string | undefined, styles: Record<string, DxfStyle> | undefined): string => {
-    const fallback = FONT_STACKS.CHINESE; // Default to Chinese-capable stack for safety
+    const fallback = FONT_STACKS.CHINESE; // 为了安全起见，默认使用支持中文的字体栈
     
     let effectiveStyleName = styleName || 'STANDARD';
     if (!styles || (!styles[effectiveStyleName] && !styles[effectiveStyleName.toUpperCase()])) {
@@ -96,7 +96,7 @@ export const getStyleFontFamily = (styleName: string | undefined, styles: Record
     }
     
     if (!styles || !styles[effectiveStyleName]) {
-        // If even STANDARD is missing, try to find ANY style that might be a default
+        // 如果甚至缺少 STANDARD，尝试寻找任何可能是默认样式的样式
         const firstStyle = styles ? Object.values(styles)[0] : null;
         if (firstStyle) {
              return getStyleFontFamily(firstStyle.name, styles);
@@ -107,12 +107,12 @@ export const getStyleFontFamily = (styleName: string | undefined, styles: Record
     const style = styles[effectiveStyleName] || styles[effectiveStyleName.toUpperCase()];
     let result = fallback;
     
-    // 1. Try mapping font file names first (most accurate)
+    // 1. 首先尝试映射字体文件名（最准确）
     if (style.fontFileName || style.bigFontFileName) {
         result = mapCadFontToWebFont(style.fontFileName, style.bigFontFileName);
         
-        // If the result is a generic font but the style name suggests a specific Chinese font, 
-        // give the style name preference
+        // 如果结果是通用字体，但样式名称建议使用特定的中文字体，
+        // 则优先使用样式名称
         const isGeneric = result === FONT_STACKS.SANS_SERIF || result === FONT_STACKS.CHINESE || result === FONT_STACKS.SONG;
         
         if (isGeneric) {
@@ -128,7 +128,7 @@ export const getStyleFontFamily = (styleName: string | undefined, styles: Record
             }
         }
     } else if (style.name) {
-        // 2. Try style name itself if no font files are specified
+        // 2. 如果未指定字体文件，则尝试样式名称本身
         const sn = style.name.toLowerCase();
         if (sn.includes('仿宋') || sn.includes('fangsong') || sn === 'fs') {
             result = FONT_STACKS.FANGSONG;

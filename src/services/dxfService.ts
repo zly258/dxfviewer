@@ -1,4 +1,5 @@
 import { AnyEntity, DxfData, EntityType, DxfLayer, DxfBlock, Point2D, Point3D, DxfHatch, HatchLoop, HatchEdge, DxfStyle, DxfPolyline, DxfInsert, DxfHeader, DxfSpline, DxfText, DxfLeader, DxfTable, DxfLineType } from '../types';
+export { cleanMText };
 import { cleanMText } from '../utils/textUtils';
 
 class DxfParserState {
@@ -23,7 +24,7 @@ class DxfParserState {
     if (this.pos >= this.len) return null;
     let end = this.text.indexOf('\n', this.pos);
     if (end === -1) end = this.len;
-    // Extract line and trim whitespace (handles \r\n)
+    // 提取行并修整空白字符（处理 \r\n）
     const line = this.text.substring(this.pos, end).trim();
     this.pos = end + 1;
     this.linesRead++;
@@ -34,7 +35,7 @@ class DxfParserState {
     if (this.groupLoaded) return this.currentGroup;
     
     let codeStr = this.readLine();
-    // Loop to skip empty lines that might cause infinite recursion in peek()
+    // 循环跳过可能导致 peek() 无限递归的空行
     while (codeStr === "" && this.pos < this.len) {
         codeStr = this.readLine();
     }
@@ -45,10 +46,10 @@ class DxfParserState {
     if (valueStr === null) return null; 
 
     const code = parseInt(codeStr, 10);
-    // Handle cases where parseInt might return NaN if the file is corrupted
+    // 处理如果文件损坏导致 parseInt 返回 NaN 的情况
     if (isNaN(code)) {
-        // If we hit NaN, the file structure is likely broken. 
-        // We skip this "code" and return null to break out of parsing loops.
+        // 如果遇到 NaN，文件结构可能已损坏。
+        // 跳过此 "code" 并返回 null 以打破解析循环。
         return null;
     }
 
@@ -81,7 +82,7 @@ const readPoint = (state: DxfParserState, xCode: number, yCode: number): Point2D
         const p2 = state.peek();
         if (p2 && p2.code === yCode) {
             state.next();
-            // Optional Z
+            // 可选的 Z 坐标
             const p3 = state.peek();
             if (p3 && p3.code === 30) state.next(); 
             return { x: parseFloat(p1.value), y: parseFloat(p2.value) };
@@ -145,7 +146,7 @@ const parseLineType = (state: DxfParserState): DxfLineType => {
             case 49: ltype.pattern.push(parseFloat(g.value)); break;
         }
     }
-    // Calculate total length from pattern for accuracy
+    // 从模式计算总长度以提高精度
     if (ltype.pattern.length > 0) {
         ltype.totalLength = ltype.pattern.reduce((acc, val) => acc + Math.abs(val), 0);
     } else {
@@ -154,7 +155,7 @@ const parseLineType = (state: DxfParserState): DxfLineType => {
     return ltype;
 };
 
-const parseTable = (state: DxfParserState, layers: Record<string, DxfLayer>, styles: Record<string, DxfStyle>, lineTypes: Record<string, DxfLineType>) => {
+const parseTable = (state: DxfParserState, layers: Record<string, DxfLayer>, styles: Record<string, DxfStyle>, lineTypes: Record<string, DxfLineType>, blockHandleMap?: Record<string, string>) => {
     const nameGroup = state.next();
     if (!nameGroup || nameGroup.code !== 2) return;
     const tableName = nameGroup.value;
@@ -179,6 +180,20 @@ const parseTable = (state: DxfParserState, layers: Record<string, DxfLayer>, sty
                 state.next();
                 const ltype = parseLineType(state);
                 lineTypes[ltype.name] = ltype;
+            } else if (tableName === 'BLOCK_RECORD' && p.value === 'BLOCK_RECORD') {
+                state.next();
+                let handle = '';
+                let name = '';
+                while(state.hasNext) {
+                    const p2 = state.peek();
+                    if (!p2 || p2.code === 0) break;
+                    const g2 = state.next()!;
+                    if (g2.code === 5) handle = g2.value;
+                    if (g2.code === 2) name = g2.value;
+                }
+                if (handle && name && blockHandleMap) {
+                    blockHandleMap[handle] = name;
+                }
             } else {
                 state.next(); 
             }
@@ -197,7 +212,7 @@ const parseBlock = (state: DxfParserState, blockHandleMap?: Record<string, strin
         if (g.code === 2) block.name = g.value;
         if (g.code === 10) block.basePoint.x = parseFloat(g.value);
         if (g.code === 20) block.basePoint.y = parseFloat(g.value);
-        if (g.code === 5) block.handle = g.value;
+        if (g.code === 5) block.handle = g.value; // 块句柄
     }
 
     while(state.hasNext) {
@@ -208,7 +223,7 @@ const parseBlock = (state: DxfParserState, blockHandleMap?: Record<string, strin
                 state.next();
                 break;
             }
-            state.next(); // Consume the entity type group (code 0)
+            state.next(); // 消耗实体类型组 (code 0)
             const entity = parseEntityDispatcher(p.value, state, blockHandleMap);
             if (entity) block.entities.push(entity);
         } else {
@@ -287,10 +302,10 @@ export const getBSplinePoints = (controlPoints: Point2D[], degree: number = 3, k
 
 const getOcsToWcsMatrix = (Nx: number, Ny: number, Nz: number) => {
     const len = Math.sqrt(Nx*Nx + Ny*Ny + Nz*Nz);
-    if (len < 1e-6) return null; 
+    if (len < 1e-6) return null; // 法线向量太短
     Nx /= len; Ny /= len; Nz /= len;
 
-    if (Math.abs(Nx) < 1e-6 && Math.abs(Ny) < 1e-6 && Math.abs(Nz - 1) < 1e-6) return null; 
+    if (Math.abs(Nx) < 1e-6 && Math.abs(Ny) < 1e-6 && Math.abs(Nz - 1) < 1e-6) return null; // 已经是 WCS
 
     let Ax: Point3D;
     if (Math.abs(Nx) < 1/64 && Math.abs(Ny) < 1/64) {
@@ -345,19 +360,19 @@ export const parseDxf = async (dxfString: string, onProgress?: (percent: number)
   styles['STANDARD'] = { name: 'STANDARD', fontFileName: 'txt', height: 0, widthFactor: 1 };
   lineTypes['CONTINUOUS'] = { name: 'CONTINUOUS', pattern: [], totalLength: 0 };
 
-  // Heuristic total size for progress: length of string / ~20 bytes per line
+  // 进度估计的总大小：字符串长度 / 每行约 15 字节
   const estimatedTotalLines = dxfString.length / 15; 
   let lastReportedProgress = 0;
   let currentSection = '';
   let linesProcessed = 0;
 
   while (state.hasNext) {
-    // Yield to main thread more frequently (every 500 lines) to prevent UI freeze
+    // 更频繁地让出主线程（每 500 行），以防止 UI 冻结
     if (state.linesRead > linesProcessed + 500) {
         linesProcessed = state.linesRead;
         const percent = Math.min(99, Math.round((state.linesRead / estimatedTotalLines) * 100));
         if (onProgress) onProgress(percent);
-        // Force yield even if percentage hasn't changed to keep UI responsive
+        // 即使百分比没有改变也强制让出主线程，以保持 UI 响应
         await new Promise(resolve => setTimeout(resolve, 0));
     }
 
@@ -385,7 +400,7 @@ export const parseDxf = async (dxfString: string, onProgress?: (percent: number)
              }
          }
       } else if (currentSection === 'TABLES') {
-        if (group.code === 0 && group.value === 'TABLE') parseTable(state, layers, styles, lineTypes);
+        if (group.code === 0 && group.value === 'TABLE') parseTable(state, layers, styles, lineTypes, blockHandleMap);
       } else if (currentSection === 'BLOCKS') {
         if (group.code === 0 && group.value === 'BLOCK') {
            const block = parseBlock(state, blockHandleMap);
@@ -408,29 +423,29 @@ export const parseDxf = async (dxfString: string, onProgress?: (percent: number)
 
   if (onProgress) onProgress(100);
 
-  // Precompute block extents for culling and global extents
-  // 1. Initial precomputation on raw coordinates (for correct initial center)
+  // 预计算块范围，用于裁剪和全局范围计算
+  // 1. 在原始坐标上进行初始预计算（以获得正确的初始中心）
   precomputeBlockExtents(blocks);
 
-  // 2. Calculate initial global extents to find the center
+  // 2. 计算初始全局范围以找到中心点
   const initialExtents = calculateExtents(entities, blocks);
   const offset = { x: initialExtents.center.x, y: initialExtents.center.y };
 
-  // 3. Offset EVERYTHING to center around (0,0)
-  // This is the "Industrial Standard" approach to fix floating point precision issues
+  // 3. 将所有内容偏移到以 (0,0) 为中心
+  // 这是修复浮点精度问题的“工业标准”方法
   entities.forEach(ent => offsetEntity(ent, offset));
   
-  // Also offset all blocks and their contents
+  // 同时偏移所有块及其内容
   Object.values(blocks).forEach(block => {
     block.basePoint.x -= offset.x;
     block.basePoint.y -= offset.y;
     block.entities.forEach(ent => offsetEntity(ent, offset));
   });
 
-  // 4. Re-precompute block extents (now in offset coordinate system)
+  // 4. 重新预计算块范围（现在处于偏移后的坐标系中）
   precomputeBlockExtents(blocks);
 
-  // 5. Re-calculate final global extents for the offset entities
+  // 5. 为偏移后的实体重新计算最终全局范围
   const extents = calculateExtents(entities, blocks);
 
   return { header, entities, layers, blocks, styles, lineTypes, offset, extents };
@@ -504,7 +519,7 @@ const offsetEntity = (ent: AnyEntity, offset: Point2D) => {
             if (ent.arcP2) { ent.arcP2.x -= ox; ent.arcP2.y -= oy; }
             break;
     }
-    // Update extents for the offset entity
+    // 更新偏移后实体的范围
     if (ent.extents) {
         ent.extents.min.x -= ox; ent.extents.min.y -= oy;
         ent.extents.max.x -= ox; ent.extents.max.y -= oy;
@@ -544,7 +559,7 @@ const applyCommonGroup = (common: any, code: number, value: string) => {
         case 8: common.layer = value; break;
         case 62: common.color = parseInt(value, 10); break;
         case 420: 
-                // Group 420 is true color (24-bit integer)
+                // 组码 420 是真彩色（24位整数）
                 common.trueColor = typeof value === 'string' ? parseInt(value.startsWith('0x') ? value : value, value.startsWith('0x') ? 16 : 10) : Number(value); 
                 break;
         case 6: common.lineType = value; break;
@@ -582,7 +597,7 @@ const parseEntityDispatcher = (type: string, state: DxfParserState, blockHandleM
         case 'XLINE':
             return parseRayXLine(state, common, type);
         default: 
-            // Crucial: Securely skip unknown entities by consuming all group codes until next entity (code 0)
+            // 至关重要：通过消耗所有组码直到下一个实体（代码 0），安全地跳过未知实体
             while (state.hasNext) {
                 const p = state.peek();
                 if (!p || p.code === 0) break;
@@ -624,11 +639,24 @@ const parseAcadTable = (state: DxfParserState, common: any, blockHandleMap?: Rec
             case 41: entity.scale!.x = parseFloat(g.value); break;
             case 42: entity.scale!.y = parseFloat(g.value); break;
             case 43: entity.scale!.z = parseFloat(g.value); break;
+            case 91: entity.rowCount = parseInt(g.value); break;
+            case 92: entity.columnCount = parseInt(g.value); break;
+            case 141: entity.rowSpacing = parseFloat(g.value); break; // 某些版本使用 141/142 表示行/列间距
+            case 142: entity.columnSpacing = parseFloat(g.value); break;
+            case 44: entity.columnSpacing = parseFloat(g.value); break;
+            case 45: entity.rowSpacing = parseFloat(g.value); break;
+            case 1: 
+                if (!entity.cells) entity.cells = [];
+                entity.cells.push(g.value);
+                break;
         }
     }
 
     if (direction.x !== 1 || direction.y !== 0 || direction.z !== 0) {
         (entity as any).direction = direction;
+        if (!entity.rotation) {
+            entity.rotation = Math.atan2(direction.y, direction.x) * 180 / Math.PI;
+        }
     }
 
     if (!entity.blockName && blockHandle && blockHandleMap) {
@@ -641,7 +669,6 @@ const parseAcadTable = (state: DxfParserState, common: any, blockHandleMap?: Rec
         entity.rotation = getWcsRotation(entity.rotation, ocs);
     }
 
-    if (!entity.blockName) return null; 
     return entity;
 }
 
@@ -721,14 +748,14 @@ const parseText = (state: DxfParserState, common: any, type: EntityType): DxfTex
     entity.value = valueParts.join('');
     
     if (type === EntityType.MTEXT) {
-        // Parse width factor from raw value
-        // Support both \W and \w, and optional semicolon
+        // 从原始值解析宽度因子
+        // 支持 \W 和 \w，以及可选的分号
         const matches = entity.value.match(/\\[Ww](\d+(\.\d+)?)(?:;|$)/);
         if (matches && matches[1]) {
             entity.widthFactor = parseFloat(matches[1]);
         }
-        // Do NOT clean here, renderer will clean it.
-        // This allows renderer to see formatting codes for font/height/etc.
+        // 此处不要清理，渲染器会进行清理。
+        // 这允许渲染器查看字体/高度等格式化代码。
     }
     
     if (!entity.styleName) entity.styleName = 'STANDARD';
@@ -739,13 +766,13 @@ const parseText = (state: DxfParserState, common: any, type: EntityType): DxfTex
     
     if (type === EntityType.MTEXT) {
         if (direction && (Math.abs(direction.x) > 1e-6 || Math.abs(direction.y) > 1e-6)) {
-             // MTEXT direction vector (11, 21, 31) is already in WCS according to DXF spec
+             // 根据 DXF 规范，MTEXT 方向向量 (11, 21, 31) 已经在 WCS 中
              entity.rotation = Math.atan2(direction.y, direction.x) * 180 / Math.PI;
         } else {
-             // MTEXT rotation angle (code 50) is in radians and is already in WCS
+             // MTEXT 旋转角度（代码 50）以弧度为单位，并且已经在 WCS 中
              entity.rotation = entity.rotation * 180 / Math.PI;
         }
-        // MTEXT position (10, 20, 30) is already in WCS according to DXF spec
+        // 根据 DXF 规范，MTEXT 位置 (10, 20, 30) 已经在 WCS 中
     } else {
         entity.position = applyOcs(entity.position, ocs, z);
         if (secondPos) {
@@ -754,15 +781,15 @@ const parseText = (state: DxfParserState, common: any, type: EntityType): DxfTex
         entity.rotation = getWcsRotation(entity.rotation, ocs);
     }
 
-    // Handle mirroring for OCS if the 2D determinant is negative
+    // 如果 2D 行列式为负，处理 OCS 的镜像
     if (ocs) {
         const det2D = ocs.Ax.x * ocs.Ay.y - ocs.Ax.y * ocs.Ay.x;
         if (det2D < 0) {
-            // For mirrored OCS, we need to flip the rotation or scale to maintain correct appearance.
-            // In AutoCAD, a mirrored OCS (like Nz=-1) means the 2D plane is viewed from "behind".
+            // 对于镜像 OCS，我们需要翻转旋转或缩放以保持正确的外观。
+            // 在 AutoCAD 中，镜像 OCS（如 Nz=-1）意味着从“背面”查看 2D 平面。
             if (type === EntityType.MTEXT) {
-                // MTEXT width is already handled by direction or rotation. 
-                // But the width factor (if any) or internal scaling might need flipping.
+                // MTEXT 宽度已由方向或旋转处理。
+                // 但宽度因子（如果有）或内部缩放可能需要翻转。
                 entity.widthFactor = -(entity.widthFactor || 1);
             } else {
                 entity.widthFactor = -(entity.widthFactor || 1);
@@ -797,11 +824,11 @@ const parseRayXLine = (state: DxfParserState, common: any, type: string): AnyEnt
     }
     const ocs = getOcsToWcsMatrix(entity.extrusion.x, entity.extrusion.y, entity.extrusion.z);
     entity.basePoint = applyOcs(entity.basePoint, ocs, z1);
-    // Direction vector should also be rotated if OCS is used
+    // 如果使用了 OCS，方向向量也应该旋转
     if (ocs) {
         const d = { x: entity.direction.x, y: entity.direction.y };
         entity.direction = applyOcs(d, ocs, z2);
-        // Normalize direction
+        // 归一化方向
         const len = Math.sqrt(entity.direction.x * entity.direction.x + entity.direction.y * entity.direction.y);
         if (len > 0) {
             entity.direction.x /= len;
@@ -828,7 +855,7 @@ const parseLine = (state: DxfParserState, common: any): AnyEntity => {
             case 31: z2 = parseFloat(g.value); break;
         }
     }
-    // LINE and POINT coordinates are already in WCS according to DXF spec
+    // 根据 DXF 规范，LINE 和 POINT 坐标已经在 WCS 中
     return entity;
 }
 
@@ -874,10 +901,10 @@ const parseArc = (state: DxfParserState, common: any): AnyEntity => {
     if (ocs) {
         const det2D = ocs.Ax.x * ocs.Ay.y - ocs.Ax.y * ocs.Ay.x;
         if (det2D < 0) {
-            // For mirrored OCS, the arc direction is reversed.
-            // Swap angles and negate them or adjust based on rotation.
-            // A simpler way: AutoCAD says if Nz < 0, the arc is CW.
-            // We can store this in the entity for the renderer to use.
+            // 对于镜像 OCS，圆弧方向会反转。
+            // 交换角度并取反，或根据旋转进行调整。
+            // 一个更简单的方法：AutoCAD 表示如果 Nz < 0，则圆弧为顺时针 (CW)。
+            // 我们可以将其存储在实体中供渲染器使用。
             entity.isCounterClockwise = false;
         } else {
             entity.isCounterClockwise = true;
@@ -1040,7 +1067,7 @@ const parseInsert = (state: DxfParserState, common: any): DxfInsert => {
     if (ocs) {
         const det2D = ocs.Ax.x * ocs.Ay.y - ocs.Ax.y * ocs.Ay.x;
         if (det2D < 0) {
-            // Mirroring detected in OCS. Flip the X scale to compensate.
+            // 在 OCS 中检测到镜像。翻转 X 轴缩放比例进行补偿。
             entity.scale.x = -entity.scale.x;
         }
     }
@@ -1126,15 +1153,15 @@ const parseSolid = (state: DxfParserState, common: any, type: string): AnyEntity
         }
     }
     
-    // Default points if missing
+    // 如果缺失点，则使用默认点
     if (!pts[0]) pts[0] = {x:0, y:0, z:0};
     if (!pts[1]) pts[1] = {x:0, y:0, z:0};
     if (!pts[2]) pts[2] = {x:0, y:0, z:0};
-    // Fix for 3-point solids (e.g. arrows): If 4th point is missing, it equals the 3rd.
+    // 针对 3 点 SOLID（例如箭头）的修复：如果缺失第 4 个点，则它等于第 3 个点。
     if (!pts[3]) pts[3] = { ...pts[2] };
 
     const ocs = getOcsToWcsMatrix(entity.extrusion.x, entity.extrusion.y, entity.extrusion.z);
-    // SOLID and TRACE are in OCS, but 3DFACE is in WCS
+    // SOLID 和 TRACE 使用 OCS 坐标，但 3DFACE 使用 WCS 坐标
     const transformed = (type === 'SOLID' || type === 'TRACE') 
         ? pts.map(p => applyOcs(p!, ocs, p!.z))
         : pts.map(p => ({ x: p!.x, y: p!.y }));
@@ -1160,7 +1187,7 @@ const parsePointEntity = (state: DxfParserState, common: any): AnyEntity => {
         if (g.code === 20) entity.position.y = parseFloat(g.value);
         if (g.code === 30) z = parseFloat(g.value);
     }
-    // POINT coordinates are already in WCS according to DXF spec
+    // 根据 DXF 规范，POINT 坐标已经处于 WCS 坐标系中
     return entity;
 }
 
@@ -1194,9 +1221,9 @@ const parseSpline = (state: DxfParserState, common: any): DxfSpline => {
         }
     }
     
-    // SPLINE control points and fit points are already in WCS according to DXF spec
+    // 根据 DXF 规范，SPLINE 控制点和拟合点已经处于 WCS 坐标系中
     
-    // Pre-calculate spline points for faster rendering
+    // 预计算样条曲线点以实现更快的渲染
     if (entity.controlPoints.length > 0) {
         entity.calculatedPoints = getBSplinePoints(entity.controlPoints, entity.degree, entity.knots, entity.weights);
     }
@@ -1224,14 +1251,14 @@ const parseEllipse = (state: DxfParserState, common: any): AnyEntity => {
             case 30: z = parseFloat(g.value); break;
             case 11: entity.majorAxis.x = parseFloat(g.value); break;
             case 21: entity.majorAxis.y = parseFloat(g.value); break;
-            case 31: // Z of major axis endpoint - ignored for 2D display
+            case 31: // 长轴终点的 Z 坐标 - 在 2D 显示中忽略
                 break;
             case 40: entity.ratio = parseFloat(g.value); break;
             case 41: entity.startParam = parseFloat(g.value); break;
             case 42: entity.endParam = parseFloat(g.value); break;
         }
     }
-    // ELLIPSE center and major axis are already in WCS according to DXF spec
+    // 根据 DXF 规范，ELLIPSE 中心和长轴已经处于 WCS 坐标系中
     return entity;
 }
 
@@ -1318,7 +1345,7 @@ const parseHatch = (state: DxfParserState, common: any): DxfHatch => {
         if (g.code === 52) entity.angle = parseFloat(g.value);
         
         if (g.code === 92) {
-            if (currentLoop) entity.loops.push(currentLoop); 
+            if (currentLoop) entity.loops.push(currentLoop); // 保存上一个循环
             const type = parseInt(g.value);
             currentLoop = { type, edges: [], isPolyline: (type & 2) === 2, points: [], bulges: [] };
             edgesToRead = 0;
@@ -1333,11 +1360,11 @@ const parseHatch = (state: DxfParserState, common: any): DxfHatch => {
                 if (g.code === 72 && edgesToRead > 0) {
                     const edgeType = parseInt(g.value);
                     const edge: HatchEdge = { type: 'LINE' }; 
-                    if (edgeType === 1) { 
+                    if (edgeType === 1) { // 直线
                         edge.type = 'LINE';
                         const p1 = readPoint(state, 10, 20); const p2 = readPoint(state, 11, 21);
                         if(p1) edge.start = p1; if(p2) edge.end = p2;
-                    } else if (edgeType === 2) {
+                    } else if (edgeType === 2) { // 圆弧
                         edge.type = 'ARC';
                         const center = readPoint(state, 10, 20);
                         const radius = readVal(state, 40); const startAng = readVal(state, 50); const endAng = readVal(state, 51); const ccw = readVal(state, 73);
@@ -1351,7 +1378,7 @@ const parseHatch = (state: DxfParserState, common: any): DxfHatch => {
                             edge.start = { x: edge.center.x + edge.radius * Math.cos(sRad), y: edge.center.y + edge.radius * Math.sin(sRad) };
                             edge.end = { x: edge.center.x + edge.radius * Math.cos(eRad), y: edge.center.y + edge.radius * Math.sin(eRad) };
                         }
-                    } else if (edgeType === 3) {
+                    } else if (edgeType === 3) { // 椭圆弧
                         edge.type = 'ELLIPSE';
                          const center = readPoint(state, 10, 20); const maj = readPoint(state, 11, 21);
                          const ratio = readVal(state, 40); const startAng = readVal(state, 50); const endAng = readVal(state, 51); const ccw = readVal(state, 73);
@@ -1375,21 +1402,21 @@ const parseHatch = (state: DxfParserState, common: any): DxfHatch => {
                              edge.start = calcEllipsePt(sRad);
                              edge.end = calcEllipsePt(eRad);
                          }
-                    } else if (edgeType === 4) {
+                    } else if (edgeType === 4) { // 样条曲线
                          edge.type = 'SPLINE'; edge.controlPoints = []; edge.knots = []; edge.weights = [];
                          const degree = readVal(state, 94); if(degree) edge.degree = degree;
                          const rational = readVal(state, 73);
                          const periodic = readVal(state, 74);
                          const nKnots = readVal(state, 95);
                          const nControl = readVal(state, 96);
-                         // Read knots
+                         // 读取节点 (Knots)
                          for(let k=0; k<(nKnots||0); k++) { const kn = readVal(state, 40); if(kn!==null) edge.knots!.push(kn); }
-                         // Read control points
+                         // 读取控制点 (Control points)
                          for(let c=0; c<(nControl||0); c++) {
                              const pt = readPoint(state, 10, 20); if(pt) edge.controlPoints!.push(pt);
                              if (rational) { const w = readVal(state, 42); if(w!==null) edge.weights!.push(w); }
                          }
-                         // Pre-calculate spline points for hatch edge
+                         // 预计算填充边界的样条曲线点
                          if (edge.controlPoints.length > 0) {
                              edge.calculatedPoints = getBSplinePoints(edge.controlPoints, edge.degree || 3, edge.knots, edge.weights, 20);
                          }
@@ -1403,7 +1430,7 @@ const parseHatch = (state: DxfParserState, common: any): DxfHatch => {
     if (entity.patternName === 'SOLID') entity.solid = true;
     if (currentLoop) entity.loops.push(currentLoop);
     const ocs = getOcsToWcsMatrix(entity.extrusion.x, entity.extrusion.y, entity.extrusion.z);
-    const transform = (x: number, y: number) => applyOcs({x, y}, ocs, elevation);
+    const transform = (x: number, y: number) => applyOcs({x, y}, ocs, elevation); // 转换函数
     if (ocs) {
         const det2D = ocs.Ax.x * ocs.Ay.y - ocs.Ax.y * ocs.Ay.x;
         entity.isFlipped = det2D < 0;
@@ -1432,6 +1459,7 @@ const parseHatch = (state: DxfParserState, common: any): DxfHatch => {
 }
 
 const getEntityExtents = (ent: AnyEntity, blocks: Record<string, DxfBlock>): { min: Point2D, max: Point2D } | null => {
+    // 获取实体的包围盒范围 (Extents)
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     const update = (x: number, y: number) => {
         if (x < minX) minX = x; if (x > maxX) maxX = x;
@@ -1467,21 +1495,21 @@ const getEntityExtents = (ent: AnyEntity, blocks: Record<string, DxfBlock>): { m
                 const widthFactor = Math.abs((ent as any).widthFactor || 1);
                 const rotation = (ent as any).rotation || 0;
                 
-                // MText line spacing and width factor
+                // 处理文本高度、宽度因子和行间距
                 const lines = text.split('\n');
                 const maxLineLen = Math.max(...lines.map(l => l.length), 1);
-                const totalHeight = lines.length * h * 1.3; // Increased line spacing for better selection
-                const totalWidth = h * 0.8 * maxLineLen * widthFactor; // Wider character approximation
+                const totalHeight = lines.length * h * 1.3; // 增加行间距以优化点选范围
+                const totalWidth = h * 0.8 * maxLineLen * widthFactor; // 字符宽度的近似值
 
                 const rad = rotation * Math.PI / 180;
                 const cos = Math.cos(rad);
                 const sin = Math.sin(rad);
 
-                // Handle MText attachment point (71) and Text alignment (72, 73)
+                // 处理 MText 插入点 (组码 71) 和 Text 对齐 (组码 72, 73)
                 let ox = 0, oy = 0;
                 if (ent.type === EntityType.MTEXT) {
                     const ap = (ent as any).attachmentPoint || 1;
-                    // Attachment points: 1=TL, 2=TC, 3=TR, 4=ML, 5=MC, 6=MR, 7=BL, 8=BC, 9=BR
+                    // 插入点枚举：1=左上, 2=中上, 3=右上, 4=左中, 5=正中, 6=右中, 7=左下, 8=中下, 9=右下
                     if ([2, 5, 8].includes(ap)) ox = -totalWidth / 2;
                     else if ([3, 6, 9].includes(ap)) ox = -totalWidth;
                     
@@ -1490,13 +1518,13 @@ const getEntityExtents = (ent: AnyEntity, blocks: Record<string, DxfBlock>): { m
                 } else {
                     const ha = (ent as any).hAlign || 0;
                     const va = (ent as any).vAlign || 0;
-                    // Text alignment is more complex, but simplified:
-                    if (ha === 1) ox = -totalWidth / 2; // Center
-                    else if (ha === 2) ox = -totalWidth; // Right
+                    // 文字对齐方式的简化处理：
+                    if (ha === 1) ox = -totalWidth / 2; // 居中
+                    else if (ha === 2) ox = -totalWidth; // 右对齐
                     
-                    if (va === 1) oy = h * 0.5; // Bottom
-                    else if (va === 2) oy = h * 1.0; // Middle
-                    else if (va === 3) oy = h * 1.5; // Top
+                    if (va === 1) oy = h * 0.5; // 底部
+                    else if (va === 2) oy = h * 1.0; // 中间
+                    else if (va === 3) oy = h * 1.5; // 顶部
                 }
 
                 const corners = [
@@ -1558,6 +1586,30 @@ const getEntityExtents = (ent: AnyEntity, blocks: Record<string, DxfBlock>): { m
                     const sy = p.y * scale.y;
                     update(ent.position.x + sx * cos - sy * sin, ent.position.y + sx * sin + sy * cos);
                 });
+            } else if (ent.type === EntityType.ACAD_TABLE) {
+                // 表格包围盒兜底：如果没有块定义，根据行/列数和间距计算
+                const table = ent as any;
+                const rowCount = table.rowCount || 1;
+                const colCount = table.columnCount || 1;
+                const rowSpacing = table.rowSpacing || 10;
+                const colSpacing = table.columnSpacing || 50;
+                const rot = table.rotation || 0;
+                const cos = Math.cos(rot * Math.PI / 180);
+                const sin = Math.sin(rot * Math.PI / 180);
+                
+                const w = colCount * colSpacing;
+                const h = rowCount * rowSpacing;
+                
+                // 表格通常从插入点向下向右生长
+                const corners = [
+                    { x: 0, y: 0 },
+                    { x: w, y: 0 },
+                    { x: 0, y: -h },
+                    { x: w, y: -h }
+                ];
+                corners.forEach(p => {
+                    update(ent.position.x + p.x * cos - p.y * sin, ent.position.y + p.x * sin + p.y * cos);
+                });
             } else {
                 update(ent.position.x, ent.position.y);
             }
@@ -1573,8 +1625,9 @@ const getEntityExtents = (ent: AnyEntity, blocks: Record<string, DxfBlock>): { m
             
             if (ent.blockName && blocks[ent.blockName] && blocks[ent.blockName].extents) {
                 const b = blocks[ent.blockName];
-                update(b.extents!.min.x, b.extents!.min.y);
-                update(b.extents!.max.x, b.extents!.max.y);
+                // 标注块的内容通常直接在世界坐标系定义，但需要处理基点 (basePoint) 偏移
+                update(b.extents!.min.x - b.basePoint.x, b.extents!.min.y - b.basePoint.y);
+                update(b.extents!.max.x - b.basePoint.x, b.extents!.max.y - b.basePoint.y);
             }
             break;
         case EntityType.LEADER:
@@ -1587,6 +1640,7 @@ const getEntityExtents = (ent: AnyEntity, blocks: Record<string, DxfBlock>): { m
 };
 
 const precomputeBlockExtents = (blocks: Record<string, DxfBlock>) => {
+    // 预计算块的包围盒范围
     const visited = new Set<string>();
     const computing = new Set<string>();
 
@@ -1597,7 +1651,7 @@ const precomputeBlockExtents = (blocks: Record<string, DxfBlock>) => {
         
         computing.add(name);
         
-        // Ensure child blocks are computed first
+        // 确保首先计算子块的范围
         block.entities.forEach(ent => {
             if ((ent.type === EntityType.INSERT || ent.type === EntityType.ACAD_TABLE || ent.type === EntityType.DIMENSION) && ent.blockName) {
                 compute(ent.blockName);
@@ -1608,7 +1662,10 @@ const precomputeBlockExtents = (blocks: Record<string, DxfBlock>) => {
         block.entities.forEach(ent => {
             const ext = getEntityExtents(ent, blocks);
             if (ext) {
-                // Use a very large limit to allow extreme coordinates but prevent Infinity
+                // 同时更新实体自身的包围盒，用于渲染时的剔除 (Culling) 和点选 (Hit test)
+                ent.extents = ext;
+                
+                // 使用较大的限制以允许极端坐标，但防止出现 Infinity
                 const isValid = (v: number) => isFinite(v) && Math.abs(v) < 1e100;
                 if (isValid(ext.min.x) && ext.min.x < minX) minX = ext.min.x; 
                 if (isValid(ext.max.x) && ext.max.x > maxX) maxX = ext.max.x;
@@ -1629,13 +1686,14 @@ const precomputeBlockExtents = (blocks: Record<string, DxfBlock>) => {
 };
 
 export const calculateExtents = (entities: AnyEntity[], blocks: Record<string, DxfBlock>): { center: Point2D, width: number, height: number, min: Point2D, max: Point2D } => {
+    // 计算所有实体的总包围盒
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
 
     entities.forEach(ent => {
         if (ent.visible === false) return;
         const ext = getEntityExtents(ent, blocks);
         if (ext) {
-            // Use a very large limit to allow extreme coordinates but prevent Infinity
+            // 使用较大的限制以允许极端坐标，但防止出现 Infinity
             const isValid = (v: number) => isFinite(v) && Math.abs(v) < 1e100;
             
             if (isValid(ext.min.x) && ext.min.x < minX) minX = ext.min.x; 
@@ -1643,7 +1701,7 @@ export const calculateExtents = (entities: AnyEntity[], blocks: Record<string, D
             if (isValid(ext.min.y) && ext.min.y < minY) minY = ext.min.y; 
             if (isValid(ext.max.y) && ext.max.y > maxY) maxY = ext.max.y;
             
-            // Also update the entity's own extents for culling
+            // 同时更新实体自身的包围盒，用于渲染时的剔除 (Culling)
             ent.extents = ext;
         }
     });
@@ -1664,7 +1722,7 @@ export const calculateExtents = (entities: AnyEntity[], blocks: Record<string, D
 };
 
 /**
- * Calculates extents intelligently by ignoring outliers and focusing on the most dense area.
+ * 智能计算范围：通过忽略离群值并专注于最密集的区域来计算范围。
  */
 export const calculateSmartExtents = (entities: AnyEntity[], blocks: Record<string, DxfBlock>): { center: Point2D, width: number, height: number, min: Point2D, max: Point2D } => {
     const validExtents: {min: Point2D, max: Point2D, center: Point2D}[] = [];
@@ -1693,7 +1751,7 @@ export const calculateSmartExtents = (entities: AnyEntity[], blocks: Record<stri
         return calculateExtents(entities, blocks);
     }
 
-    // 1. Calculate full bounding box
+    // 1. 计算完整的包围盒
     let fullMinX = Infinity, fullMinY = Infinity, fullMaxX = -Infinity, fullMaxY = -Infinity;
     validExtents.forEach(ext => {
         fullMinX = Math.min(fullMinX, ext.min.x);
@@ -1702,20 +1760,20 @@ export const calculateSmartExtents = (entities: AnyEntity[], blocks: Record<stri
         fullMaxY = Math.max(fullMaxY, ext.max.y);
     });
 
-    // 2. Statistical filtering for outliers
-    // Use X and Y centers to find the "dense" area
+    // 2. 针对离群值的统计过滤
+    // 使用 X 和 Y 中心点来寻找“密集”区域
     const centersX = validExtents.map(e => e.center.x).sort((a, b) => a - b);
     const centersY = validExtents.map(e => e.center.y).sort((a, b) => a - b);
     
-    // Get the Interquartile Range (IQR) for centers
+    // 获取中心点的四分位距 (IQR)
     const q1Idx = Math.floor(centersX.length * 0.25);
     const q3Idx = Math.floor(centersX.length * 0.75);
     
     const iqrX = centersX[q3Idx] - centersX[q1Idx];
     const iqrY = centersY[q3Idx] - centersY[q1Idx];
     
-    // Outlier threshold: 1.5 * IQR is standard, but we'll be more generous (e.g., 5.0 * IQR)
-    // or just use 5th and 95th percentiles to be safe but focused.
+    // 离群值阈值：标准为 1.5 * IQR，但我们会更宽松一些（例如 5.0 * IQR），
+    // 或者直接使用第 5 和第 95 百分位数，以确保安全且聚焦。
     const lowIdx = Math.floor(centersX.length * 0.05);
     const highIdx = Math.floor(centersX.length * 0.95);
     
@@ -1724,8 +1782,8 @@ export const calculateSmartExtents = (entities: AnyEntity[], blocks: Record<stri
     const p5Y = centersY[lowIdx];
     const p95Y = centersY[highIdx];
 
-    // If the full range is much larger than the percentile range (e.g., > 10x), 
-    // it's highly likely there are outliers.
+    // 如果完整范围远大于百分位范围（例如 > 10倍），
+    // 则极有可能存在离群值。
     const pWidth = p95X - p5X;
     const pHeight = p95Y - p5Y;
     const fWidth = fullMaxX - fullMinX;
@@ -1733,10 +1791,10 @@ export const calculateSmartExtents = (entities: AnyEntity[], blocks: Record<stri
 
     let finalMinX = fullMinX, finalMaxX = fullMaxX, finalMinY = fullMinY, finalMaxY = fullMaxY;
 
-    // If full range is significantly larger than percentile range, focus on the "bulk"
+    // 如果完整范围显著大于百分位范围，则专注于“主体部分”
     if (fWidth > pWidth * 10 || fHeight > pHeight * 10) {
-        // Filter entities that fall within a reasonable distance of the p5-p95 box
-        // We'll use p5-p95 with a margin as our "smart" box
+        // 过滤掉不在 p5-p95 框内合理距离范围内的实体
+        // 我们将使用带有边距的 p5-p95 作为“智能”框
         const marginX = Math.max(pWidth * 0.5, fWidth * 0.01);
         const marginY = Math.max(pHeight * 0.5, fHeight * 0.01);
         
@@ -1744,7 +1802,7 @@ export const calculateSmartExtents = (entities: AnyEntity[], blocks: Record<stri
         finalMinY = Infinity; finalMaxY = -Infinity;
         
         validExtents.forEach(ext => {
-            // If the entity is somewhat close to the core region, include it in the fit calculation
+            // 如果实体距离核心区域较近，则将其包含在拟合计算中
             if (ext.center.x >= p5X - marginX && ext.center.x <= p95X + marginX &&
                 ext.center.y >= p5Y - marginY && ext.center.y <= p95Y + marginY) {
                 finalMinX = Math.min(finalMinX, ext.min.x);
@@ -1754,7 +1812,7 @@ export const calculateSmartExtents = (entities: AnyEntity[], blocks: Record<stri
             }
         });
         
-        // Safety: if filtering resulted in nothing (shouldn't happen), revert to full
+        // 安全机制：如果过滤后没有任何内容（不应发生），则恢复为完整范围
         if (finalMinX === Infinity) {
             finalMinX = fullMinX; finalMaxX = fullMaxX;
             finalMinY = fullMinY; finalMaxY = fullMaxY;

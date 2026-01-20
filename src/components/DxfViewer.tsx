@@ -3,22 +3,26 @@ import { AnyEntity, ViewPort, DxfLayer, DxfBlock, DxfStyle, DxfLineType, EntityT
 import { renderEntitiesToCanvas, hitTest, hitTestBox } from '../services/canvasRenderService';
 import { Language, UI_TRANSLATIONS } from '../constants/i18n';
 
+/**
+ * DXF 渲染核心组件
+ * 负责 Canvas 渲染、坐标转换、缩放平移交互以及拾取逻辑
+ */
 interface DxfViewerProps {
-  entities: AnyEntity[];
-  layers: Record<string, DxfLayer>;
-  blocks?: Record<string, DxfBlock>;
-  styles?: Record<string, DxfStyle>;
-  lineTypes?: Record<string, DxfLineType>;
-  viewPort: ViewPort;
-  onViewPortChange: (vp: ViewPort) => void;
-  selectedEntityIds: Set<string>;
-  onSelectIds: (ids: Set<string>) => void;
-  onFitView: () => void;
-  worldOffset?: Point2D;
-  ltScale?: number;
-  theme: 'black' | 'white' | 'gray';
-  lang: Language;
-  onMouseMoveWorld?: (x: number, y: number) => void;
+  entities: AnyEntity[]; // 要渲染的实体列表
+  layers: Record<string, DxfLayer>; // 图层信息
+  blocks?: Record<string, DxfBlock>; // 块定义
+  styles?: Record<string, DxfStyle>; // 文字样式
+  lineTypes?: Record<string, DxfLineType>; // 线型定义
+  viewPort: ViewPort; // 当前视图参数（缩放、目标位置）
+  onViewPortChange: (vp: ViewPort) => void; // 视图更新回调
+  selectedEntityIds: Set<string>; // 已选择实体的 ID 集合
+  onSelectIds: (ids: Set<string>) => void; // 选择状态更新回调
+  onFitView: () => void; // 适应视图回调
+  worldOffset?: Point2D; // 坐标偏移（用于显示原始坐标）
+  ltScale?: number; // 全局线型比例
+  theme: 'black' | 'white' | 'gray'; // 画布背景主题
+  lang: Language; // 当前语言
+  onMouseMoveWorld?: (x: number, y: number) => void; // 鼠标移动时的世界坐标回调
 }
 
 const DxfViewer: React.FC<DxfViewerProps> = ({ 
@@ -46,10 +50,10 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
   
   const [isPanning, setIsPanning] = useState(false);
   const [isBoxSelecting, setIsBoxSelecting] = useState(false);
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 }); // Screen coords
-  const [currentMousePos, setCurrentMousePos] = useState({ x: 0, y: 0 }); // Screen coords
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 }); // 屏幕坐标
+  const [currentMousePos, setCurrentMousePos] = useState({ x: 0, y: 0 }); // 屏幕坐标
 
-  // Calculate World Coordinates from Screen Coordinates (Centered)
+  // 从屏幕坐标计算世界坐标（以中心为原点）
   const screenToWorld = (sx: number, sy: number) => {
      const canvas = canvasRef.current;
      if (!canvas) return { x: 0, y: 0 };
@@ -57,9 +61,9 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
      
      const safeZoom = Math.max(Math.abs(viewPort.zoom), Number.MIN_VALUE);
      
-     // worldX = (screenX - width / 2) / zoom + targetX
+     // 世界坐标 X = (屏幕 X - 宽度 / 2) / 缩放比例 + 目标 X
      const wx = (sx - rect.width / 2) / safeZoom + viewPort.targetX;
-     // worldY = targetY - (screenY - height / 2) / zoom
+     // 世界坐标 Y = 目标 Y - (屏幕 Y - 高度 / 2) / 缩放比例
      const wy = viewPort.targetY - (sy - rect.height / 2) / safeZoom;
      
      return {
@@ -70,22 +74,22 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
 
   const [mouseWorldPos, setMouseWorldPos] = useState({ x: 0, y: 0 });
 
-  // Display coordinates (Original)
+  // 显示坐标（原始坐标）
   const displayX = mouseWorldPos.x + (worldOffset?.x || 0);
   const displayY = mouseWorldPos.y + (worldOffset?.y || 0);
 
-  // Memoize visible count for performance
+  // 缓存可见实体数量以优化性能
   const visibleCount = React.useMemo(() => {
     return entities.filter(e => e.visible !== false).length;
   }, [entities]);
 
-  // Clamp values to prevent Infinity/NaN issues
+  // 限制数值范围以防止 Infinity/NaN 问题
   const safeClamp = (value: number, min: number, max: number): number => {
     if (!isFinite(value)) return 0;
     return Math.max(Math.min(value, max), min);
   };
 
-  // Canvas Render Loop with requestAnimationFrame for smoothness
+  // 画布渲染循环，使用 requestAnimationFrame 保证平滑度
   const renderRef = useRef<number>();
   
   useLayoutEffect(() => {
@@ -96,11 +100,11 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
 
-        // Handle High DPI
+        // 处理高 DPI
         const rect = containerRef.current.getBoundingClientRect();
         const dpr = window.devicePixelRatio || 1;
         
-        // Resize if needed
+        // 如果需要，调整大小
         if (canvas.width !== rect.width * dpr || canvas.height !== rect.height * dpr) {
             canvas.width = rect.width * dpr;
             canvas.height = rect.height * dpr;
@@ -108,7 +112,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
             canvas.style.height = `${rect.height}px`;
         }
 
-        // Reset scale for DPI
+        // 为 DPI 重置缩放
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.scale(dpr, dpr);
 
@@ -123,7 +127,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
      };
   }, [entities, layers, blocks, styles, lineTypes, ltScale, viewPort, selectedEntityIds, worldOffset, theme]);
 
-  // Handle Wheel Event with passive: false to allow preventDefault
+  // 处理滚轮事件，使用 passive: false 以允许 preventDefault
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -134,7 +138,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
       const currentVP = viewPortRef.current;
       const newZoom = e.deltaY < 0 ? currentVP.zoom * scaleFactor : currentVP.zoom / scaleFactor;
 
-      // Widen zoom limits significantly to support extreme coordinates
+      // 大幅放宽缩放限制以支持极端坐标
       const MIN_ZOOM = 1e-50;
       const MAX_ZOOM = 1e20;
       if (newZoom < MIN_ZOOM || newZoom > MAX_ZOOM) return;
@@ -193,7 +197,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
       const dx = e.clientX - dragStart.x;
       const dy = e.clientY - dragStart.y;
       
-      // newTargetX = oldTargetX - dx / zoom
+      // 新目标 X = 旧目标 X - dx / 缩放比例
       const newTargetX = viewPort.targetX - dx / viewPort.zoom;
       const newTargetY = viewPort.targetY + dy / viewPort.zoom;
 
@@ -223,10 +227,11 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
       const wPos = screenToWorld(mouseX, mouseY);
 
       if (dist < 5) {
-         // Increase hit test threshold to make selection easier, especially for text
-         // Protect against extreme zoom values
+         // 增加点选判定阈值使选择更容易，特别是对于文本
+         // 防止极端的缩放值
          const safeZoom = Math.max(Math.abs(viewPort.zoom), Number.MIN_VALUE);
-         const threshold = Math.min(Math.max(12 / safeZoom, 1e-12), 1e12);
+         // 增加点击判定范围，从 12 像素增加到 20 像素，使点选更灵敏
+         const threshold = Math.min(Math.max(20 / safeZoom, 1e-12), 1e12);
          const hitId = hitTest(wPos.x, wPos.y, threshold, entities, blocks, layers, styles);
          
          if (hitId) {

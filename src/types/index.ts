@@ -106,21 +106,21 @@ export interface DxfPolyline extends DxfEntity {
 export interface DxfText extends DxfEntity {
   type: EntityType.TEXT | EntityType.MTEXT | EntityType.ATTRIB | EntityType.ATTDEF;
   position: Point2D;
-  secondPosition?: Point2D; // For aligned text
+  secondPosition?: Point2D; // 用于对齐的文字
   height: number;
   value: string;
   rotation?: number;
-  hAlign?: number; // 72
-  vAlign?: number; // 73
+  hAlign?: number; // 水平对齐 (组码 72)
+  vAlign?: number; // 垂直对齐 (组码 73)
   widthFactor?: number;
-  attachmentPoint?: number; // MText 71
-  width?: number; // MText width
-  boxHeight?: number; // MText height
+  attachmentPoint?: number; // 多行文字附着点 (组码 71)
+  width?: number; // 多行文字宽度
+  boxHeight?: number; // 多行文字高度
   bgFill?: boolean;
   bgColor?: number;
   styleName?: string;
-  tag?: string; // For ATTDEF
-  flags?: number; // For ATTDEF 70
+  tag?: string; // 用于属性定义 (ATTDEF)
+  flags?: number; // 用于属性定义 (组码 70)
 }
 
 export interface DxfEllipse extends DxfEntity {
@@ -185,10 +185,10 @@ export interface DxfDimension extends DxfEntity {
 export interface DxfLeader extends DxfEntity {
   type: EntityType.LEADER;
   points: Point2D[];
-  arrowHeadFlag?: number; // 71
-  pathType?: number; // 72
-  annotationHandle?: string; // 340
-  hasHookLine?: boolean; // 75
+  arrowHeadFlag?: number; // 箭头标志 (组码 71)
+  pathType?: number; // 路径类型 (组码 72)
+  annotationHandle?: string; // 注解句柄 (组码 340)
+  hasHookLine?: boolean; // 是否有钩线 (组码 75)
 }
 
 export interface HatchEdge {
@@ -237,6 +237,11 @@ export interface DxfTable extends DxfEntity {
   position: Point2D;
   scale?: { x: number, y: number, z: number };
   rotation?: number;
+  cells?: string[];
+  rowCount?: number;
+  columnCount?: number;
+  rowSpacing?: number;
+  columnSpacing?: number;
 }
 
 export type AnyEntity = DxfLine | DxfRay | DxfXLine | DxfPoint | DxfCircle | DxfArc | DxfPolyline | DxfText | DxfEllipse | DxfSpline | DxfSolid | Dxf3DFace | DxfInsert | DxfDimension | DxfHatch | DxfRegion | DxfLeader | DxfTable;
@@ -292,8 +297,8 @@ export interface DxfData {
 }
 
 export interface ViewPort {
-  targetX: number; // World X coordinate at screen center
-  targetY: number; // World Y coordinate at screen center
+  targetX: number; // 屏幕中心的世界 X 坐标
+  targetY: number; // 屏幕中心的世界 Y 坐标
   zoom: number;
 }
 

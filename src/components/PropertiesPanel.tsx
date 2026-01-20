@@ -4,21 +4,30 @@ import { getAutoCadColor } from '../utils/colorUtils';
 import { Language, UI_TRANSLATIONS, ENTITY_TYPE_NAMES } from '../constants/i18n';
 import { getStyleFontFamily } from '../services/fontService';
 
+/**
+ * 属性面板组件
+ * 显示所选 DXF 实体的详细属性信息
+ */
 interface PropertiesPanelProps {
-  entities: AnyEntity[];
-  layers?: any[];
-  styles?: Record<string, DxfStyle>;
-  offset?: { x: number, y: number };
-  theme: 'black' | 'white' | 'gray';
-  lang: Language;
+  entities: AnyEntity[]; // 所选实体列表
+  layers?: any[]; // 图层列表
+  styles?: Record<string, DxfStyle>; // 样式表
+  offset?: { x: number, y: number }; // 世界坐标偏移（用于显示原始坐标）
+  theme: 'black' | 'white' | 'gray'; // 画布主题（用于颜色转换）
+  lang: Language; // 当前语言
 }
 
 const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, layers, styles = {}, offset, theme, lang }) => {
   const t = UI_TRANSLATIONS[lang];
   const entNames = ENTITY_TYPE_NAMES[lang];
   
+  /**
+   * 渲染属性行
+   * @param label 属性名称（英文，将尝试自动翻译）
+   * @param value 属性值
+   */
   const renderPropertyRow = (label: string, value: React.ReactNode) => {
-    // Try to find the translation for the label (convert label to camelCase or direct match)
+    // 尝试查找标签的翻译（将标签转换为小驼峰命名或直接匹配）
     const key = label.charAt(0).toLowerCase() + label.slice(1).replace(/ /g, '');
     const translatedLabel = t[key] || t[label] || label;
     return (
@@ -29,6 +38,10 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, layers, sty
     );
   };
 
+  /**
+   * 格式化实体句柄 (Handle)
+   * 将十六进制字符串转换为十进制显示
+   */
   const formatHandle = (handle: string | undefined) => {
     if (!handle) return "N/A";
     try {
@@ -38,6 +51,10 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, layers, sty
     }
   };
 
+  /**
+   * 渲染 AutoCAD 颜色值
+   * 支持随层 (ByLayer)、随块 (ByBlock) 以及索引颜色的 HEX 预览
+   */
   const renderColorValue = (color: number | undefined) => {
     if (color === 256) return <span style={{ color: 'var(--text-secondary)' }}>随层 (ByLayer)</span>;
     if (color === 0) return <span style={{ color: 'var(--text-secondary)' }}>随块 (ByBlock)</span>;
@@ -55,6 +72,9 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, layers, sty
     );
   };
 
+  /**
+   * 渲染线宽
+   */
   const renderLineweight = (lw: number | undefined) => {
     if (lw === undefined || lw === -1) return <span style={{ color: 'var(--text-secondary)' }}>随层 (ByLayer)</span>;
     if (lw === -2) return <span style={{ color: 'var(--text-secondary)' }}>随块 (ByBlock)</span>;
@@ -63,11 +83,18 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, layers, sty
     return `${(lw / 100).toFixed(2)} mm`;
   };
 
+  /**
+   * 格式化坐标
+   * 考虑 worldOffset 以还原到 CAD 中的原始坐标
+   */
   const formatCoord = (val: number, axis: 'x' | 'y') => {
     const originalVal = val + (offset ? (axis === 'x' ? offset.x : offset.y) : 0);
     return originalVal.toFixed(3);
   };
 
+  /**
+   * 渲染实体特定的属性
+   */
   const renderEntityProperties = (ent: AnyEntity) => {
       const typeDisplay = entNames[ent.type] || ent.type;
       
@@ -133,7 +160,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, layers, sty
               const style = styles[styleName] || styles[styleName.toUpperCase()];
               const fontFamily = getStyleFontFamily(styleName, styles);
               
-              // Extract a friendly name from the font stack
+              // 从字体栈中提取易读的名称
               let friendlyFont = "Sans-Serif";
               if (fontFamily.includes("FangSong") || fontFamily.includes("仿宋")) friendlyFont = "仿宋 (FangSong)";
               else if (fontFamily.includes("SimSun") || fontFamily.includes("宋体")) friendlyFont = "宋体 (SimSun)";

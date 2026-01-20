@@ -8,14 +8,18 @@ import { AnyEntity, ViewPort, DxfLayer, DxfBlock, EntityType, DxfStyle, DxfLineT
 import { DEFAULT_VIEWPORT } from './constants';
 import { Language } from './constants/i18n';
 
+/**
+ * DXF 查看器主容器组件
+ * 负责解析文件、管理全局状态、协调侧边栏与主查看器的交互
+ */
 interface DxfViewerMainProps {
-  initFile?: string | File;
-  showOpenMenu?: boolean;
-  onError?: (err: Error) => void;
-  onLoad?: (data: any) => void;
-  defaultLanguage?: Language;
-  lang?: Language;
-  onLanguageChange?: (lang: Language) => void;
+  initFile?: string | File; // 初始加载的文件或 URL
+  showOpenMenu?: boolean; // 是否在工具栏显示打开文件按钮
+  onError?: (err: Error) => void; // 错误回调
+  onLoad?: (data: any) => void; // 加载完成回调
+  defaultLanguage?: Language; // 默认语言
+  lang?: Language; // 受控语言属性
+  onLanguageChange?: (lang: Language) => void; // 语言切换回调
 }
 
 const DxfViewerMain: React.FC<DxfViewerMainProps> = ({ 
@@ -63,14 +67,14 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
     const visibleEnts = ents.filter(e => e.visible !== false && e.type !== EntityType.ATTDEF);
     if (visibleEnts.length === 0) return;
 
-    // Step 1: Calculate world bounding box
+    // 第 1 步：计算世界包围盒
     const extents = calculateSmartExtents(visibleEnts, blks);
 
-    // Step 2: Calculate world center
+    // 第 2 步：计算世界中心
     const centerX = extents.center.x;
     const centerY = extents.center.y;
 
-    // Step 3: Get actual container dimensions from viewerRef
+    // 第 3 步：从 viewerRef 获取实际容器尺寸
     let containerW = window.innerWidth;
     let containerH = window.innerHeight;
 
@@ -79,7 +83,7 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
       containerW = rect.width;
       containerH = rect.height;
     } else if (containerRef.current) {
-      // Fallback to app-container minus estimated bars if viewerRef not yet ready
+      // 如果 viewerRef 尚未准备好，则回退到 app-container 减去估计的栏宽
       const rect = containerRef.current.getBoundingClientRect();
       const sidebarWidth = showSidebar ? 256 : 0;
       const propsWidth = showProperties ? 320 : 0;
@@ -118,12 +122,12 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
 
   const processBuffer = async (buffer: ArrayBuffer) => {
     let content = '';
-    // Auto-detect encoding
+    // 自动检测编码
     try {
         const decoder = new TextDecoder('utf-8', { fatal: true });
         content = decoder.decode(buffer);
     } catch (err) {
-        // Fallback to GB18030 for Chinese CAD files
+        // 对于中文 CAD 文件回退到 GB18030
         const decoder = new TextDecoder('gb18030');
         content = decoder.decode(buffer);
     }
@@ -141,7 +145,7 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
         setWorldOffset(data.offset);
         onLoad?.(data);
         
-        // Fit view immediately with the new data
+        // 立即使用新数据调整视图
         fitView(data.entities, data.blocks);
     } catch (err) {
         const error = err instanceof Error ? err : new Error(String(err));
@@ -186,7 +190,7 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
     reader.readAsArrayBuffer(file);
   };
 
-  // Fit view on resize or layout change
+  // 在窗口大小调整或布局更改时调整视图
   useEffect(() => {
     const handleResize = () => {
       if (entities.length > 0) {
@@ -194,9 +198,9 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
       }
     };
     
-    // Observe viewerRef for more accurate resize detection
+    // 观察 viewerRef 以进行更准确的大小调整检测
     const observer = new ResizeObserver((entries) => {
-      // Use requestAnimationFrame to avoid "ResizeObserver loop limit exceeded" error
+      // 使用 requestAnimationFrame 以避免 "ResizeObserver loop limit exceeded" 错误
       requestAnimationFrame(() => {
         handleResize();
       });
@@ -210,7 +214,7 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
     
     window.addEventListener('resize', handleResize);
     
-    // Initial fit
+    // 初始调整
     handleResize();
     
     return () => {
@@ -219,7 +223,7 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
     };
   }, [entities, blocks, fitView]);
 
-  // Load initial file if provided
+  // 如果提供了初始文件，则加载
   useEffect(() => {
     if (initFile) {
         if (typeof initFile === 'string') {
@@ -247,10 +251,10 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
               const h = extents.height;
 
               if (w > 0 || h > 0) {
-                  const marginFactor = 0.9; // Slightly more margin for single entity focus
+                  const marginFactor = 0.9; // 单个实体聚焦时稍微多留一点边距
                   const zoomX = (containerW / w) * marginFactor;
                   const zoomY = (containerH / h) * marginFactor;
-                  // Clamp zoom to prevent excessive zoom on tiny entities
+                  // 限制缩放以防止在极小实体上过度缩放
                   let zoom = Math.min(zoomX, zoomY, 1000000);
 
                   setViewPort({
@@ -291,12 +295,12 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
       const buffer = evt.target?.result as ArrayBuffer;
       let content = '';
       
-      // Auto-detect encoding
+      // 自动检测编码
       try {
           const decoder = new TextDecoder('utf-8', { fatal: true });
           content = decoder.decode(buffer);
       } catch (err) {
-          // Fallback to GB18030 for Chinese CAD files
+          // 对于中文 CAD 文件回退到 GB18030
           const decoder = new TextDecoder('gb18030');
           content = decoder.decode(buffer);
       }
@@ -313,7 +317,7 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
         setLtScale(data.header?.ltScale ?? 1.0);
         setWorldOffset(data.offset);
         
-        // Fit view immediately with the new data
+        // 立即使用新数据调整视图
         fitView(data.entities, data.blocks);
       } catch (err) {
         alert("DXF Parse Error: " + (err as any).message);
@@ -406,7 +410,7 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
         )}
       </div>
 
-      {/* Status Bar */}
+      {/* 状态栏 */}
       <div className="status-bar">
         <div className="status-left">
           <div className="status-coords">
