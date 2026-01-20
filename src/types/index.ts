@@ -242,6 +242,8 @@ export interface DxfTable extends DxfEntity {
   columnCount?: number;
   rowSpacing?: number;
   columnSpacing?: number;
+  rowHeights?: number[];
+  colWidths?: number[];
 }
 
 export type AnyEntity = DxfLine | DxfRay | DxfXLine | DxfPoint | DxfCircle | DxfArc | DxfPolyline | DxfText | DxfEllipse | DxfSpline | DxfSolid | Dxf3DFace | DxfInsert | DxfDimension | DxfHatch | DxfRegion | DxfLeader | DxfTable;

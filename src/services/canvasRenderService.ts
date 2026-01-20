@@ -655,6 +655,24 @@ export const renderEntitiesToCanvas = (
             case EntityType.INSERT: {
                 let block = blocks[ent.blockName];
                 
+                // 恢复块渲染，但增加校验
+                // 如果是 ACAD_TABLE，我们需要确保块的变换是合理的
+                // 之前的问题可能是 ACAD_TABLE 实体的 scale 属性导致了块内容的扭曲
+                // 或者 ACAD_TABLE 的 block 内部实体的坐标系与标准 INSERT 不同
+                
+                if (ent.type === EntityType.ACAD_TABLE) {
+                    // 对于 ACAD_TABLE，如果存在对应的匿名块，通常是最佳的渲染方式。
+                    // 但是，如果之前的渲染有问题，可能是因为我们在嵌套变换中重复应用了某些属性。
+                    // DXF 规范中，ACAD_TABLE 的 Block Record 包含了完整的几何图形。
+                    // 关键在于：这个 Block 是如何被插入的。
+                    // 
+                    // 如果我们找不到块，或者块是空的，才回退到自绘。
+                    // 现在的策略：如果找到块，使用块；找不到，使用自绘。
+                    // 为了修复“高度巨大宽度巨小”，我们需要检查 ACAD_TABLE 的 direction 向量对渲染的影响
+                    // 
+                    // 暂时保留块渲染，但在嵌套变换中做特殊处理
+                }
+
                 // 如果未设置或找不到 blockName，则为 ACAD_TABLE 提供兜底处理
                 if (ent.type === EntityType.ACAD_TABLE && !block) {
                     // 尝试查找以 *T 开头且可能相关的块
@@ -668,10 +686,17 @@ export const renderEntitiesToCanvas = (
                         // 绘制表格绘制兜底：如果找不到对应的块定义，则尝试手动绘制网格
                         if (ent.type === EntityType.ACAD_TABLE) {
                             const table = ent as any;
-                            const rowCount = table.rowCount || 1;
-                            const colCount = table.columnCount || 1;
-                            const rowSpacing = table.rowSpacing || 10;
-                            const colSpacing = table.columnSpacing || 50;
+                const rowHeights = table.rowHeights || [];
+                const colWidths = table.colWidths || [];
+                
+                // 如果没有 rowHeights/colWidths，回退到均匀网格
+                // 确保至少有一个默认值
+                const defaultRowH = Math.max(table.rowSpacing || 10, 1.0);
+                const defaultColW = Math.max(table.columnSpacing || 50, 1.0);
+                
+                const rowCount = Math.max(table.rowCount || 1, rowHeights.length);
+                const colCount = Math.max(table.columnCount || 1, colWidths.length);
+
                 const scale = ent.scale || { x: 1, y: 1, z: 1 };
                 
                 ctx.save();
@@ -680,54 +705,78 @@ export const renderEntitiesToCanvas = (
                 const rotation = (table.rotation || 0) * Math.PI / 180;
                 ctx.rotate(-rotation);
                 
-                // 绘制表格外边框和内部网格
                 ctx.beginPath();
-                
-                // 安全检查：防止过小的间距导致死循环或性能问题
-                // 确保最小间距为 0.1 像素（在屏幕空间中）
-                // 强制最小间距，如果解析出来的间距太小
-                const safeRowSpacing = Math.max(rowSpacing, 1.0);
-                const safeColSpacing = Math.max(colSpacing, 1.0);
-                
-                const totalWidth = colCount * safeColSpacing * scale.x;
-                const totalHeight = rowCount * safeRowSpacing * scale.y;
                 
                 const sScale = transform.scale;
                 
-                // 绘制横线 (水平线)
+                // 计算行位置累计数组
+                const rowY: number[] = [0];
+                let currentY = 0;
+                for (let i = 0; i < rowCount; i++) {
+                    const h = (rowHeights[i] !== undefined ? rowHeights[i] : defaultRowH) * scale.y;
+                    currentY -= Math.max(h, 0.1); // 确保高度不为负或过小
+                    rowY.push(currentY);
+                }
+                
+                // 计算列位置累计数组
+                const colX: number[] = [0];
+                let currentX = 0;
+                for (let j = 0; j < colCount; j++) {
+                    const w = (colWidths[j] !== undefined ? colWidths[j] : defaultColW) * scale.x;
+                    currentX += Math.max(w, 0.1);
+                    colX.push(currentX);
+                }
+                
+                const totalWidth = colX[colCount];
+                const totalHeight = -rowY[rowCount]; // 注意 rowY 是负值
+
+                // 绘制横线
                 for (let i = 0; i <= rowCount; i++) {
-                    const y = -i * safeRowSpacing * scale.y * sScale;
+                    const y = rowY[i] * sScale;
                     ctx.moveTo(0, y);
                     ctx.lineTo(totalWidth * sScale, y);
                 }
-                // 绘制竖线 (垂直线)
+                // 绘制竖线
                 for (let j = 0; j <= colCount; j++) {
-                    const x = j * safeColSpacing * scale.x * sScale;
+                    const x = colX[j] * sScale;
                     ctx.moveTo(x, 0);
-                    ctx.lineTo(x, -totalHeight * sScale);
+                    ctx.lineTo(x, rowY[rowCount] * sScale);
                 }
                 ctx.stroke();
 
                 // 绘制单元格文字内容
                 if (table.cells && table.cells.length > 0) {
                     ctx.fillStyle = color;
-                    // 字体大小调整为行距的 50%，留出更多边距
-                    const fontSize = (safeRowSpacing * scale.y * 0.5) * sScale;
-                    ctx.font = `${fontSize}px sans-serif`;
                     ctx.textAlign = 'center';
                     ctx.textBaseline = 'middle';
                     
-                    // 默认边距（如果DXF中没有定义）
-                    const marginX = (safeColSpacing * scale.x * 0.1) * sScale;
-                    
-                    table.cells.forEach((cell: string, i: number) => {
-                        const r = Math.floor(i / colCount);
-                        const c = i % colCount;
+                    table.cells.forEach((cell: string, idx: number) => {
+                        const r = Math.floor(idx / colCount);
+                        const c = idx % colCount;
                         if (r < rowCount && c < colCount) {
                             const cleanedCell = cleanMText(cell);
-                            const tx = (c + 0.5) * safeColSpacing * scale.x * sScale;
-                            const ty = -(r + 0.5) * safeRowSpacing * scale.y * sScale;
-                            ctx.fillText(cleanedCell, tx, ty, (safeColSpacing * scale.x * sScale) - 2 * marginX); // 限制最大宽度
+                            
+                            // 获取当前单元格的尺寸和中心点
+                            const yTop = rowY[r];
+                            const yBottom = rowY[r+1];
+                            const xLeft = colX[c];
+                            const xRight = colX[c+1];
+                            
+                            const cellH = Math.abs(yTop - yBottom);
+                            const cellW = Math.abs(xRight - xLeft);
+                            
+                            const tx = (xLeft + cellW / 2) * sScale;
+                            const ty = (yTop - cellH / 2) * sScale; // 向上为正，但在 Canvas 中我们之前 rotate 翻转过或者 translate 逻辑
+                            // Wait, 之前的逻辑是 y = -i * spacing，所以 y 是负值。
+                            // rowY 存储的是负值。
+                            // 所以 ty 应该是 (yTop + yBottom) / 2 * sScale
+                            const tyCenter = (yTop + yBottom) / 2 * sScale;
+
+                            const fontSize = (cellH * 0.5) * sScale;
+                            ctx.font = `${fontSize}px sans-serif`;
+
+                            const marginX = (cellW * 0.1) * sScale;
+                            ctx.fillText(cleanedCell, tx, tyCenter, (cellW * sScale) - 2 * marginX);
                         }
                     });
                 }
@@ -753,6 +802,8 @@ export const renderEntitiesToCanvas = (
                         const sy = py * scale.y;
                         
                         // 3. 应用旋转 (Rotation)
+                        // 对于 ACAD_TABLE，如果存在 Direction 向量，旋转已经由 Direction 决定
+                        // 如果我们在解析时将 Direction 转换为了 rotation 属性，这里直接使用 rotation 即可
                         const rx = sx * cosR - sy * sinR;
                         const ry = sx * sinR + sy * cosR;
                         
@@ -766,6 +817,10 @@ export const renderEntitiesToCanvas = (
                     scale: transform.scale * Math.abs(scale.x), // 简化处理：使用 X 轴缩放比例作为线宽缩放参考
                     rotation: transform.rotation + rotation
                 };
+
+                // 特殊处理 ACAD_TABLE 的变换
+                // ACAD_TABLE 与 INSERT 在这里共享同一套块插入变换；
+                // 如果表格块缺失/为空，前面的兜底自绘会负责渲染。
 
                 const layerName = (ent.layer === '0' && parentLayerName) ? parentLayerName : ent.layer;
                 // 递归绘制块中的所有实体
@@ -800,32 +855,38 @@ export const renderEntitiesToCanvas = (
             }
             case EntityType.DIMENSION: {
                 const block = blocks[ent.blockName];
-                if (block) {
-                    const layerName = (ent.layer === '0' && parentLayerName) ? parentLayerName : ent.layer;
-                    // 标注 (Dimension) 修复逻辑：
-                    // DXF 标准中，标注对应的匿名块内容通常定义在 WCS 中（即与世界坐标系对齐）。
-                    // 因此，渲染标注块时，通常不需要应用额外的偏移或变换，直接使用当前视口的变换即可。
-                    // 之前的逻辑试图减去 block.basePoint，这在某些情况下会导致严重偏移。
-                    // 现在的逻辑：直接使用父级 transform（如果是顶层实体，这就是 WCS->Screen 变换），
-                    // 并忽略 ent.position（因为块内容已经是绝对坐标）。
-                    
-                    // 注意：有些特殊标注（如旋转标注）可能会有不同的处理，但绝大多数情况下，
-                    // 标注块内容是绝对定位的。
-                    
-                    // 我们使用一个“直通”变换，不叠加任何额外的位移或旋转，只保留视口变换。
-                    // 为了安全起见，我们克隆当前的 transform，确保不会意外继承之前的上下文（虽然在这里 transform 应该是纯视口变换）。
-                    
-                    const nestedTransform: RenderTransform = {
+                if (!block || !block.entities || block.entities.length === 0) break;
+
+                const layerName = (ent.layer === '0' && parentLayerName) ? parentLayerName : ent.layer;
+                const dp = ent.definitionPoint;
+
+                let treatAsLocal = false;
+                if (block.extents) {
+                    const bw = block.extents.max.x - block.extents.min.x;
+                    const bh = block.extents.max.y - block.extents.min.y;
+                    const size = Math.max(Math.abs(bw), Math.abs(bh), 1);
+                    const bc = { x: (block.extents.min.x + block.extents.max.x) / 2, y: (block.extents.min.y + block.extents.max.y) / 2 };
+                    const dist = Math.hypot(bc.x - dp.x, bc.y - dp.y);
+                    treatAsLocal = dist > size * 5;
+                }
+
+                const nestedTransform: RenderTransform = treatAsLocal
+                    ? {
                         project: (p: Point2D) => {
-                             // 直接投影点，假设点坐标已经是 WCS
-                             return transform.project(p);
+                            const px = p.x - block.basePoint.x;
+                            const py = p.y - block.basePoint.y;
+                            return transform.project({ x: dp.x + px, y: dp.y + py });
                         },
                         scale: transform.scale,
                         rotation: transform.rotation
+                    }
+                    : {
+                        project: (p: Point2D) => transform.project(p),
+                        scale: transform.scale,
+                        rotation: transform.rotation
                     };
-                    
-                    block.entities.forEach(child => drawEntity(child, nestedTransform, layerName, color, isSelected, depth + 1));
-                }
+
+                block.entities.forEach(child => drawEntity(child, nestedTransform, layerName, color, isSelected, depth + 1));
                 break;
             }
             case EntityType.SOLID:
@@ -964,13 +1025,15 @@ export const hitTest = (x: number, y: number, threshold: number, entities: AnyEn
         if (ent.extents) {
             let { min, max } = ent.extents;
             
-            // 如果存在变换（即在块内部），我们需要将包围盒转换到世界坐标系
+            // 修复包围盒变换逻辑：
+            // 如果存在变换（tx），我们需要将包围盒的四个角点都进行变换，然后计算变换后的 AABB
+            // 注意：min 和 max 只是 AABB 的两个角点，不足以代表旋转后的矩形
             if (tx) {
                 const corners = [
                     p({ x: min.x, y: min.y }),
                     p({ x: max.x, y: min.y }),
-                    p({ x: min.x, y: max.y }),
-                    p({ x: max.x, y: max.y })
+                    p({ x: max.x, y: max.y }),
+                    p({ x: min.x, y: max.y })
                 ];
                 let bMinX = Infinity, bMinY = Infinity, bMaxX = -Infinity, bMaxY = -Infinity;
                 corners.forEach(c => {

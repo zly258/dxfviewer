@@ -428,7 +428,7 @@ export const parseDxf = async (dxfString: string, onProgress?: (percent: number)
   precomputeBlockExtents(blocks);
 
   // 2. 计算初始全局范围以找到中心点
-  const initialExtents = calculateExtents(entities, blocks);
+  const initialExtents = calculateSmartExtents(entities, blocks);
   const offset = { x: initialExtents.center.x, y: initialExtents.center.y };
 
   // 3. 将所有内容偏移到以 (0,0) 为中心
@@ -614,12 +614,15 @@ const parseAcadTable = (state: DxfParserState, common: any, blockHandleMap?: Rec
         blockName: '', 
         position: {x:0, y:0},
         scale: {x:1, y:1, z:1},
-        rotation: 0
+        rotation: 0,
+        rowHeights: [],
+        colWidths: []
     };
     
     let z = 0;
     let blockHandle = '';
     let direction = {x: 1, y: 0, z: 0};
+    let subclass = '';
 
     while(state.hasNext) {
         const p = state.peek();
@@ -627,6 +630,7 @@ const parseAcadTable = (state: DxfParserState, common: any, blockHandleMap?: Rec
         const g = state.next()!;
         applyCommonGroup(entity, g.code, g.value);
         switch(g.code) {
+            case 100: subclass = g.value; break;
             case 2: entity.blockName = g.value; break; 
             case 10: entity.position.x = parseFloat(g.value); break;
             case 20: entity.position.y = parseFloat(g.value); break;
@@ -636,13 +640,31 @@ const parseAcadTable = (state: DxfParserState, common: any, blockHandleMap?: Rec
             case 11: direction.x = parseFloat(g.value); break; 
             case 21: direction.y = parseFloat(g.value); break; 
             case 31: direction.z = parseFloat(g.value); break;
-            case 41: entity.scale!.x = parseFloat(g.value); break;
-            case 42: entity.scale!.y = parseFloat(g.value); break;
-            case 43: entity.scale!.z = parseFloat(g.value); break;
+            case 41:
+                if (subclass === 'AcDbBlockReference') entity.scale!.x = parseFloat(g.value);
+                break;
+            case 42:
+                if (subclass === 'AcDbBlockReference') entity.scale!.y = parseFloat(g.value);
+                break;
+            case 43:
+                if (subclass === 'AcDbBlockReference') entity.scale!.z = parseFloat(g.value);
+                break;
             case 91: entity.rowCount = parseInt(g.value); break;
             case 92: entity.columnCount = parseInt(g.value); break;
-            case 141: entity.rowSpacing = parseFloat(g.value); break; // 某些版本使用 141/142 表示行/列间距
-            case 142: entity.columnSpacing = parseFloat(g.value); break;
+            case 141: 
+                let rh = parseFloat(g.value);
+                // 极小值保护：如果行高太小（可能是错误的单位或解析问题），强制设为默认值 10
+                if (Math.abs(rh) < 0.1) rh = 10;
+                entity.rowSpacing = rh; 
+                entity.rowHeights?.push(rh);
+                break; 
+            case 142: 
+                let cw = parseFloat(g.value);
+                // 极小值保护：如果列宽太小，强制设为默认值 50
+                if (Math.abs(cw) < 0.1) cw = 50;
+                entity.columnSpacing = cw;
+                entity.colWidths?.push(cw);
+                break;
             case 44: entity.columnSpacing = parseFloat(g.value); break;
             case 45: entity.rowSpacing = parseFloat(g.value); break;
             case 1: 
@@ -663,31 +685,30 @@ const parseAcadTable = (state: DxfParserState, common: any, blockHandleMap?: Rec
         entity.blockName = blockHandleMap[blockHandle] || '';
     }
 
-    // 修复异常的行数解析
-    // 某些情况下，组码 91 可能包含位掩码或其他非行数数据（例如 262129 = 0x40001）
-    // 如果行数异常大且与单元格数量不匹配，则尝试根据单元格数量和列数推断
-    if (entity.rowCount && entity.rowCount > 500 && entity.cells && entity.cells.length > 0) {
-        const calculatedRows = Math.ceil(entity.cells.length / (entity.columnCount || 1));
-        if (calculatedRows < entity.rowCount) {
-            entity.rowCount = calculatedRows;
-        }
-    }
-    
-    // 如果行列数未定义但有单元格，进行推断
-    if ((!entity.rowCount || entity.rowCount === 0) && entity.cells && entity.cells.length > 0) {
-        entity.columnCount = entity.columnCount || 1;
-        entity.rowCount = Math.ceil(entity.cells.length / entity.columnCount);
+    // === 行列数/尺寸修复（按规范更稳的策略） ===
+    // 1) DXF 中 91/92 在某些文件里会被写成标志位或异常值（如 262129 = 0x40001）
+    // 2) 我们优先依据单元格数量推导行数（更可靠）
+    // 3) rowSpacing/columnSpacing 的 0.01 等极小值通常不代表实际表格尺寸（否则会不可见），因此给出合理下限
+    if (entity.cells && entity.cells.length > 0) {
+        let col = entity.columnCount || 1;
+        if (!Number.isFinite(col) || col < 1 || col > 1000) col = 1;
+        entity.columnCount = col;
+        entity.rowCount = Math.max(1, Math.ceil(entity.cells.length / col));
+    } else {
+        if (!entity.columnCount || entity.columnCount < 1 || entity.columnCount > 1000) entity.columnCount = 1;
+        if (!entity.rowCount || entity.rowCount < 1 || entity.rowCount > 10000) entity.rowCount = 1;
     }
 
-    // 修复极小的间距（可能是单位问题或解析错误）
-    // 如果间距小于 0.1 且没有显著的缩放，这通常是不正确的，强制给一个默认值
-    // 这里假设图纸单位通常是 mm，文字高度通常在 2.5 左右
-    const minSpacing = 1.0;
-    if ((entity.rowSpacing || 0) < minSpacing && Math.abs(entity.scale!.y) > 0.1) {
-        entity.rowSpacing = 10; // 默认行距
+    const minRowH = 2.5;
+    const minColW = 10;
+    if (!entity.rowSpacing || !Number.isFinite(entity.rowSpacing) || entity.rowSpacing < minRowH) entity.rowSpacing = 10;
+    if (!entity.columnSpacing || !Number.isFinite(entity.columnSpacing) || entity.columnSpacing < minColW) entity.columnSpacing = 50;
+
+    if (!entity.rowHeights || entity.rowHeights.length === 0) {
+        entity.rowHeights = new Array(entity.rowCount || 1).fill(entity.rowSpacing);
     }
-    if ((entity.columnSpacing || 0) < minSpacing && Math.abs(entity.scale!.x) > 0.1) {
-        entity.columnSpacing = 25; // 默认列距
+    if (!entity.colWidths || entity.colWidths.length === 0) {
+        entity.colWidths = new Array(entity.columnCount || 1).fill(entity.columnSpacing);
     }
 
     const ocs = getOcsToWcsMatrix(entity.extrusion!.x, entity.extrusion!.y, entity.extrusion!.z);
@@ -800,6 +821,45 @@ const parseText = (state: DxfParserState, common: any, type: EntityType): DxfTex
              entity.rotation = entity.rotation * 180 / Math.PI;
         }
         // 根据 DXF 规范，MTEXT 位置 (10, 20, 30) 已经在 WCS 中
+        
+        // 计算 MTEXT 的包围盒
+        // MTEXT 宽度由组码 41 定义，高度由内容决定，但通常组码 43 可能给出高度参考，或者我们用 height 估算
+        const width = entity.width || 0;
+        // 如果没有 width (0), MTEXT 不会自动换行，宽度由内容决定。这里简化处理，如果没有 width，暂时给一个较小值避免无限大
+        // 估算高度：lines * height
+        // 这里只是非常粗略的估算，为了避免包围盒为 0
+        const estimatedW = width > 0 ? width : (entity.value.length * entity.height * 0.7); 
+        const estimatedH = entity.height * (entity.value.split('\\P').length || 1) * 1.5;
+        
+        // 简单的旋转矩形包围盒计算
+        const rad = entity.rotation * Math.PI / 180;
+        const cos = Math.cos(rad);
+        const sin = Math.sin(rad);
+        
+        // MTEXT 插入点通常是 Top-Left (附件点 1) 或其他
+        // 简化假设为 Top-Left，向下向右延伸
+        // 实际应用中 attachmentPoint (71) 决定了对齐方式，这里为了修复包围盒异常，先做保守估算
+        // 局部坐标四个角点
+        const p0 = {x: 0, y: 0};
+        const p1 = {x: estimatedW, y: 0};
+        const p2 = {x: estimatedW, y: -estimatedH};
+        const p3 = {x: 0, y: -estimatedH};
+        
+        const pts = [p0, p1, p2, p3].map(p => ({
+            x: entity.position.x + p.x * cos - p.y * sin,
+            y: entity.position.y + p.x * sin + p.y * cos
+        }));
+        
+        let minX = pts[0].x, maxX = pts[0].x, minY = pts[0].y, maxY = pts[0].y;
+        pts.forEach(p => {
+            minX = Math.min(minX, p.x);
+            maxX = Math.max(maxX, p.x);
+            minY = Math.min(minY, p.y);
+            maxY = Math.max(maxY, p.y);
+        });
+        
+        entity.extents = { min: {x: minX, y: minY}, max: {x: maxX, y: maxY} };
+
     } else {
         entity.position = applyOcs(entity.position, ocs, z);
         if (secondPos) {
@@ -1614,20 +1674,30 @@ const getEntityExtents = (ent: AnyEntity, blocks: Record<string, DxfBlock>): { m
                     update(ent.position.x + sx * cos - sy * sin, ent.position.y + sx * sin + sy * cos);
                 });
             } else if (ent.type === EntityType.ACAD_TABLE) {
-                // 表格包围盒兜底：如果没有块定义，根据行/列数和间距计算
                 const table = ent as any;
-                const rowCount = table.rowCount || 1;
-                const colCount = table.columnCount || 1;
-                const rowSpacing = table.rowSpacing || 10;
-                const colSpacing = table.columnSpacing || 50;
+                const rowHeights: number[] = Array.isArray(table.rowHeights) ? table.rowHeights : [];
+                const colWidths: number[] = Array.isArray(table.colWidths) ? table.colWidths : [];
+                const rowCount = table.rowCount || rowHeights.length || 1;
+                const colCount = table.columnCount || colWidths.length || 1;
+                const defaultRowH = table.rowSpacing || 10;
+                const defaultColW = table.columnSpacing || 50;
                 const rot = table.rotation || 0;
+                const scale = table.scale || { x: 1, y: 1, z: 1 };
+
+                let w = 0;
+                for (let i = 0; i < colCount; i++) {
+                    w += (colWidths[i] !== undefined ? colWidths[i] : defaultColW);
+                }
+                let h = 0;
+                for (let i = 0; i < rowCount; i++) {
+                    h += (rowHeights[i] !== undefined ? rowHeights[i] : defaultRowH);
+                }
+
+                w *= scale.x;
+                h *= scale.y;
+
                 const cos = Math.cos(rot * Math.PI / 180);
                 const sin = Math.sin(rot * Math.PI / 180);
-                
-                const w = colCount * colSpacing;
-                const h = rowCount * rowSpacing;
-                
-                // 表格通常从插入点向下向右生长
                 const corners = [
                     { x: 0, y: 0 },
                     { x: w, y: 0 },
@@ -1652,9 +1722,26 @@ const getEntityExtents = (ent: AnyEntity, blocks: Record<string, DxfBlock>): { m
             
             if (ent.blockName && blocks[ent.blockName] && blocks[ent.blockName].extents) {
                 const b = blocks[ent.blockName];
-                // 标注块的内容通常直接在世界坐标系定义，但需要处理基点 (basePoint) 偏移
-                update(b.extents!.min.x - b.basePoint.x, b.extents!.min.y - b.basePoint.y);
-                update(b.extents!.max.x - b.basePoint.x, b.extents!.max.y - b.basePoint.y);
+                const bw = b.extents!.max.x - b.extents!.min.x;
+                const bh = b.extents!.max.y - b.extents!.min.y;
+                const size = Math.max(Math.abs(bw), Math.abs(bh), 1);
+                const bc = { x: (b.extents!.min.x + b.extents!.max.x) / 2, y: (b.extents!.min.y + b.extents!.max.y) / 2 };
+                const dp = ent.definitionPoint;
+                const dist = Math.hypot(bc.x - dp.x, bc.y - dp.y);
+                const treatAsLocal = dist > size * 5;
+
+                if (treatAsLocal) {
+                    const corners = [
+                        { x: b.extents!.min.x - b.basePoint.x, y: b.extents!.min.y - b.basePoint.y },
+                        { x: b.extents!.max.x - b.basePoint.x, y: b.extents!.min.y - b.basePoint.y },
+                        { x: b.extents!.min.x - b.basePoint.x, y: b.extents!.max.y - b.basePoint.y },
+                        { x: b.extents!.max.x - b.basePoint.x, y: b.extents!.max.y - b.basePoint.y }
+                    ];
+                    corners.forEach(p => update(dp.x + p.x, dp.y + p.y));
+                } else {
+                    update(b.extents!.min.x, b.extents!.min.y);
+                    update(b.extents!.max.x, b.extents!.max.y);
+                }
             }
             break;
         case EntityType.LEADER:

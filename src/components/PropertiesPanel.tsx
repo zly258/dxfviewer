@@ -197,8 +197,8 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, layers, sty
               
               if (ent.type === EntityType.ACAD_TABLE) {
                    const table = ent as any;
-                   specificRows.push(renderPropertyRow("Rows", table.rowCount || 1));
-                   specificRows.push(renderPropertyRow("Columns", table.columnCount || 1));
+                   specificRows.push(renderPropertyRow("Rows", table.rowCount || (table.rowHeights ? table.rowHeights.length : 1)));
+                   specificRows.push(renderPropertyRow("Columns", table.columnCount || (table.colWidths ? table.colWidths.length : 1)));
                    specificRows.push(renderPropertyRow("Row Spacing", (table.rowSpacing || 0).toFixed(2)));
                    specificRows.push(renderPropertyRow("Col Spacing", (table.columnSpacing || 0).toFixed(2)));
                    specificRows.push(renderPropertyRow("Rotation", `${(table.rotation || 0).toFixed(1)}°`));

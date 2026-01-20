@@ -5,6 +5,8 @@ import '../src/styles/styles.css';
 
 const App: React.FC = () => {
     const [lang, setLang] = useState<'zh' | 'en'>('zh');
+    const fileParam = new URLSearchParams(window.location.search).get('file');
+    const initFile = fileParam ? `/${fileParam}` : '/table.dxf';
 
     const t = {
         title: lang === 'zh' ? 'DXF 浏览器' : 'DXF Viewer',
@@ -79,6 +81,7 @@ const App: React.FC = () => {
                     lang={lang}
                     onLanguageChange={(l) => setLang(l === 'zh' ? 'zh' : 'en')}
                     showOpenMenu={true}
+                    initFile={initFile}
                 />
             </div>
         </div>
