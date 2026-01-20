@@ -428,8 +428,35 @@ export const parseDxf = async (dxfString: string, onProgress?: (percent: number)
   precomputeBlockExtents(blocks);
 
   // 2. 计算初始全局范围以找到中心点
-  const initialExtents = calculateSmartExtents(entities, blocks);
-  const offset = { x: initialExtents.center.x, y: initialExtents.center.y };
+    const offset = (() => {
+    const centersX: number[] = [];
+    const centersY: number[] = [];
+    const isValid = (v: number) => isFinite(v) && Math.abs(v) < 1e50;
+
+    entities.forEach(ent => {
+      if (ent.visible === false || ent.type === EntityType.ATTDEF || ent.type === EntityType.ATTRIB) return;
+      const ext = getEntityExtents(ent, blocks);
+      if (!ext) return;
+      const cx = (ext.min.x + ext.max.x) / 2;
+      const cy = (ext.min.y + ext.max.y) / 2;
+      if (isValid(cx) && isValid(cy)) {
+        centersX.push(cx);
+        centersY.push(cy);
+      }
+    });
+
+    if (centersX.length === 0) {
+      const initialExtents = calculateExtents(entities, blocks);
+      return { x: initialExtents.center.x, y: initialExtents.center.y };
+    }
+
+    centersX.sort((a, b) => a - b);
+    centersY.sort((a, b) => a - b);
+    const mid = Math.floor(centersX.length / 2);
+    const cx = centersX.length % 2 === 0 ? (centersX[mid - 1] + centersX[mid]) / 2 : centersX[mid];
+    const cy = centersY.length % 2 === 0 ? (centersY[mid - 1] + centersY[mid]) / 2 : centersY[mid];
+    return { x: cx, y: cy };
+  })();
 
   // 3. 将所有内容偏移到以 (0,0) 为中心
   // 这是修复浮点精度问题的“工业标准”方法
@@ -490,6 +517,9 @@ const offsetEntity = (ent: AnyEntity, offset: Point2D) => {
             if ((ent as any).secondPosition) {
                 (ent as any).secondPosition.x -= ox;
                 (ent as any).secondPosition.y -= oy;
+            }
+            if ((ent as any).attributes) {
+                (ent as any).attributes.forEach((attr: AnyEntity) => offsetEntity(attr, offset));
             }
             break;
         case EntityType.RAY:
@@ -868,6 +898,13 @@ const parseText = (state: DxfParserState, common: any, type: EntityType): DxfTex
         entity.rotation = getWcsRotation(entity.rotation, ocs);
     }
 
+    if (type === EntityType.ATTRIB) {
+        const tooFar = (p: Point2D) => !isFinite(p.x) || !isFinite(p.y) || Math.abs(p.x) > 1e9 || Math.abs(p.y) > 1e9;
+        if (tooFar(entity.position) || (entity.secondPosition && tooFar(entity.secondPosition)) || (isFinite(entity.height) && Math.abs(entity.height) > 1e6)) {
+            entity.visible = false;
+        }
+    }
+
     // 如果 2D 行列式为负，处理 OCS 的镜像
     if (ocs) {
         const det2D = ocs.Ax.x * ocs.Ay.y - ocs.Ax.y * ocs.Ay.x;
@@ -1159,24 +1196,25 @@ const parseInsert = (state: DxfParserState, common: any): DxfInsert => {
         }
     }
 
-    if (hasAttribs) {
-        entity.attributes = [];
-        while(state.hasNext) {
-            const p = state.peek();
-            if (!p) break;
-            if (p.code === 0) {
-                if (p.value === 'SEQEND') { state.next(); break; }
-                if (p.value === 'ATTRIB') {
-                    state.next();
-                    const attribCommon = parseCommon(state);
-                    const attrib = parseText(state, attribCommon, EntityType.ATTRIB);
-                    entity.attributes.push(attrib);
-                    continue;
-                }
-                break;
+    entity.attributes = [];
+    while(state.hasNext) {
+        const p = state.peek();
+        if (!p) break;
+        if (p.code === 0) {
+            if (p.value === 'SEQEND') { state.next(); break; }
+            if (p.value === 'ATTRIB') {
+                state.next();
+                const attribCommon = parseCommon(state);
+                const attrib = parseText(state, attribCommon, EntityType.ATTRIB);
+                entity.attributes.push(attrib);
+                continue;
             }
-            state.next();
+            break;
         }
+        state.next();
+    }
+    if (entity.attributes.length === 0 && !hasAttribs) {
+        delete entity.attributes;
     }
     return entity;
 }
@@ -1545,6 +1583,76 @@ const parseHatch = (state: DxfParserState, common: any): DxfHatch => {
     return entity;
 }
 
+const isAngleBetween = (a: number, start: number, end: number, ccw: boolean): boolean => {
+    const norm = (v: number) => {
+        let t = v;
+        while (t < 0) t += Math.PI * 2;
+        while (t >= Math.PI * 2) t -= Math.PI * 2;
+        return t;
+    };
+    const A = norm(a);
+    const S = norm(start);
+    const E = norm(end);
+    if (ccw) return S > E ? (A >= S || A <= E) : (A >= S && A <= E);
+    return S > E ? (A <= S && A >= E) : (A <= S && A >= E);
+};
+
+const updateArcExtrema = (update: (x: number, y: number) => void, cx: number, cy: number, r: number, start: number, end: number, ccw: boolean) => {
+    const pts = [
+        { a: 0, x: cx + r, y: cy },
+        { a: Math.PI / 2, x: cx, y: cy + r },
+        { a: Math.PI, x: cx - r, y: cy },
+        { a: Math.PI * 1.5, x: cx, y: cy - r }
+    ];
+    pts.forEach(p => {
+        if (isAngleBetween(p.a, start, end, ccw)) update(p.x, p.y);
+    });
+};
+
+const updateBulgeSegmentExtents = (update: (x: number, y: number) => void, p1: Point2D, p2: Point2D, bulge: number, isFlipped: boolean) => {
+    if (Math.abs(bulge) < 1e-9) {
+        update(p1.x, p1.y);
+        update(p2.x, p2.y);
+        return;
+    }
+
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    const chord = Math.hypot(dx, dy);
+    if (!isFinite(chord) || chord < 1e-12) {
+        update(p1.x, p1.y);
+        return;
+    }
+
+    const theta = 4 * Math.atan(bulge);
+    const absTheta = Math.abs(theta);
+    const sinHalf = Math.sin(absTheta / 2);
+    if (Math.abs(sinHalf) < 1e-12) {
+        update(p1.x, p1.y);
+        update(p2.x, p2.y);
+        return;
+    }
+
+    const r = chord / (2 * sinHalf);
+    const midX = (p1.x + p2.x) / 2;
+    const midY = (p1.y + p2.y) / 2;
+    const ux = -dy / chord;
+    const uy = dx / chord;
+    let sign = bulge > 0 ? 1 : -1;
+    if (isFlipped) sign = -sign;
+    const h = Math.sqrt(Math.max(0, r * r - (chord * chord) / 4));
+    const cx = midX + ux * h * sign;
+    const cy = midY + uy * h * sign;
+
+    const a1 = Math.atan2(p1.y - cy, p1.x - cx);
+    const a2 = Math.atan2(p2.y - cy, p2.x - cx);
+    const ccw = sign > 0;
+
+    update(p1.x, p1.y);
+    update(p2.x, p2.y);
+    updateArcExtrema(update, cx, cy, r, a1, a2, ccw);
+};
+
 const getEntityExtents = (ent: AnyEntity, blocks: Record<string, DxfBlock>): { min: Point2D, max: Point2D } | null => {
     // 获取实体的包围盒范围 (Extents)
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -1565,7 +1673,16 @@ const getEntityExtents = (ent: AnyEntity, blocks: Record<string, DxfBlock>): { m
             break;
         case EntityType.LWPOLYLINE:
         case EntityType.POLYLINE:
-            ent.points.forEach(p => update(p.x, p.y));
+            if (ent.points && ent.points.length > 0) {
+                const isFlipped = (ent.extrusion?.z || 1) < 0;
+                for (let i = 0; i < (ent.closed ? ent.points.length : ent.points.length - 1); i++) {
+                    const p1 = ent.points[i];
+                    const p2 = ent.points[(i + 1) % ent.points.length];
+                    const bulge = ent.bulges ? (ent.bulges[i] || 0) : 0;
+                    updateBulgeSegmentExtents(update, p1, p2, bulge, isFlipped);
+                }
+                ent.points.forEach(p => update(p.x, p.y));
+            }
             break;
         case EntityType.POINT:
         case EntityType.TEXT:
@@ -1626,10 +1743,27 @@ const getEntityExtents = (ent: AnyEntity, blocks: Record<string, DxfBlock>): { m
             }
             break;
         case EntityType.ELLIPSE: {
-            const rx = Math.sqrt(ent.majorAxis.x ** 2 + ent.majorAxis.y ** 2);
-            const ry = rx * ent.ratio;
-            update(ent.center.x - rx, ent.center.y - rx);
-            update(ent.center.x + rx, ent.center.y + rx);
+            const mx = ent.majorAxis.x;
+            const my = ent.majorAxis.y;
+            const ratio = ent.ratio || 0;
+            const a = Math.hypot(mx, my);
+            if (!isFinite(a) || a <= 0 || !isFinite(ratio) || ratio <= 0) {
+                update(ent.center.x, ent.center.y);
+                break;
+            }
+            const minor = { x: -my * ratio, y: mx * ratio };
+            let s = ent.startParam ?? 0;
+            let e = ent.endParam ?? (Math.PI * 2);
+            if (!isFinite(s)) s = 0;
+            if (!isFinite(e)) e = Math.PI * 2;
+            const span = Math.abs(e - s);
+            const steps = Math.max(12, Math.min(96, Math.ceil((span / (Math.PI * 2)) * 72)));
+            for (let i = 0; i <= steps; i++) {
+                const t = s + (e - s) * (i / steps);
+                const cos = Math.cos(t);
+                const sin = Math.sin(t);
+                update(ent.center.x + mx * cos + minor.x * sin, ent.center.y + my * cos + minor.y * sin);
+            }
             break;
         }
         case EntityType.SPLINE: {
@@ -1656,6 +1790,38 @@ const getEntityExtents = (ent: AnyEntity, blocks: Record<string, DxfBlock>): { m
             break;
         case EntityType.INSERT:
         case EntityType.ACAD_TABLE: {
+            if (ent.type === EntityType.INSERT && ((ent as any).rowCount > 1 || (ent as any).colCount > 1)) {
+                const block = blocks[ent.blockName];
+                if (block && block.extents) {
+                    const rot = (ent as any).rotation || 0;
+                    const scale = (ent as any).scale || { x: 1, y: 1, z: 1 };
+                    const cos = Math.cos(rot * Math.PI / 180);
+                    const sin = Math.sin(rot * Math.PI / 180);
+                    const rowCount = Math.max(1, (ent as any).rowCount || 1);
+                    const colCount = Math.max(1, (ent as any).colCount || 1);
+                    const rowSpacing = (ent as any).rowSpacing || 0;
+                    const colSpacing = (ent as any).colSpacing || 0;
+                    const baseCorners = [
+                        { x: block.extents.min.x - block.basePoint.x, y: block.extents.min.y - block.basePoint.y },
+                        { x: block.extents.max.x - block.basePoint.x, y: block.extents.min.y - block.basePoint.y },
+                        { x: block.extents.min.x - block.basePoint.x, y: block.extents.max.y - block.basePoint.y },
+                        { x: block.extents.max.x - block.basePoint.x, y: block.extents.max.y - block.basePoint.y }
+                    ];
+
+                    for (let r = 0; r < rowCount; r++) {
+                        for (let c = 0; c < colCount; c++) {
+                            const offX = c * colSpacing;
+                            const offY = r * rowSpacing;
+                            baseCorners.forEach(p => {
+                                const sx = (p.x + offX) * scale.x;
+                                const sy = (p.y + offY) * scale.y;
+                                update(ent.position.x + sx * cos - sy * sin, ent.position.y + sx * sin + sy * cos);
+                            });
+                        }
+                    }
+                    break;
+                }
+            }
             const block = blocks[ent.blockName];
             if (block && block.extents) {
                 const rot = (ent as any).rotation || 0;
@@ -1774,6 +1940,8 @@ const precomputeBlockExtents = (blocks: Record<string, DxfBlock>) => {
 
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
         block.entities.forEach(ent => {
+            if (ent.visible === false) return;
+            if (ent.type === EntityType.ATTDEF || ent.type === EntityType.ATTRIB) return;
             const ext = getEntityExtents(ent, blocks);
             if (ext) {
                 // 同时更新实体自身的包围盒，用于渲染时的剔除 (Culling) 和点选 (Hit test)
@@ -1804,7 +1972,7 @@ export const calculateExtents = (entities: AnyEntity[], blocks: Record<string, D
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
 
     entities.forEach(ent => {
-        if (ent.visible === false) return;
+        if (ent.visible === false || ent.type === EntityType.ATTRIB) return;
         const ext = getEntityExtents(ent, blocks);
         if (ext) {
             // 使用较大的限制以允许极端坐标，但防止出现 Infinity
@@ -1842,7 +2010,7 @@ export const calculateSmartExtents = (entities: AnyEntity[], blocks: Record<stri
     const validExtents: {min: Point2D, max: Point2D, center: Point2D}[] = [];
     
     entities.forEach(ent => {
-        if (ent.visible === false || ent.type === EntityType.ATTDEF) return;
+        if (ent.visible === false || ent.type === EntityType.ATTDEF || ent.type === EntityType.ATTRIB) return;
         const ext = getEntityExtents(ent, blocks);
         if (ext) {
             const isValid = (v: number) => isFinite(v) && Math.abs(v) < 1e50;
@@ -1886,10 +2054,27 @@ export const calculateSmartExtents = (entities: AnyEntity[], blocks: Record<stri
     const iqrX = centersX[q3Idx] - centersX[q1Idx];
     const iqrY = centersY[q3Idx] - centersY[q1Idx];
     
-    // 离群值阈值：标准为 1.5 * IQR，但我们会更宽松一些（例如 5.0 * IQR），
-    // 或者直接使用第 5 和第 95 百分位数，以确保安全且聚焦。
-    const lowIdx = Math.floor(centersX.length * 0.05);
-    const highIdx = Math.floor(centersX.length * 0.95);
+    const n = centersX.length;
+    const medianX = n % 2 === 0 ? (centersX[n / 2 - 1] + centersX[n / 2]) / 2 : centersX[Math.floor(n / 2)];
+    const medianY = n % 2 === 0 ? (centersY[n / 2 - 1] + centersY[n / 2]) / 2 : centersY[Math.floor(n / 2)];
+
+    const distToMedian = validExtents
+        .map(e => Math.hypot(e.center.x - medianX, e.center.y - medianY))
+        .sort((a, b) => a - b);
+    const medDist = distToMedian.length % 2 === 0
+        ? (distToMedian[distToMedian.length / 2 - 1] + distToMedian[distToMedian.length / 2]) / 2
+        : distToMedian[Math.floor(distToMedian.length / 2)];
+    const absDev = distToMedian.map(d => Math.abs(d - medDist)).sort((a, b) => a - b);
+    const mad = absDev.length % 2 === 0
+        ? (absDev[absDev.length / 2 - 1] + absDev[absDev.length / 2]) / 2
+        : absDev[Math.floor(absDev.length / 2)];
+    const distThreshold = mad > 0 ? (medDist + mad * 8) : (medDist * 3 + 1);
+
+    // 对于样本较少的图纸，5%/95% 往往直接落在 min/max 上，会把离群值“吞进去”。
+    // 这里用更强的裁剪比例，确保主体区域能被识别出来。
+    const trim = n < 40 ? 0.15 : 0.05;
+    const lowIdx = Math.max(0, Math.floor(n * trim));
+    const highIdx = Math.min(n - 1, Math.ceil(n * (1 - trim)) - 1);
     
     const p5X = centersX[lowIdx];
     const p95X = centersX[highIdx];
@@ -1904,6 +2089,33 @@ export const calculateSmartExtents = (entities: AnyEntity[], blocks: Record<stri
     const fHeight = fullMaxY - fullMinY;
 
     let finalMinX = fullMinX, finalMaxX = fullMaxX, finalMinY = fullMinY, finalMaxY = fullMaxY;
+
+    const robust = (() => {
+        let rMinX = Infinity, rMinY = Infinity, rMaxX = -Infinity, rMaxY = -Infinity;
+        validExtents.forEach(ext => {
+            const d = Math.hypot(ext.center.x - medianX, ext.center.y - medianY);
+            if (d <= distThreshold) {
+                rMinX = Math.min(rMinX, ext.min.x);
+                rMaxX = Math.max(rMaxX, ext.max.x);
+                rMinY = Math.min(rMinY, ext.min.y);
+                rMaxY = Math.max(rMaxY, ext.max.y);
+            }
+        });
+        if (rMinX === Infinity) return null;
+        return { minX: rMinX, maxX: rMaxX, minY: rMinY, maxY: rMaxY };
+    })();
+
+    if (robust) {
+        const rWidth = robust.maxX - robust.minX;
+        const rHeight = robust.maxY - robust.minY;
+        if ((isFinite(rWidth) && rWidth > 0 && fWidth > rWidth * 2.5) ||
+            (isFinite(rHeight) && rHeight > 0 && fHeight > rHeight * 2.5)) {
+            finalMinX = robust.minX;
+            finalMaxX = robust.maxX;
+            finalMinY = robust.minY;
+            finalMaxY = robust.maxY;
+        }
+    }
 
     // 如果完整范围显著大于百分位范围，则专注于“主体部分”
     if (fWidth > pWidth * 10 || fHeight > pHeight * 10) {

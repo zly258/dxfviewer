@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import DxfViewer from './components/DxfViewer';
 import Sidebar from './components/Sidebar';
 import PropertiesPanel from './components/PropertiesPanel';
@@ -38,6 +38,7 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
   const [lineTypes, setLineTypes] = useState<Record<string, DxfLineType>>({});
   const [ltScale, setLtScale] = useState(1.0);
   const [worldOffset, setWorldOffset] = useState<Point2D | undefined>();
+  const [showDrawingExtents, setShowDrawingExtents] = useState(false);
   
   const [isLoading, setIsLoading] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState(0);
@@ -119,6 +120,13 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
         zoom 
     });
   }, [showSidebar, showProperties]);
+
+  const drawingExtents = useMemo(() => {
+    if (entities.length === 0) return null;
+    const visibleEnts = entities.filter(e => e.visible !== false && e.type !== EntityType.ATTDEF && e.type !== EntityType.ATTRIB);
+    if (visibleEnts.length === 0) return null;
+    return calculateExtents(visibleEnts, blocks);
+  }, [entities, blocks]);
 
   const processBuffer = async (buffer: ArrayBuffer) => {
     let content = '';
@@ -353,6 +361,8 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
         onImport={handleImport}
         onClear={handleClear}
         onFitView={handleFitView}
+        showDrawingExtents={showDrawingExtents}
+        onToggleDrawingExtents={() => setShowDrawingExtents(v => !v)}
         showSidebar={showSidebar}
         onToggleSidebar={() => setShowSidebar(!showSidebar)}
         showProperties={showProperties}
@@ -392,6 +402,7 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
             onSelectIds={setSelectedEntityIds}
             onFitView={handleFitView}
             worldOffset={worldOffset}
+            overlayExtents={showDrawingExtents && drawingExtents ? { min: drawingExtents.min, max: drawingExtents.max } : null}
             theme={canvasTheme}
             lang={lang}
             onMouseMoveWorld={(x, y) => setMouseCoords({x, y})}

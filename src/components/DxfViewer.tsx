@@ -19,6 +19,7 @@ interface DxfViewerProps {
   onSelectIds: (ids: Set<string>) => void; // 选择状态更新回调
   onFitView: () => void; // 适应视图回调
   worldOffset?: Point2D; // 坐标偏移（用于显示原始坐标）
+  overlayExtents?: { min: Point2D, max: Point2D } | null;
   ltScale?: number; // 全局线型比例
   theme: 'black' | 'white' | 'gray'; // 画布背景主题
   lang: Language; // 当前语言
@@ -36,6 +37,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
     selectedEntityIds, 
     onSelectIds, 
     worldOffset, 
+    overlayExtents,
     ltScale = 1.0, 
     theme, 
     lang,
@@ -116,7 +118,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.scale(dpr, dpr);
 
-        renderEntitiesToCanvas(ctx, entities, layers, blocks, styles, lineTypes, ltScale, viewPort, selectedEntityIds, rect.width, rect.height, theme);
+        renderEntitiesToCanvas(ctx, entities, layers, blocks, styles, lineTypes, ltScale, viewPort, selectedEntityIds, rect.width, rect.height, theme, overlayExtents);
      };
 
      if (renderRef.current) cancelAnimationFrame(renderRef.current);
