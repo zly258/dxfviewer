@@ -208,7 +208,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, layers, sty
                        specificRows.push(
                            <tr key="cells-header" className="property-row" style={{ backgroundColor: 'var(--bg-secondary)' }}>
                                <td colSpan={2} style={{ padding: '4px 8px', fontSize: '11px', fontWeight: 'bold' }}>
-                                   {lang === 'zh' ? '单元格内容' : 'Cell Contents'}
+                                   {t.cellContents || (lang === 'zh' ? '单元格内容' : 'Cell Contents')}
                                </td>
                            </tr>
                        );
@@ -223,8 +223,9 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, layers, sty
                            }
                        });
                        if (table.cells.length > 10) {
+                           const totalText = t.totalCells ? t.totalCells.replace('{count}', table.cells.length.toString()) : `Total ${table.cells.length} cells`;
                            specificRows.push(
-                               renderPropertyRow("...", `Total ${table.cells.length} cells`)
+                               renderPropertyRow("...", totalText)
                            );
                        }
                    }
@@ -263,15 +264,15 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, layers, sty
         </div>
         <div className="properties-content">
           {entities.length === 0 ? (
-             <div className="empty-state">
+             <div className="empty-state" style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#999' }}>
                {t.noSelection || "未选择对象"}
              </div>
           ) : entities.length > 1 ? (
-             <div className="empty-state">
+             <div className="empty-state" style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
                <div style={{ fontWeight: 500, color: '#6b7280' }}>
                  {t.selectedCount ? t.selectedCount.replace('{count}', entities.length.toString()) : `已选择 ${entities.length} 个对象`}
                </div>
-               <div style={{ fontSize: '12px', marginTop: '4px' }}>
+               <div style={{ fontSize: '12px', marginTop: '4px', color: '#999' }}>
                  {t.selectSingle || "选择单个对象以查看详细属性"}
                </div>
              </div>

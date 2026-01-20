@@ -78,6 +78,15 @@ export const UI_TRANSLATIONS: Record<Language, Record<string, string>> = {
     linetypeScale: '线型比例',
     noSelection: '未选择对象',
     selectedCount: '已选择 {count} 个对象',
+    selectSingle: '选择单个对象以查看详细属性',
+    
+    // Table Properties
+    rows: '行数',
+    columns: '列数',
+    rowSpacing: '行间距',
+    colSpacing: '列间距',
+    cellContents: '单元格内容',
+    totalCells: '共 {count} 个单元格',
     type: '类型',
     handle: '句柄',
     layer: '图层',
