@@ -47,7 +47,7 @@ body {
   -moz-osx-font-smoothing: grayscale;
   background-color: var(--bg-primary);
   color: var(--text-primary);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .app-container {
@@ -485,8 +485,8 @@ body {
 
 /* Scrollbar Styles */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
 }
 
 ::-webkit-scrollbar-track {

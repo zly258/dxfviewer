@@ -75,6 +75,7 @@ export const UI_TRANSLATIONS: Record<Language, Record<string, string>> = {
     off: '关闭',
     layersTitle: '图层列表',
     propertiesTitle: '属性面板',
+    linetypeScale: '线型比例',
     noSelection: '未选择对象',
     selectedCount: '已选择 {count} 个对象',
     type: '类型',
