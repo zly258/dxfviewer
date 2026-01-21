@@ -19,7 +19,6 @@ yarn add @zhangly1403/dxfviewer
 ```tsx
 import React from 'react';
 import { DxfViewerMain } from '@zhangly1403/dxfviewer';
-import '@zhangly1403/dxfviewer/style.css';
 
 function App() {
   return (
@@ -70,7 +69,6 @@ yarn add @zhangly1403/dxfviewer
 ```tsx
 import React, { useState } from 'react';
 import { DxfViewerMain } from '@zhangly1403/dxfviewer';
-import '@zhangly1403/dxfviewer/style.css';
 
 function App() {
   const [lang, setLang] = useState('zh');
