@@ -110,8 +110,7 @@ const getCanvasFont = (ent: AnyEntity, styles: Record<string, DxfStyle> | undefi
 
     // 根据字体类型调整高度
     // SHX 字体（已映射）通常比 TrueType 字体需要更大的乘数
-    // 调整：优化缩放比例以解决文字间距偏大的问题，SHX 映射字体从 1.1 降至 1.05
-    const scaleFactor = isTrueType ? 1.0 : 1.05;
+    const scaleFactor = isTrueType ? 1.0 : 1.15;
     const correctedHeight = height * scaleFactor; 
 
     return `${fontStyle} ${fontWeight} ${correctedHeight}px ${fontFamily}`;
