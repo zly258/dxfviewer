@@ -37,13 +37,13 @@ export default defineConfig(({ mode }) => {
       plugins: [
         react(),
         cssInjectedByJsPlugin(),
-        dts({ 
+        !isExample && dts({ 
           rollupTypes: true,
           insertTypesEntry: true,
           include: ['src/**/*.ts', 'src/**/*.tsx'],
           exclude: ['src/main.tsx', 'src/App.tsx']
         })
-      ],
+      ].filter(Boolean),
       resolve: {
         alias: {
           '@': path.resolve(__dirname, './src'),
