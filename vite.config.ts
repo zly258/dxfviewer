@@ -6,10 +6,14 @@ import cssInjectedByJsPlugin from 'vite-plugin-css-injected-by-js';
 
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
+    const isExample = mode === 'example';
+
     return {
+      base: isExample ? '/dxfviewer/' : '/',
       build: {
+        outDir: isExample ? 'dist-example' : 'dist',
         cssCodeSplit: false,
-        lib: {
+        lib: isExample ? undefined : {
           entry: path.resolve(__dirname, 'src/index.tsx'),
           name: 'DxfViewer',
           fileName: (format) => `dxfviewer.${format}.js`,
@@ -17,8 +21,8 @@ export default defineConfig(({ mode }) => {
         },
         minify: 'terser',
         rollupOptions: {
-          external: ['react', 'react-dom'],
-          output: {
+          external: isExample ? [] : ['react', 'react-dom'],
+          output: isExample ? {} : {
             globals: {
               react: 'React',
               'react-dom': 'ReactDOM'
