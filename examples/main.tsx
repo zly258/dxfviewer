@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import DxfViewerMain from '../src/DxfViewerMain';
-import '../src/styles/styles.css';
+import { DxfViewerMain } from '@zhangly1403/dxfviewer';
 
 const App: React.FC = () => {
     const [lang, setLang] = useState<'zh' | 'en'>('zh');

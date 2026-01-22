@@ -1,6 +1,6 @@
 {
   "name": "@zhangly1403/dxfviewer",
-  "version": "1.3.0",
+  "version": "1.5.1",
   "license": "MIT",
   "publishConfig": {
     "access": "public"
@@ -22,9 +22,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview",
-    "example": "vite --config examples/vite.config.ts",
-    "build:example": "vite build --config examples/vite.config.ts"
+    "preview": "vite preview"
   },
   "dependencies": {
     "react": "^19.2.3",
@@ -33,6 +31,7 @@
   "devDependencies": {
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
+    "terser": "^5.46.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.0",
     "vite-plugin-css-injected-by-js": "^3.5.2",
