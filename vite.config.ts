@@ -15,7 +15,7 @@ export default defineConfig(({ mode }) => {
           fileName: (format) => `dxfviewer.${format}.js`,
           formats: ['es', 'umd']
         },
-        minify: false,
+        minify: 'terser',
         rollupOptions: {
           external: ['react', 'react-dom'],
           output: {

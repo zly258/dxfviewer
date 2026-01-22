@@ -13,6 +13,9 @@ export default defineConfig({
   },
   server: {
     port: 5174,
+    fs: {
+      allow: ['..']
+    }
   },
   build: {
     outDir: path.resolve(__dirname, '../dist-example'),
