@@ -219,12 +219,12 @@ const parseBlock = (state: DxfParserState, blockHandleMap?: Record<string, strin
         const p = state.peek();
         if (!p) break;
         if (p.code === 0) {
-            if (p.value === 'ENDBLK') {
+            if (p.value.toUpperCase() === 'ENDBLK') {
                 state.next();
                 break;
             }
             state.next(); // 消耗实体类型组 (code 0)
-            const entity = parseEntityDispatcher(p.value, state, blockHandleMap);
+            const entity = parseEntityDispatcher(p.value.toUpperCase(), state, blockHandleMap);
             if (entity) block.entities.push(entity);
         } else {
             state.next();
@@ -378,7 +378,7 @@ export const parseDxf = async (dxfString: string, onProgress?: (percent: number)
 
     const group = state.next();
     if (!group) break;
-    const groupValueUpper = group.value.toUpperCase();
+    const groupValueUpper = group.code === 0 ? group.value.toUpperCase() : '';
 
     if (group.code === 0 && groupValueUpper === 'SECTION') {
       const next = state.next();
