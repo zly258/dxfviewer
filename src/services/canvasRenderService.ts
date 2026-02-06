@@ -26,13 +26,14 @@ const getColor = (ent: AnyEntity, layer: DxfLayer | undefined, parentColor: stri
  */
 const getCanvasFont = (ent: AnyEntity, styles: Record<string, DxfStyle> | undefined): string => {
     const textEnt = (ent.type === EntityType.TEXT || ent.type === EntityType.MTEXT || ent.type === EntityType.ATTRIB || ent.type === EntityType.ATTDEF) ? (ent as DxfText) : null;
-    let height = textEnt ? (textEnt.height || 2.5) : 2.5;
-    
+    let height = textEnt?.height;
+
     // 高度优先级：1. 内联覆盖, 2. 实体高度, 3. 样式高度, 4. 默认值 2.5
     const styleName = textEnt?.styleName || 'STANDARD';
     const style = styles?.[styleName] || styles?.[styleName.toUpperCase()];
-    if (height <= 0) {
-        height = style?.height || 2.5;
+    if (!height || height <= 0) {
+        const styleHeight = style?.height;
+        height = styleHeight && styleHeight > 0 ? styleHeight : 2.5;
     }
 
     let fontFamily = getStyleFontFamily(styleName, styles);
