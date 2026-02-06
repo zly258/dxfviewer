@@ -21,10 +21,16 @@ const getColor = (ent: AnyEntity, layer: DxfLayer | undefined, parentColor: stri
     return getAutoCadColor(entColor, theme);
 };
 
+type CanvasFontConfig = {
+    font: string;
+    isShx: boolean;
+    isTrueType: boolean;
+};
+
 /**
  * 获取画布字体样式
  */
-const getCanvasFont = (ent: AnyEntity, styles: Record<string, DxfStyle> | undefined): string => {
+const getCanvasFontConfig = (ent: AnyEntity, styles: Record<string, DxfStyle> | undefined): CanvasFontConfig => {
     const textEnt = (ent.type === EntityType.TEXT || ent.type === EntityType.MTEXT || ent.type === EntityType.ATTRIB || ent.type === EntityType.ATTDEF) ? (ent as DxfText) : null;
     let height = textEnt?.height;
 
@@ -39,6 +45,7 @@ const getCanvasFont = (ent: AnyEntity, styles: Record<string, DxfStyle> | undefi
     let fontFamily = getStyleFontFamily(styleName, styles);
     let fontWeight = 'normal';
     let fontStyle = 'normal';
+    let fontSource = style?.fontFileName || '';
     
     // 更好的 TrueType 字体检测：
     // 1. 样式字体名称以 .ttf/.otf 结尾
@@ -47,6 +54,7 @@ const getCanvasFont = (ent: AnyEntity, styles: Record<string, DxfStyle> | undefi
     let isTrueType = styleFontLower.endsWith('.ttf') || styleFontLower.endsWith('.otf') || 
                      styleFontLower.includes('simsun') || styleFontLower.includes('simhei') || 
                      styleFontLower.includes('arial') || styleFontLower.includes('msyh');
+    let isShx = styleFontLower.endsWith('.shx') || styleFontLower.includes('hztxt') || styleFontLower.includes('tssd') || styleFontLower.includes('wcad');
 
     // 检查 MTEXT 内联高度覆盖 \H...;
     if (ent.type === EntityType.MTEXT) {
@@ -85,7 +93,11 @@ const getCanvasFont = (ent: AnyEntity, styles: Record<string, DxfStyle> | undefi
 
             if (inlineFont) {
                 const inlineFontLower = inlineFont.toLowerCase();
-                isTrueType = true; // 内联 \f 字体通常是 TrueType
+                fontSource = inlineFont;
+                isTrueType = inlineFontLower.endsWith('.ttf') || inlineFontLower.endsWith('.otf') ||
+                             inlineFontLower.includes('simsun') || inlineFontLower.includes('simhei') ||
+                             inlineFontLower.includes('arial') || inlineFontLower.includes('msyh');
+                isShx = inlineFontLower.endsWith('.shx') || inlineFontLower.includes('hztxt') || inlineFontLower.includes('tssd') || inlineFontLower.includes('wcad');
 
                 if (inlineFontLower.includes('仿宋') || inlineFontLower.includes('fangsong') || inlineFontLower === 'fs') {
                     fontFamily = FONT_STACKS.FANGSONG;
@@ -109,12 +121,22 @@ const getCanvasFont = (ent: AnyEntity, styles: Record<string, DxfStyle> | undefi
         }
     }
 
+    if (!fontSource && style?.bigFontFileName) {
+        fontSource = style.bigFontFileName;
+        const bigFontLower = style.bigFontFileName.toLowerCase();
+        isShx = isShx || bigFontLower.endsWith('.shx') || bigFontLower.includes('hztxt') || bigFontLower.includes('tssd') || bigFontLower.includes('wcad');
+    }
+
     // 根据字体类型调整高度
     // SHX 字体（已映射）通常比 TrueType 字体需要更大的乘数
-    const scaleFactor = isTrueType ? 1.0 : 1.15;
+    const scaleFactor = isTrueType ? 1.0 : (isShx ? 1.28 : 1.15);
     const correctedHeight = height * scaleFactor; 
 
-    return `${fontStyle} ${fontWeight} ${correctedHeight}px ${fontFamily}`;
+    return {
+        font: `${fontStyle} ${fontWeight} ${correctedHeight}px ${fontFamily}`,
+        isShx,
+        isTrueType,
+    };
 };
 
 /**
@@ -604,7 +626,8 @@ export const renderEntitiesToCanvas = (
                 // 为画布字体更新字体高度
                 const originalHeight = ent.height;
                 ent.height = textHeightPixels;
-                ctx.font = getCanvasFont(ent, styles);
+                const fontConfig = getCanvasFontConfig(ent, styles);
+                ctx.font = fontConfig.font;
                 ent.height = originalHeight; // 恢复以供下次使用
                 
                 let align: CanvasTextAlign = 'left';
@@ -614,7 +637,7 @@ export const renderEntitiesToCanvas = (
                 if (isMText) {
                     const lines = noMTextWrap ? text.split('\n') : wrapText(ctx, text, (ent.width || 0) * transform.scale);
                     // 调整：行高倍数优化，使其更符合 CAD 渲染效果
-                    const lineHeight = textHeightPixels * 1.2; 
+                    const lineHeight = textHeightPixels * (fontConfig.isShx ? 1.05 : 1.2); 
                     const totalHeight = lines.length * lineHeight;
                     const ap = ent.attachmentPoint || 1;
                     
