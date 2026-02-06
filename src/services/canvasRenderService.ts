@@ -23,6 +23,10 @@ const getColor = (ent: AnyEntity, layer: DxfLayer | undefined, parentColor: stri
 
 type CanvasFontConfig = {
     font: string;
+    fontFamily: string;
+    fontSize: number;
+    fontStyle: string;
+    fontWeight: string;
     isShx: boolean;
     isTrueType: boolean;
 };
@@ -134,6 +138,10 @@ const getCanvasFontConfig = (ent: AnyEntity, styles: Record<string, DxfStyle> | 
 
     return {
         font: `${fontStyle} ${fontWeight} ${correctedHeight}px ${fontFamily}`,
+        fontFamily,
+        fontSize: correctedHeight,
+        fontStyle,
+        fontWeight,
         isShx,
         isTrueType,
     };
@@ -620,15 +628,21 @@ export const renderEntitiesToCanvas = (
                 
                 // 将文本高度缩放到像素
                 const textHeightPixels = ent.height * transform.scale;
-                const scaleY = 1.0; 
-                ctx.scale(widthFactor, scaleY); 
                 
                 // 为画布字体更新字体高度
                 const originalHeight = ent.height;
                 ent.height = textHeightPixels;
                 const fontConfig = getCanvasFontConfig(ent, styles);
                 ctx.font = fontConfig.font;
+                const heightSample = ctx.measureText('Mg');
+                const measuredHeight = heightSample.actualBoundingBoxAscent + heightSample.actualBoundingBoxDescent;
+                if (measuredHeight > 0) {
+                    const adjustedFontSize = fontConfig.fontSize * (textHeightPixels / measuredHeight);
+                    ctx.font = `${fontConfig.fontStyle} ${fontConfig.fontWeight} ${adjustedFontSize}px ${fontConfig.fontFamily}`;
+                }
                 ent.height = originalHeight; // 恢复以供下次使用
+
+                ctx.scale(widthFactor, 1);
                 
                 let align: CanvasTextAlign = 'left';
                 let baseline: CanvasTextBaseline = 'alphabetic';
@@ -636,8 +650,8 @@ export const renderEntitiesToCanvas = (
 
                 if (isMText) {
                     const lines = noMTextWrap ? text.split('\n') : wrapText(ctx, text, (ent.width || 0) * transform.scale);
-                    // 调整：行高倍数优化，使其更符合 CAD 渲染效果
-                    const lineHeight = textHeightPixels * (fontConfig.isShx ? 1.05 : 1.2); 
+                    // MTEXT 默认行距接近 1.0 倍文字高度
+                    const lineHeight = textHeightPixels * (fontConfig.isShx ? 1.0 : 1.0); 
                     const totalHeight = lines.length * lineHeight;
                     const ap = ent.attachmentPoint || 1;
                     
