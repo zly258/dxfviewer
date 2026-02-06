@@ -14,9 +14,6 @@ export function cleanMText(text: string): string {
         while (i < len) {
             const ch = text[i];
             if (ch === terminator) break;
-            if (ch === "\\" || ch === "{" || ch === "}") {
-                return { value, end: i - 1 };
-            }
             value += ch;
             i += 1;
         }
