@@ -158,29 +158,29 @@ const parseLineType = (state: DxfParserState): DxfLineType => {
 const parseTable = (state: DxfParserState, layers: Record<string, DxfLayer>, styles: Record<string, DxfStyle>, lineTypes: Record<string, DxfLineType>, blockHandleMap?: Record<string, string>) => {
     const nameGroup = state.next();
     if (!nameGroup || nameGroup.code !== 2) return;
-    const tableName = nameGroup.value;
+    const tableName = nameGroup.value.toUpperCase();
 
     while(state.hasNext) {
         const p = state.peek();
         if (!p) break;
         if (p.code === 0) {
-            if (p.value === 'ENDTAB') {
+            if (p.value.toUpperCase() === 'ENDTAB') {
                 state.next();
                 break;
             }
-            if (tableName === 'LAYER' && p.value === 'LAYER') {
+            if (tableName === 'LAYER' && p.value.toUpperCase() === 'LAYER') {
                 state.next();
                 const layer = parseLayer(state);
                 layers[layer.name] = layer;
-            } else if (tableName === 'STYLE' && p.value === 'STYLE') {
+            } else if (tableName === 'STYLE' && p.value.toUpperCase() === 'STYLE') {
                 state.next();
                 const style = parseStyle(state);
                 styles[style.name] = style;
-            } else if (tableName === 'LTYPE' && p.value === 'LTYPE') {
+            } else if (tableName === 'LTYPE' && p.value.toUpperCase() === 'LTYPE') {
                 state.next();
                 const ltype = parseLineType(state);
                 lineTypes[ltype.name] = ltype;
-            } else if (tableName === 'BLOCK_RECORD' && p.value === 'BLOCK_RECORD') {
+            } else if (tableName === 'BLOCK_RECORD' && p.value.toUpperCase() === 'BLOCK_RECORD') {
                 state.next();
                 let handle = '';
                 let name = '';
@@ -378,11 +378,12 @@ export const parseDxf = async (dxfString: string, onProgress?: (percent: number)
 
     const group = state.next();
     if (!group) break;
+    const groupValueUpper = group.value.toUpperCase();
 
-    if (group.code === 0 && group.value === 'SECTION') {
+    if (group.code === 0 && groupValueUpper === 'SECTION') {
       const next = state.next();
-      if (next?.code === 2) currentSection = next.value;
-    } else if (group.code === 0 && group.value === 'ENDSEC') {
+      if (next?.code === 2) currentSection = next.value.toUpperCase();
+    } else if (group.code === 0 && groupValueUpper === 'ENDSEC') {
       currentSection = '';
     } else {
       if (currentSection === 'HEADER') {
@@ -400,9 +401,9 @@ export const parseDxf = async (dxfString: string, onProgress?: (percent: number)
              }
          }
       } else if (currentSection === 'TABLES') {
-        if (group.code === 0 && group.value === 'TABLE') parseTable(state, layers, styles, lineTypes, blockHandleMap);
+        if (group.code === 0 && groupValueUpper === 'TABLE') parseTable(state, layers, styles, lineTypes, blockHandleMap);
       } else if (currentSection === 'BLOCKS') {
-        if (group.code === 0 && group.value === 'BLOCK') {
+        if (group.code === 0 && groupValueUpper === 'BLOCK') {
            const block = parseBlock(state, blockHandleMap);
            if (block) {
                blocks[block.name] = block;
@@ -411,8 +412,8 @@ export const parseDxf = async (dxfString: string, onProgress?: (percent: number)
         }
       } else if (currentSection === 'ENTITIES') {
         if (group.code === 0) {
-          if (group.value === 'SEQEND') continue; 
-          const entity = parseEntityDispatcher(group.value, state, blockHandleMap);
+          if (groupValueUpper === 'SEQEND') continue; 
+          const entity = parseEntityDispatcher(groupValueUpper, state, blockHandleMap);
           if (entity && entity.visible !== false && !entity.inPaperSpace) {
              entities.push(entity);
           }
