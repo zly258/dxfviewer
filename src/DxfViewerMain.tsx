@@ -65,9 +65,15 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
   }, [onLanguageChange]);
 
   const fitView = useCallback((ents: AnyEntity[], blks: Record<string, DxfBlock>) => {
-    if (ents.length === 0) return;
+    if (ents.length === 0) {
+      console.warn('[DXF Viewer] No entities to fit view.');
+      return;
+    }
     const visibleEnts = ents.filter(e => e.visible !== false && e.type !== EntityType.ATTDEF);
-    if (visibleEnts.length === 0) return;
+    if (visibleEnts.length === 0) {
+      console.warn('[DXF Viewer] All entities are hidden; cannot fit view.');
+      return;
+    }
 
     // 第 1 步：计算世界包围盒
     const extents = calculateSmartExtents(visibleEnts, blks);
@@ -97,8 +103,9 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
     containerH = Math.max(containerH, 100);
 
     if (extents.width <= 0 && extents.height <= 0) {
-        setViewPort(prev => ({ ...prev, targetX: centerX, targetY: centerY, zoom: 1 }));
-        return;
+      console.warn('[DXF Viewer] Invalid extents detected; fallback to center/zoom=1.', extents);
+      setViewPort(prev => ({ ...prev, targetX: centerX, targetY: centerY, zoom: 1 }));
+      return;
     }
 
     const worldW = extents.width;
@@ -130,6 +137,7 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
   }, [entities, blocks]);
 
   const processBuffer = async (buffer: ArrayBuffer) => {
+    console.info('[DXF Viewer] Processing buffer.', { byteLength: buffer.byteLength });
     let content = '';
     // 自动检测编码
     try {
@@ -145,6 +153,16 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
         const data = await parseDxf(content, (progress) => {
             setLoadingProgress(progress);
         });
+        console.info('[DXF Viewer] Parsed DXF.', {
+          entities: data.entities.length,
+          layers: Object.keys(data.layers).length,
+          blocks: Object.keys(data.blocks).length,
+          hasHeader: Boolean(data.header),
+          extents: data.extents
+        });
+        if (data.entities.length === 0) {
+          console.warn('[DXF Viewer] Parsed DXF contains no entities. Check section names or visibility settings.');
+        }
         setEntities(data.entities);
         setLayers(data.layers);
         setBlocks(data.blocks);
