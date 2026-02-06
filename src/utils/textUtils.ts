@@ -1,52 +1,89 @@
 /**
  * 清理字符串中的 MTEXT 格式化代码。
- * 支持 \f, \H, \W, \C, \S, \P, \L, \O 等。
+ * 参考 DXF MTEXT 规范，尽量保留内容并移除格式控制码。
  */
 export function cleanMText(text: string): string {
     if (!text) return "";
 
-    let result = text;
+    let result = "";
+    const len = text.length;
 
-    // 1. 移除类似 {\fArial|b0|i0|c0|p34;...} 的格式化块
-    // 我们需要小心处理嵌套花括号，但通常 DXF MTEXT 不会深度嵌套。
-    // 首先，处理常见的 {\...;text} 情况
-    result = result.replace(/\{[\\].*?;/g, "");
-    result = result.replace(/\}/g, "");
+    const readUntil = (start: number, terminator: string): { value: string; end: number } => {
+        let i = start;
+        let value = "";
+        while (i < len) {
+            const ch = text[i];
+            if (ch === terminator) break;
+            value += ch;
+            i += 1;
+        }
+        return { value, end: i };
+    };
 
-    // 2. 移除特定代码：
-    // \f...; (字体)
-    // \H...; (高度)
-    // \W...; (宽度)
-    // \C...; (颜色)
-    // \T...; (字间距)
-    // \Q...; (倾斜度)
-    // \A...; (对齐)
-    // 安全地支持带或不带分号的代码
-    result = result.replace(/\\[fHWCTQA][^;\\}]*(?:;|(?=[\\}]|$))/gi, "");
+    for (let i = 0; i < len; i += 1) {
+        const ch = text[i];
+        if (ch === "\\") {
+            const next = text[i + 1];
+            if (!next) break;
+            if (next === "\\" || next === "{" || next === "}") {
+                result += next;
+                i += 1;
+                continue;
+            }
+            if (next === "P" || next === "X") {
+                result += "\n";
+                i += 1;
+                continue;
+            }
+            if (next === "~") {
+                result += " ";
+                i += 1;
+                continue;
+            }
+            if (next === "U" && text[i + 2] === "+") {
+                const hex = text.slice(i + 3, i + 7);
+                if (/^[0-9A-Fa-f]{4}$/.test(hex)) {
+                    result += String.fromCharCode(parseInt(hex, 16));
+                    i += 6;
+                    continue;
+                }
+            }
+            if (next === "S") {
+                const stack = readUntil(i + 2, ";");
+                const raw = stack.value;
+                const sepMatch = raw.match(/(\^|#|\/)/);
+                if (sepMatch) {
+                    const idx = raw.indexOf(sepMatch[1]);
+                    result += `${raw.slice(0, idx)}/${raw.slice(idx + 1)}`;
+                } else {
+                    result += raw;
+                }
+                i = stack.end;
+                continue;
+            }
+            if (/[fFhHwWcCtTqQaA]/.test(next)) {
+                const info = readUntil(i + 2, ";");
+                i = info.end;
+                continue;
+            }
+            if (/[lLoOkK]/.test(next)) {
+                i += 1;
+                continue;
+            }
+            result += next;
+            i += 1;
+            continue;
+        }
+        if (ch === "{" || ch === "}") {
+            continue;
+        }
+        result += ch;
+    }
 
-    // 3. 处理特殊字符：
-    // \P (段落/换行)
-    result = result.replace(/\\[P]/g, "\n");
-    
-    // \S...^...; (堆叠 - 常用于分数)
-    // 目前通过将其替换为内容来简化它
-    result = result.replace(/\\[S](.*?)[^](.*?);/g, "$1/$2");
-
-    // \L, \l (下划线)
-    // \O, \o (上划线)
-    // \K, \k (删除线)
-    result = result.replace(/\\[L|l|O|o|K|k]/g, "");
-
-    // 5. 处理特殊转义字符
-    result = result.replace(/\\~/g, " "); // 不换行空格
-
-    // 4. 处理转义字符：
-    // \\ (反斜杠)
-    // \{ (左花括号)
-    // \} (右花括号)
-    result = result.replace(/\\{/g, "{");
-    result = result.replace(/\\}/g, "}");
-    result = result.replace(/\\\\/g, "\\");
-
-    return result;
+    return result
+        .replace(/%%[cC]/g, "Ø")
+        .replace(/%%[dD]/g, "°")
+        .replace(/%%[pP]/g, "±")
+        .replace(/%%[uU]/g, "")
+        .trim();
 }

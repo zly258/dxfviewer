@@ -152,18 +152,7 @@ const getCanvasFontConfig = (ent: AnyEntity, styles: Record<string, DxfStyle> | 
  */
 const cleanTextContent = (text: string): string => {
     if (!text) return "";
-    return text
-        .replace(/\\P/g, '\n')
-        .replace(/\\\{/g, '')
-        .replace(/\\\}/g, '')
-        .replace(/\\U\+([0-9A-Fa-f]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16))) // Unicode \U+XXXX
-        .replace(/\\S([^^]+)\^([^;]+);/g, '$1/$2') // 堆叠文字 \S...^...; -> .../...
-        .replace(/\\[A-Z][^;\\}]*(?:;|(?=[\\}]|$))/gi, '') // 安全地处理带或不带分号的代码
-        .replace(/\{|\}/g, '')
-        .replace(/%%[cC]/g, 'Ø')
-        .replace(/%%[dD]/g, '°')
-        .replace(/%%[pP]/g, '±')
-        .trim();
+    return cleanMText(text);
 };
 
 /**
@@ -650,8 +639,11 @@ export const renderEntitiesToCanvas = (
 
                 if (isMText) {
                     const lines = noMTextWrap ? text.split('\n') : wrapText(ctx, text, (ent.width || 0) * transform.scale);
-                    // MTEXT 默认行距接近 1.0 倍文字高度
-                    const lineHeight = textHeightPixels * (fontConfig.isShx ? 1.0 : 1.0); 
+                    const spacingFactor = ent.lineSpacingFactor && ent.lineSpacingFactor > 0 ? ent.lineSpacingFactor : 1.0;
+                    let lineHeight = textHeightPixels * spacingFactor;
+                    if (ent.lineSpacingStyle === 1) {
+                        lineHeight = Math.max(lineHeight, textHeightPixels);
+                    }
                     const totalHeight = lines.length * lineHeight;
                     const ap = ent.attachmentPoint || 1;
                     

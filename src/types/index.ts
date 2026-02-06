@@ -116,6 +116,8 @@ export interface DxfText extends DxfEntity {
   attachmentPoint?: number; // 多行文字附着点 (组码 71)
   width?: number; // 多行文字宽度
   boxHeight?: number; // 多行文字高度
+  lineSpacingFactor?: number; // 多行文字行距系数 (组码 44)
+  lineSpacingStyle?: number; // 多行文字行距样式 (组码 73)
   bgFill?: boolean;
   bgColor?: number;
   styleName?: string;
