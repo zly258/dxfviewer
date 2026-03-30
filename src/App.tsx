@@ -9,20 +9,41 @@ interface Tab {
   url?: string;
 }
 
-function App() {
+interface AppProps {
+  editor?: boolean; // 默认为 true。如果为 false，则禁用手动打开/删除文件功能。
+  initialFiles?: (File|string)[];
+}
+
+function App({ editor = true, initialFiles = [] }: AppProps) {
   const getDefaultName = () => navigator.language.startsWith('zh') ? '新图纸' : 'New Drawing';
   const [tabs, setTabs] = useState<Tab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string>('');
   const tabsContainerRef = React.useRef<HTMLDivElement>(null);
 
+  // 使用可选的 initialFiles 进行初始化
+  useEffect(() => {
+    if (initialFiles && initialFiles.length > 0) {
+      const newTabs: Tab[] = initialFiles.map(f => {
+        if (typeof f === 'string') {
+          return { id: Math.random().toString(36).substr(2, 9), name: f.split('/').pop() || f, url: f };
+        } else {
+          return { id: Math.random().toString(36).substr(2, 9), name: f.name, file: f };
+        }
+      });
+      setTabs(newTabs);
+      if (newTabs.length > 0) setActiveTabId(newTabs[0].id);
+    }
+  }, [initialFiles]);
+
   const addTab = (file: File) => {
-    // Check if file is already open
+    if (!editor) return; // 如果不是编辑模式，防止手动打开
+    // 检查文件是否已打开
     const existingTab = tabs.find(t => t.name === file.name);
     if (existingTab) {
       setActiveTabId(existingTab.id);
       return;
     }
-    // Otherwise, add new tab
+    // 否则，添加新标签页
     const newTab = {
       id: Math.random().toString(36).substr(2, 9),
       name: file.name,
@@ -34,6 +55,7 @@ function App() {
 
   const closeTab = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
+    if (!editor) return; // 如果不是编辑模式，防止手动关闭
     const newTabs = tabs.filter(t => t.id !== id);
     setTabs(newTabs);
     
@@ -60,7 +82,7 @@ function App() {
 
   const handleTabScroll = (e: React.WheelEvent<HTMLDivElement>) => {
     if (tabsContainerRef.current) {
-      // scroll horizontally based on vertical movement of mouse wheel
+      // 根据鼠标滚轮的垂直移动进行水平滚动
       tabsContainerRef.current.scrollLeft += e.deltaY;
     }
   };
@@ -75,24 +97,26 @@ function App() {
         {tabs.map(tab => (
           <div 
             key={tab.id} 
-            className={`tab-item ${activeTabId === tab.id ? 'active' : ''}`}
+            className={`tab-item ${activeTabId === tab.id ? 'active' : ''} ${!editor ? 'no-close' : ''}`}
             onClick={() => setActiveTabId(tab.id)}
             title={tab.name}
           >
             <span className="tab-name">{tab.name}</span>
-            <span className="tab-close" onClick={(e) => closeTab(e, tab.id)}>×</span>
+            {editor && <span className="tab-close" onClick={(e) => closeTab(e, tab.id)}>×</span>}
           </div>
         ))}
-        <div className="tab-new" onClick={() => {
-          const input = document.createElement('input');
-          input.type = 'file';
-          input.accept = '.dxf';
-          input.onchange = (e: any) => {
-            const file = e.target.files?.[0];
-            if (file) addTab(file);
-          };
-          input.click();
-        }}>+</div>
+        {editor && (
+          <div className="tab-new" onClick={() => {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.dxf';
+            input.onchange = (e: any) => {
+              const file = e.target.files?.[0];
+              if (file) addTab(file);
+            };
+            input.click();
+          }}>+</div>
+        )}
       </div>
       <div className="tabs-content" style={{ flex: 1, position: 'relative', backgroundColor: '#212121' }}>
         {tabs.length === 0 ? (
@@ -108,7 +132,9 @@ function App() {
               {navigator.language.startsWith('zh') ? '欢迎使用 DXF Viewer' : 'Welcome to DXF Viewer'}
             </h2>
             <p style={{ margin: 0 }}>
-              {navigator.language.startsWith('zh') ? '点击左上方的 "+" 打开图纸文件' : 'Click the "+" button in the top left to open a drawing'}
+              {editor 
+                ? (navigator.language.startsWith('zh') ? '点击左上方的 "+" 打开图纸文件' : 'Click the "+" button in the top left to open a drawing')
+                : (navigator.language.startsWith('zh') ? '当前处于只读模式，请查看可用图纸' : 'Read-only mode. Please view available drawings.')}
             </p>
           </div>
         ) : (
@@ -124,7 +150,7 @@ function App() {
           >
             <DxfViewerMain 
               initFile={tab.file || tab.url}
-              showOpenMenu={true}
+              showOpenMenu={editor}
             />
           </div>
         )))}

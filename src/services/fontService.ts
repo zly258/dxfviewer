@@ -4,12 +4,18 @@ import { DxfStyle } from '../types';
  * 针对 CAD 显示优化的字体栈
  */
 export const FONT_STACKS = {
+    // 仿宋是 CAD 中最常用的设计类字体栈 (TSSD, WCAD)
     CHINESE: '"FangSong", "仿宋", "STFangsong", "SimSun", "宋体", "Microsoft YaHei", "微软雅黑", sans-serif',
-    SONG: '"FangSong", "仿宋", "STFangsong", "SimSun", "宋体", serif',
-    HEI: '"SimHei", "黑体", "Microsoft YaHei", "微软雅黑", sans-serif',
+    // 工业宋体
+    SONG: '"SimSun", "宋体", "STSong", "FangSong", "仿宋", serif',
+    // 标题黑体
+    HEI: '"Microsoft YaHei", "微软雅黑", "SimHei", "黑体", sans-serif',
+    // 楷体
     KAI: '"SimKai", "楷体", "STKaiti", serif',
+    // 设计仿宋最常用
     FANGSONG: '"FangSong", "仿宋", "STFangsong", "SimSun", "宋体", serif',
-    SANS_SERIF: 'Arial, Helvetica, "Segoe UI", Roboto, "Helvetica Neue", sans-serif',
+    // 常用英文 SHX 建议的字体栈
+    SANS_SERIF: '"Inter", "Roboto", "Segoe UI", "Arial", Helvetica, sans-serif',
     SERIF: '"Times New Roman", Times, serif',
     MONOSPACE: '"Cascadia Code", "Consolas", "Courier New", monospace',
 };
@@ -27,11 +33,10 @@ export const mapCadFontToWebFont = (fontFileName: string | undefined, bigFontFil
     // 1. 直接检查常见的中文字体
     const combined = (f + "|" + bf).toLowerCase();
     
-    if (combined.includes('tssd') || combined.includes('wcad') || combined.includes('fs') || combined.includes('fang') || combined.includes('simsun') || combined.includes('song')) {
-        // TSSD、WCAD 和 Simsun/Song 都映射到仿宋以获得更好的质量
+    if (combined.includes('hztxt') || combined.includes('hz') || combined.includes('gb') || combined.includes('ext')) {
+        result = FONT_STACKS.CHINESE; // 优先使用仿宋/宋体作为中文字体回退
+    } else if (combined.includes('shx') || combined.includes('tssd') || combined.includes('wcad') || combined.includes('fs') || combined.includes('fang')) {
         result = FONT_STACKS.FANGSONG;
-    } else if (combined.includes('hztxt') || combined.includes('hz') || combined.includes('gb') || combined.includes('ext')) {
-        result = FONT_STACKS.FANGSONG; // 即使对于常见的中文 SHX 回退也首选仿宋
     } else if (combined.includes('txt') || combined.includes('simplex') || combined.includes('romans') || combined.includes('tssdeng') || combined.includes('wcadeng')) {
         result = FONT_STACKS.SANS_SERIF;
     } else if (combined.includes('simhei') || combined.includes('hei')) {

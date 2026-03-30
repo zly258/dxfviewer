@@ -277,7 +277,7 @@ const drawHatchLoop = (ctx: CanvasRenderingContext2D, loop: HatchLoop, transform
                 ctx.arc(sCenter.x, sCenter.y, sRadius, -start, -end, !isCcw); 
             } else if (edge.type === 'ELLIPSE' && edge.center && edge.majorAxis) {
                 const majX = edge.majorAxis.x;
-                const majY = edge.majorAxis.y;
+const majY = edge.majorAxis.y;
                 const rX = Math.sqrt(majX*majX + majY*majY);
                 const rY = rX * (edge.ratio || 1);
                 const rotation = Math.atan2(majY, majX);
@@ -611,13 +611,19 @@ export const renderEntitiesToCanvas = (
                 
                 const hAlign = ent.hAlign || 0;
                 const vAlign = ent.vAlign || 0;
-                // 位置选择逻辑：根据DXF规范
-                // hAlign=0,1,2: 使用position
-                // hAlign=3,4,5: 需要特殊处理（对齐、中间、拟合模式）
+
+                // 位置选择逻辑：根据 DXF 规范
                 let pos = ent.position;
                 if (!isMText && (hAlign !== 0 || vAlign !== 0) && ent.secondPosition) {
-                    // DXF Spec: If alignment is non-zero, secondPosition is the insertion point
-                    pos = ent.secondPosition;
+                    // 对于绝大多数有对齐点的 TEXT，第二坐标是基线对齐点
+                    // 但对于 Aligned(3) 和 Fit(5) 来说，文本是排在 position 和 secondPosition 之间的
+                    if (hAlign !== 3 && hAlign !== 5) {
+                        pos = ent.secondPosition;
+                    } else {
+                        // 在 3 和 5 模式下，项目起始点是 position，但我们需要它居中以配合我们的对齐逻辑，或者直接变换
+                        // 这里我们使用 position 作为起始，然后在下面特殊处理
+                        pos = ent.position;
+                    }
                 }
                 
                 const sPos = transform.project(pos);
@@ -662,10 +668,10 @@ export const renderEntitiesToCanvas = (
                 const textHeightPixels = effectiveHeight * transform.scale;
                 
                 // === 极速性能优化：文本 Greeking (微缩模糊) ===
-                // 当图纸超级大且文字在屏幕上小到无法辨认（< 3像素）时，使用绘制矩形替代高昂的字体光栅化
-                // 这一招能大幅解决测绘图、总图等包含海量小文字的卡顿问题
                 if (textHeightPixels < 3 && !isSelected) {
-                    const approxWidth = text.length * textHeightPixels * 0.7 * widthFactor;
+                    let roughLen = text.length;
+                    let approxWidth = roughLen * textHeightPixels * 0.7 * widthFactor;
+                    let blockH = textHeightPixels;
                     
                     let rx = 0;
                     let ry = 0;
@@ -677,26 +683,42 @@ export const renderEntitiesToCanvas = (
                         if (vAlign === 1) ry = -textHeightPixels;
                         else if (vAlign === 2 || hAlign === 4) ry = -textHeightPixels / 2;
                         else if (vAlign === 3) ry = 0;
-                        else ry = -textHeightPixels * 0.8; // alphabetic baseline approx
+                        else ry = -textHeightPixels * 0.8; // 基线近似值 (alphabetic baseline)
                     } else {
+                        // MText 支持多行，预估几何块大小以防止远处看变成极长单行
+                        const mtextMaxWidth = (ent.width && ent.width > 0) ? (ent.width * transform.scale) : 0;
+                        const explicitLines = (text.match(/\n/g) || []).length + 1;
+                        let estimatedTotalLines = explicitLines;
+                        
+                        // 基于最大宽度粗略计算自动换行的行数
+                        if (mtextMaxWidth > 0) {
+                            const charsPerLine = Math.max(1, mtextMaxWidth / (textHeightPixels * 0.7 * widthFactor));
+                            estimatedTotalLines = Math.max(explicitLines, Math.ceil(roughLen / charsPerLine));
+                            approxWidth = Math.min(approxWidth, mtextMaxWidth); 
+                        } else if (explicitLines > 1) {
+                            approxWidth = (roughLen / explicitLines) * textHeightPixels * 0.7 * widthFactor;
+                        }
+                        
+                        const lineSpacingRaw = (ent as any).lineSpacingFactor;
+                        const lineSpacingFactor = (lineSpacingRaw !== undefined && !isNaN(lineSpacingRaw)) ? lineSpacingRaw : 1;
+                        const lineHeight = textHeightPixels * 1.666 * lineSpacingFactor; 
+                        blockH = (estimatedTotalLines > 0) ? ((estimatedTotalLines - 1) * lineHeight + textHeightPixels) : 0;
+                        
                         const ap = ent.attachmentPoint || 1;
                         if ([2, 5, 8].includes(ap)) rx = -approxWidth / 2;
                         else if ([3, 6, 9].includes(ap)) rx = -approxWidth;
                         
                         if ([1, 2, 3].includes(ap)) ry = 0; 
-                        if ([4, 5, 6].includes(ap)) ry = -textHeightPixels / 2; 
-                        if ([7, 8, 9].includes(ap)) ry = -textHeightPixels; 
+                        if ([4, 5, 6].includes(ap)) ry = -blockH / 2; 
+                        if ([7, 8, 9].includes(ap)) ry = -blockH; 
                     }
                     
-                    ctx.fillRect(rx, ry, approxWidth, textHeightPixels);
+                    ctx.fillRect(rx, ry, approxWidth, blockH);
                     ctx.restore();
                     break;
                 }
                 // === 优化结束 ===
 
-                const scaleY = 1.0; 
-                ctx.scale(widthFactor, scaleY); 
-                
                 // 为画布字体更新字体高度
                 const originalHeight = ent.height;
                 ent.height = textHeightPixels;
@@ -708,6 +730,8 @@ export const renderEntitiesToCanvas = (
                 let dy = 0;
 
                 if (isMText) {
+                    ctx.scale(widthFactor, 1.0);
+                    
                     // MTEXT 宽度约束 (如果是0表示不自动换行)
                     const mtextMaxWidth = (ent.width && ent.width > 0) ? (ent.width * transform.scale / Math.max(0.01, widthFactor)) : 0;
                     const lines = noMTextWrap ? text.split('\n') : wrapText(ctx, text, mtextMaxWidth);
@@ -738,27 +762,20 @@ export const renderEntitiesToCanvas = (
                     // MTEXT 规范：背景掩码 (Background Mask) 绘制
                     if ((ent as any).bgFill) {
                         ctx.save();
-                        // 因为 scale 已经应用，我们所有的计算都在 Un-scaled 的文本空间下
                         // 背景颜色
                         if ((ent as any).bgColor !== undefined && (ent as any).bgColor !== 256) {
                             ctx.fillStyle = getAutoCadColor((ent as any).bgColor, theme);
                         } else {
-                            // 使用图纸背景色 (Window Color)
                             ctx.fillStyle = theme === 'white' ? '#FFFFFF' : (theme === 'gray' ? '#808080' : '#212121');
                         }
                         
-                        // 计算文字最长行的实际包围盒宽度 (未缩放)
                         let maxLineWidth = 0;
                         lines.forEach(line => {
                             const w = ctx.measureText(line).width;
                             if (w > maxLineWidth) maxLineWidth = w;
                         });
                         
-                        // 考虑设置了 maxWidth 的包裹情况
                         const actualBlockWidth = (mtextMaxWidth > 0 && maxLineWidth > mtextMaxWidth) ? mtextMaxWidth : maxLineWidth;
-                        
-                        // MText Default Text Box Extension is roughly 1.5 times the border offset. 
-                        // AutoCad typically pads the background box by a small margin (e.g., 0.1 * textHeight).
                         const bgPadding = textHeightPixels * 0.1;
                         
                         let bgX = 0;
@@ -774,34 +791,58 @@ export const renderEntitiesToCanvas = (
                     });
                 } else {
                     // 普通文本对齐逻辑优化
-                    if (hAlign === 0) align = 'left';
-                    else if (hAlign === 1) align = 'center';
-                    else if (hAlign === 2) align = 'right';
-                    else if (hAlign === 4) align = 'center'; // Middle
-                    else if (hAlign === 3 || hAlign === 5) align = 'center'; // Aligned/Fit
-                    else align = 'left';
+                    // 处理 Aligned (3) 和 Fit (5) 的特殊缩放
+                    if (hAlign === 3 || hAlign === 5) {
+                        if (ent.secondPosition) {
+                            // 计算 position 和 secondPosition 之间的空间距离
+                            const dx = ent.secondPosition.x - ent.position.x;
+                            const dy_ = ent.secondPosition.y - ent.position.y;
+                            const dist = Math.sqrt(dx * dx + dy_ * dy_);
+                            
+                            // 测量文本在当前字体下的原始宽度 (不应用 widthFactor)
+                            const metrics = ctx.measureText(text);
+                            const textWidth = metrics.width;
+                            
+                            if (textWidth > 0.001) {
+                                if (hAlign === 5) {
+                                    // Fit (5): 横向拉伸填满 dist。
+                                    const targetWidth = dist * transform.scale;
+                                    const effectiveWidthFactor = targetWidth / textWidth;
+                                    ctx.scale(effectiveWidthFactor, 1.0);
+                                } else if (hAlign === 3) {
+                                    // Aligned (3): 长宽比填满 dist。
+                                    const targetWidth = dist * transform.scale;
+                                    const fontScale = targetWidth / textWidth;
+                                    ctx.scale(fontScale, fontScale);
+                                }
+                            }
+                        }
+                        align = 'left'; 
+                        baseline = (vAlign === 0) ? 'alphabetic' : (vAlign === 1 ? 'bottom' : (vAlign === 2 ? 'middle' : 'top'));
+                    } else {
+                        // 常规对齐应用默认 widthFactor
+                        ctx.scale(widthFactor, 1.0);
 
-                    if (vAlign === 0) baseline = 'alphabetic';
-                    else if (vAlign === 1) baseline = 'bottom';
-                    else if (vAlign === 2) baseline = 'middle'; 
-                    else if (vAlign === 3) baseline = 'top';
-                    else baseline = 'alphabetic';
+                        if (hAlign === 0) align = 'left';
+                        else if (hAlign === 1) align = 'center';
+                        else if (hAlign === 2) align = 'right';
+                        else if (hAlign === 4) align = 'center'; // 中间对齐 (Middle)
+                        else align = 'left';
 
-                    if (hAlign === 4 && vAlign === 0) {
-                        baseline = 'middle'; // Middle mode often implies vertical center
+                        if (vAlign === 0) baseline = 'alphabetic';
+                        else if (vAlign === 1) baseline = 'bottom';
+                        else if (vAlign === 2) baseline = 'middle'; 
+                        else if (vAlign === 3) baseline = 'top';
+                        else baseline = 'alphabetic';
+
+                        if (hAlign === 4 && vAlign === 0) {
+                            baseline = 'middle';
+                        }
                     }
 
                     ctx.textAlign = align;
                     ctx.textBaseline = baseline;
-                    
-                    if (hAlign === 3 || hAlign === 5) {
-                        // Fit or Aligned: The text is often stretched. Here we just fallback to drawing text at the midpoint.
-                        // Or if secondPosition is the right endpoint, we might have to place it relative.
-                        // Using 'center' with pos=secondPosition usually works well enough if the DXF specifies the text bounding box.
-                        ctx.fillText(text, 0, 0);
-                    } else {
-                        ctx.fillText(text, 0, 0);
-                    }
+                    ctx.fillText(text, 0, 0);
                 }
                 ctx.restore();
                 break;

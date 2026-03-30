@@ -58,7 +58,7 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<HTMLDivElement>(null);
   
-  // Toast Error Notification
+  // 弹窗错误通知
   const [toastMessage, setToastMessage] = useState<{msg: string, isError: boolean} | null>(null);
 
   const showToast = (msg: string, isError: boolean = true) => {
