@@ -57,6 +57,14 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
   const [isExporting, setIsExporting] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<HTMLDivElement>(null);
+  
+  // Toast Error Notification
+  const [toastMessage, setToastMessage] = useState<{msg: string, isError: boolean} | null>(null);
+
+  const showToast = (msg: string, isError: boolean = true) => {
+    setToastMessage({msg, isError});
+    setTimeout(() => setToastMessage(null), 5000);
+  };
 
   const lang = controlledLang || internalLang;
   const handleSetLang = useCallback((newLang: Language) => {
@@ -159,7 +167,7 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
     } catch (err) {
         const error = err instanceof Error ? err : new Error(String(err));
         onError?.(error);
-        alert("DXF Parse Error: " + error.message);
+        showToast(lang === 'zh' ? `解析错误: ${error.message}` : `Parse Error: ${error.message}`);
         console.error(err);
     } finally {
         setIsLoading(false);
@@ -177,7 +185,7 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
     } catch (err) {
         const error = err instanceof Error ? err : new Error(String(err));
         onError?.(error);
-        alert(error.message);
+        showToast(error.message);
         setIsLoading(false);
     }
   };
@@ -191,9 +199,9 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
       await processBuffer(buffer);
     };
     reader.onerror = () => {
-        const error = new Error("File Read Error");
+        const error = new Error(lang === 'zh' ? "文件读取失败" : "File Read Error");
         onError?.(error);
-        alert(error.message);
+        showToast(error.message);
         setIsLoading(false);
     };
     reader.readAsArrayBuffer(file);
@@ -329,7 +337,7 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
         // 立即使用新数据调整视图
         fitView(data.entities, data.blocks);
       } catch (err) {
-        alert("DXF Parse Error: " + (err as any).message);
+        showToast(lang === 'zh' ? `解析错误: ${(err as any).message}` : `DXF Parse Error: ${(err as any).message}`);
         console.error(err);
       } finally {
         setIsLoading(false);
@@ -343,10 +351,19 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
 
   return (
     <div ref={containerRef} className={`app-container ${uiTheme === 'dark' ? 'theme-dark' : ''}`} style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      {toastMessage && (
+        <div className="toast-container">
+          <div className={`toast ${toastMessage.isError ? 'error' : 'success'}`}>
+            <span className="toast-message">{toastMessage.msg}</span>
+            <span className="toast-close" onClick={() => setToastMessage(null)}>×</span>
+          </div>
+        </div>
+      )}
+
       {isLoading && (
         <div className="loading-overlay">
           <div className="loading-box">
-            <div className="loading-text">正在解析 DXF...</div>
+            <div className="loading-text">{lang === 'zh' ? '正在解析 DXF 文件...' : 'Parsing DXF File...'}</div>
             <div className="progress-bar-container">
               <div 
                 className="progress-bar"

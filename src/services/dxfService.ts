@@ -811,6 +811,7 @@ const parseText = (state: DxfParserState, common: any, type: EntityType): DxfTex
             case 31: z2 = parseFloat(g.value); break;
             case 71: entity.attachmentPoint = parseInt(g.value); break; 
             case 43: entity.boxHeight = parseFloat(g.value); break; 
+            case 44: if (type === EntityType.MTEXT) entity.lineSpacingFactor = parseFloat(g.value); break;
             case 2: if (type === EntityType.ATTDEF) entity.tag = g.value; break;
             case 70: if (type === EntityType.ATTDEF) entity.flags = parseInt(g.value); break;
             case 63: if (type === EntityType.MTEXT) entity.bgColor = parseInt(g.value); break;

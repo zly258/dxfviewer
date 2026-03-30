@@ -26,13 +26,15 @@ const getColor = (ent: AnyEntity, layer: DxfLayer | undefined, parentColor: stri
  */
 const getCanvasFont = (ent: AnyEntity, styles: Record<string, DxfStyle> | undefined): string => {
     const textEnt = (ent.type === EntityType.TEXT || ent.type === EntityType.MTEXT || ent.type === EntityType.ATTRIB || ent.type === EntityType.ATTDEF) ? (ent as DxfText) : null;
-    let height = textEnt ? (textEnt.height || 2.5) : 2.5;
     
-    // 高度优先级：1. 内联覆盖, 2. 实体高度, 3. 样式高度, 4. 默认值 2.5
+    // 高度优先级：1. 内联覆盖(MTEXT), 2. 实体高度, 3. 样式高度, 4. 默认值 2.5
     const styleName = textEnt?.styleName || 'STANDARD';
     const style = styles?.[styleName] || styles?.[styleName.toUpperCase()];
-    if (height <= 0) {
-        height = style?.height || 2.5;
+    
+    // 初始高度：实体高度，如果为0则使用样式高度
+    let height = textEnt?.height ?? 0;
+    if (height === 0 && style?.height) {
+        height = style.height;
     }
 
     let fontFamily = getStyleFontFamily(styleName, styles);
@@ -54,8 +56,13 @@ const getCanvasFont = (ent: AnyEntity, styles: Record<string, DxfStyle> | undefi
             const hVal = parseFloat(hMatch[1]);
             if (!isNaN(hVal)) {
                 if (hMatch[1].endsWith('x')) {
+                    // 乘数：如果当前高度为0，使用样式高度或默认值作为基准
+                    if (height === 0) {
+                        height = style?.height || 2.5;
+                    }
                     height *= hVal;
                 } else {
+                    // 绝对值：直接设置高度
                     height = hVal;
                 }
             }
@@ -109,8 +116,11 @@ const getCanvasFont = (ent: AnyEntity, styles: Record<string, DxfStyle> | undefi
     }
 
     // 根据字体类型调整高度
-    // SHX 字体（已映射）通常比 TrueType 字体需要更大的乘数
-    const scaleFactor = isTrueType ? 1.0 : 1.15;
+    // 在 AutoCAD 中，文本高度 (height) 指的是纯粹的大写字母高度 (Cap Height)
+    // 而在 Web Canvas / CSS 中，字体大小 (px) 指的是整个 Em 字框 (Em-box)，其中包含了顶部和底部的行间距/衬线
+    // 对于大多数标准的 Web 字体，大写字母高度通常占据 Em 框的 0.7 到 0.75
+    // 因此，要在网页上物理呈现与原生 AutoCAD 丝毫不差的高度，我们必须把字体大小反向放大约 1.33+ 倍
+    const scaleFactor = isTrueType ? 1.33 : 1.4; // SHX（映射字体）通常比 TrueType 需要一个略大的微调系数
     const correctedHeight = height * scaleFactor; 
 
     return `${fontStyle} ${fontWeight} ${correctedHeight}px ${fontFamily}`;
@@ -121,18 +131,24 @@ const getCanvasFont = (ent: AnyEntity, styles: Record<string, DxfStyle> | undefi
  */
 const cleanTextContent = (text: string): string => {
     if (!text) return "";
-    return text
-        .replace(/\\P/g, '\n')
-        .replace(/\\\{/g, '')
-        .replace(/\\\}/g, '')
-        .replace(/\\U\+([0-9A-Fa-f]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16))) // Unicode \U+XXXX
-        .replace(/\\S([^^]+)\^([^;]+);/g, '$1/$2') // 堆叠文字 \S...^...; -> .../...
-        .replace(/\\[A-Z][^;\\}]*(?:;|(?=[\\}]|$))/gi, '') // 安全地处理带或不带分号的代码
-        .replace(/\{|\}/g, '')
-        .replace(/%%[cC]/g, 'Ø')
-        .replace(/%%[dD]/g, '°')
-        .replace(/%%[pP]/g, '±')
-        .trim();
+    let result = text;
+    result = result.replace(/\\\\/g, '\x01');
+    result = result.replace(/\\\{/g, '\x02');
+    result = result.replace(/\\\}/g, '\x03');
+    result = result.replace(/\\U\+([0-9A-Fa-f]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+    result = result.replace(/%%[cC]/g, 'Ø');
+    result = result.replace(/%%[dD]/g, '°');
+    result = result.replace(/%%[pP]/g, '±');
+    result = result.replace(/\\[Pp]/g, '\n');
+    result = result.replace(/\\[Ss]([^;]*)[#^/]([^;]*);/g, '$1/$2');
+    result = result.replace(/\\[A-Za-z0-9][^;]*;/g, '');
+    result = result.replace(/\\[L|l|O|o|K|k]/g, '');
+    result = result.replace(/\\~/g, ' ');
+    result = result.replace(/[{}]/g, '');
+    result = result.replace(/\x01/g, '\\');
+    result = result.replace(/\x02/g, '{');
+    result = result.replace(/\x03/g, '}');
+    return result.trim();
 };
 
 /**
@@ -558,8 +574,14 @@ export const renderEntitiesToCanvas = (
                 break;
             }
             case EntityType.TEXT:
-            case EntityType.MTEXT: {
-                const text = cleanTextContent(ent.value);
+            case EntityType.MTEXT:
+            case EntityType.ATTRIB:
+            case EntityType.ATTDEF: {
+                // 根据实体类型使用不同的清理函数
+                // TEXT实体使用简单清理，MTEXT使用专门的清理函数
+                const text = ent.type === EntityType.MTEXT 
+                    ? cleanMText(ent.value)
+                    : cleanTextContent(ent.value);
                 if (!text) break;
                 
                 let widthFactor = 1;
@@ -579,12 +601,24 @@ export const renderEntitiesToCanvas = (
                 } else {
                     widthFactor = style?.widthFactor || 1;
                 }
+                
+                // 确保宽度因子不为零，避免文本宽度为零
+                if (Math.abs(widthFactor) < 0.01) {
+                    widthFactor = widthFactor >= 0 ? 0.01 : -0.01;
+                }
 
                 ctx.save();
                 
                 const hAlign = ent.hAlign || 0;
                 const vAlign = ent.vAlign || 0;
-                const pos = (!isMText && (hAlign !== 0 || vAlign !== 0) && ent.secondPosition) ? ent.secondPosition : ent.position;
+                // 位置选择逻辑：根据DXF规范
+                // hAlign=0,1,2: 使用position
+                // hAlign=3,4,5: 需要特殊处理（对齐、中间、拟合模式）
+                let pos = ent.position;
+                if (!isMText && (hAlign !== 0 || vAlign !== 0) && ent.secondPosition) {
+                    // DXF Spec: If alignment is non-zero, secondPosition is the insertion point
+                    pos = ent.secondPosition;
+                }
                 
                 const sPos = transform.project(pos);
                 ctx.translate(sPos.x, sPos.y);
@@ -595,8 +629,71 @@ export const renderEntitiesToCanvas = (
                     ctx.rotate(-totalRotation);
                 }
                 
+                // 计算有效高度：实体高度，如果为0则使用样式高度，如果样式高度为0则使用默认值2.5
+                let effectiveHeight = ent.height;
+                if (effectiveHeight === 0 && style?.height) {
+                    effectiveHeight = style.height;
+                }
+                if (effectiveHeight === 0) {
+                    effectiveHeight = 2.5;
+                }
+                
+                // 处理 MTEXT 内联高度覆盖 \H...;
+                if (isMText) {
+                    const hMatch = ent.value.match(/\\H([^;]+);/);
+                    if (hMatch && hMatch[1]) {
+                        const hVal = parseFloat(hMatch[1]);
+                        if (!isNaN(hVal)) {
+                            if (hMatch[1].endsWith('x')) {
+                                // 乘数：如果当前高度为0，使用样式高度或默认值作为基准
+                                if (effectiveHeight === 0) {
+                                    effectiveHeight = style?.height || 2.5;
+                                }
+                                effectiveHeight *= hVal;
+                            } else {
+                                // 绝对值：直接设置高度
+                                effectiveHeight = hVal;
+                            }
+                        }
+                    }
+                }
+                
                 // 将文本高度缩放到像素
-                const textHeightPixels = ent.height * transform.scale;
+                const textHeightPixels = effectiveHeight * transform.scale;
+                
+                // === 极速性能优化：文本 Greeking (微缩模糊) ===
+                // 当图纸超级大且文字在屏幕上小到无法辨认（< 3像素）时，使用绘制矩形替代高昂的字体光栅化
+                // 这一招能大幅解决测绘图、总图等包含海量小文字的卡顿问题
+                if (textHeightPixels < 3 && !isSelected) {
+                    const approxWidth = text.length * textHeightPixels * 0.7 * widthFactor;
+                    
+                    let rx = 0;
+                    let ry = 0;
+                    
+                    if (!isMText) {
+                        if (hAlign === 1 || hAlign === 4) rx = -approxWidth / 2;
+                        else if (hAlign === 2) rx = -approxWidth;
+                        
+                        if (vAlign === 1) ry = -textHeightPixels;
+                        else if (vAlign === 2 || hAlign === 4) ry = -textHeightPixels / 2;
+                        else if (vAlign === 3) ry = 0;
+                        else ry = -textHeightPixels * 0.8; // alphabetic baseline approx
+                    } else {
+                        const ap = ent.attachmentPoint || 1;
+                        if ([2, 5, 8].includes(ap)) rx = -approxWidth / 2;
+                        else if ([3, 6, 9].includes(ap)) rx = -approxWidth;
+                        
+                        if ([1, 2, 3].includes(ap)) ry = 0; 
+                        if ([4, 5, 6].includes(ap)) ry = -textHeightPixels / 2; 
+                        if ([7, 8, 9].includes(ap)) ry = -textHeightPixels; 
+                    }
+                    
+                    ctx.fillRect(rx, ry, approxWidth, textHeightPixels);
+                    ctx.restore();
+                    break;
+                }
+                // === 优化结束 ===
+
                 const scaleY = 1.0; 
                 ctx.scale(widthFactor, scaleY); 
                 
@@ -611,41 +708,100 @@ export const renderEntitiesToCanvas = (
                 let dy = 0;
 
                 if (isMText) {
-                    const lines = noMTextWrap ? text.split('\n') : wrapText(ctx, text, (ent.width || 0) * transform.scale);
-                    // 调整：行高倍数优化，使其更符合 CAD 渲染效果
-                    const lineHeight = textHeightPixels * 1.2; 
-                    const totalHeight = lines.length * lineHeight;
+                    // MTEXT 宽度约束 (如果是0表示不自动换行)
+                    const mtextMaxWidth = (ent.width && ent.width > 0) ? (ent.width * transform.scale / Math.max(0.01, widthFactor)) : 0;
+                    const lines = noMTextWrap ? text.split('\n') : wrapText(ctx, text, mtextMaxWidth);
+                    
+                    // 根据 AutoCAD DXF 规范：
+                    // MTEXT 默认行距 (3-on-5) 是字体实际高度的 1.666 倍。
+                    // 并且组码 44 乘数决定了这个标准间距的比例系数。
+                    const lineSpacingRaw = (ent as any).lineSpacingFactor;
+                    const lineSpacingFactor = (lineSpacingRaw !== undefined && !isNaN(lineSpacingRaw)) ? lineSpacingRaw : 1;
+                    const lineHeight = textHeightPixels * 1.666 * lineSpacingFactor; 
+                    
+                    // 多行文本块几何学上的真实净高度是指：
+                    // （行数 - 1）* 它们之间的行间距间隙 + 最后一行的文字本身净高
+                    const blockHeight = (lines.length > 0) ? ((lines.length - 1) * lineHeight + textHeightPixels) : 0;
                     const ap = ent.attachmentPoint || 1;
                     
                     if ([2, 5, 8].includes(ap)) align = 'center';
                     else if ([3, 6, 9].includes(ap)) align = 'right';
                     
                     if ([1, 2, 3].includes(ap)) dy = 0; 
-                    if ([4, 5, 6].includes(ap)) dy = -totalHeight / 2; 
-                    if ([7, 8, 9].includes(ap)) dy = -totalHeight; 
+                    if ([4, 5, 6].includes(ap)) dy = -blockHeight / 2; 
+                    if ([7, 8, 9].includes(ap)) dy = -blockHeight; 
                     
                     baseline = 'top'; 
                     ctx.textAlign = align;
                     ctx.textBaseline = baseline;
+                    
+                    // MTEXT 规范：背景掩码 (Background Mask) 绘制
+                    if ((ent as any).bgFill) {
+                        ctx.save();
+                        // 因为 scale 已经应用，我们所有的计算都在 Un-scaled 的文本空间下
+                        // 背景颜色
+                        if ((ent as any).bgColor !== undefined && (ent as any).bgColor !== 256) {
+                            ctx.fillStyle = getAutoCadColor((ent as any).bgColor, theme);
+                        } else {
+                            // 使用图纸背景色 (Window Color)
+                            ctx.fillStyle = theme === 'white' ? '#FFFFFF' : (theme === 'gray' ? '#808080' : '#212121');
+                        }
+                        
+                        // 计算文字最长行的实际包围盒宽度 (未缩放)
+                        let maxLineWidth = 0;
+                        lines.forEach(line => {
+                            const w = ctx.measureText(line).width;
+                            if (w > maxLineWidth) maxLineWidth = w;
+                        });
+                        
+                        // 考虑设置了 maxWidth 的包裹情况
+                        const actualBlockWidth = (mtextMaxWidth > 0 && maxLineWidth > mtextMaxWidth) ? mtextMaxWidth : maxLineWidth;
+                        
+                        // MText Default Text Box Extension is roughly 1.5 times the border offset. 
+                        // AutoCad typically pads the background box by a small margin (e.g., 0.1 * textHeight).
+                        const bgPadding = textHeightPixels * 0.1;
+                        
+                        let bgX = 0;
+                        if (align === 'center') bgX = -actualBlockWidth / 2;
+                        else if (align === 'right') bgX = -actualBlockWidth;
+                        
+                        ctx.fillRect(bgX - bgPadding, dy - bgPadding, actualBlockWidth + bgPadding * 2, blockHeight + bgPadding * 2);
+                        ctx.restore();
+                    }
                     
                     lines.forEach((line, i) => {
                         ctx.fillText(line, 0, dy + i * lineHeight);
                     });
                 } else {
                     // 普通文本对齐逻辑优化
-                    if (hAlign === 1 || hAlign === 4) align = 'center';
+                    if (hAlign === 0) align = 'left';
+                    else if (hAlign === 1) align = 'center';
                     else if (hAlign === 2) align = 'right';
-                    else if (hAlign === 3) align = 'left';
-                    else if (hAlign === 5) align = 'center';
+                    else if (hAlign === 4) align = 'center'; // Middle
+                    else if (hAlign === 3 || hAlign === 5) align = 'center'; // Aligned/Fit
+                    else align = 'left';
 
-                    if (vAlign === 1) baseline = 'bottom';
+                    if (vAlign === 0) baseline = 'alphabetic';
+                    else if (vAlign === 1) baseline = 'bottom';
                     else if (vAlign === 2) baseline = 'middle'; 
                     else if (vAlign === 3) baseline = 'top';
                     else baseline = 'alphabetic';
 
+                    if (hAlign === 4 && vAlign === 0) {
+                        baseline = 'middle'; // Middle mode often implies vertical center
+                    }
+
                     ctx.textAlign = align;
                     ctx.textBaseline = baseline;
-                    ctx.fillText(text, 0, 0);
+                    
+                    if (hAlign === 3 || hAlign === 5) {
+                        // Fit or Aligned: The text is often stretched. Here we just fallback to drawing text at the midpoint.
+                        // Or if secondPosition is the right endpoint, we might have to place it relative.
+                        // Using 'center' with pos=secondPosition usually works well enough if the DXF specifies the text bounding box.
+                        ctx.fillText(text, 0, 0);
+                    } else {
+                        ctx.fillText(text, 0, 0);
+                    }
                 }
                 ctx.restore();
                 break;
@@ -824,11 +980,24 @@ export const renderEntitiesToCanvas = (
                 const layerName = (ent.layer === '0' && parentLayerName) ? parentLayerName : ent.layer;
                 // 递归绘制块中的所有实体
                 const childNoWrap = noMTextWrap || ent.type === EntityType.ACAD_TABLE;
-                block.entities.forEach(child => drawEntity(child, nestedTransform, layerName, color, isSelected, depth + 1, childNoWrap));
+                block.entities.forEach(child => {
+                    // 对于 INSERT 来说，内部定义的 ATTDEF（属性定义）只是模板，
+                    // 原生软件中插入的块不显示 ATTDEF，而是显示其对应的独立 ATTRIB，因此在这里过滤掉以防止重叠。
+                    if (child.type === EntityType.ATTDEF) return;
+                    drawEntity(child, nestedTransform, layerName, color, isSelected, depth + 1, childNoWrap)
+                });
                 
                 // 处理块中的属性 (ATTRIB)
                 if ((ent as any).attributes) {
-                    (ent as any).attributes.forEach((attr: AnyEntity) => drawEntity(attr, transform, layerName, color, isSelected, depth + 1, childNoWrap));
+                    (ent as any).attributes.forEach((attr: AnyEntity) => {
+                        const attrText = attr as DxfText;
+                        // 过滤属性显示：只显示有值的，空的或等于标签的默认值不显示
+                        const val = attrText.value ? attrText.value.trim() : '';
+                        if (!val) return;
+                        if (attrText.tag && val === attrText.tag) return;
+                        
+                        drawEntity(attr, transform, layerName, color, isSelected, depth + 1, childNoWrap);
+                    });
                 }
                 break;
             }

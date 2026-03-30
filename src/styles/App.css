@@ -1,0 +1,83 @@
+.app-main-container {
+  background-color: var(--bg-primary, #f0f0f0);
+}
+
+.tabs-container {
+  display: flex;
+  background-color: #2b2b2b;
+  color: #ccc;
+  overflow-x: auto;
+  align-items: center;
+  user-select: none;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+  white-space: nowrap;
+  scroll-behavior: auto; /* For smoother trackpad feeling, do not use smooth since mousewheel uses discrete steps */
+}
+
+/* Chrome/Safari */
+.tabs-container::-webkit-scrollbar {
+  display: none;
+}
+
+.tab-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 16px;
+  background-color: #383838;
+  border-right: 1px solid #222;
+  cursor: pointer;
+  max-width: 200px;
+  flex-shrink: 0;
+}
+
+.tab-item:hover {
+  background-color: #444;
+}
+
+.tab-item.active {
+  background-color: #505050;
+  color: #fff;
+  border-top: 2px solid #007acc;
+}
+
+.tab-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  font-size: 13px;
+}
+
+.tab-close {
+  margin-left: 8px;
+  font-size: 16px;
+  line-height: 1;
+  height: 16px;
+  width: 16px;
+  text-align: center;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.6;
+}
+
+.tab-close:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+  opacity: 1;
+}
+
+.tab-new {
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 18px;
+  font-weight: bold;
+  line-height: 1;
+  color: #888;
+  flex-shrink: 0;
+}
+
+.tab-new:hover {
+  color: #fff;
+}

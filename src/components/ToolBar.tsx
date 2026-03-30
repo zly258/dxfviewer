@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Language, UI_TRANSLATIONS } from '../constants/i18n';
 
 /**
@@ -45,47 +45,46 @@ const ToolBar: React.FC<ToolBarProps> = ({
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const t = UI_TRANSLATIONS[lang];
 
-  return (
-    <div className="toolbar">
-      {/* 文件 Menu */}
-      <div 
-        className={`menu-item ${activeMenu === 'file' ? 'active' : ''}`}
-        onMouseEnter={() => setActiveMenu('file')}
-        onMouseLeave={() => setActiveMenu(null)}
-      >
-        <span>{t.file}</span>
-        {activeMenu === 'file' && (
-          <div className="dropdown-menu">
-            {showOpen && (
-              <label className="dropdown-item">
-                <span>{t.open}</span>
-                <input type="file" accept=".dxf" className="hidden" onChange={onImport} />
-              </label>
-            )}
-            <div onClick={onClear} className="dropdown-item">
-               <span>{t.clear}</span>
-            </div>
-          </div>
-        )}
-      </div>
+  useEffect(() => {
+    const closeMenu = () => setActiveMenu(null);
+    if (activeMenu) {
+      window.addEventListener('click', closeMenu);
+    }
+    return () => {
+      window.removeEventListener('click', closeMenu);
+    };
+  }, [activeMenu]);
 
+  const toggleMenu = (e: React.MouseEvent, menu: string) => {
+    e.stopPropagation();
+    setActiveMenu(activeMenu === menu ? null : menu);
+  };
+
+  const handleMenuEnter = (menu: string) => {
+    if (activeMenu && activeMenu !== menu) {
+      setActiveMenu(menu);
+    }
+  };
+
+  return (
+    <div className="toolbar" style={{ backgroundColor: uiTheme === 'dark' ? '#252526' : '#f0f0f0', borderBottom: '1px solid var(--border-color)' }}>
       {/* 视图 Menu */}
       <div 
         className={`menu-item ${activeMenu === 'view' ? 'active' : ''}`}
-        onMouseEnter={() => setActiveMenu('view')}
-        onMouseLeave={() => setActiveMenu(null)}
+        onClick={(e) => toggleMenu(e, 'view')}
+        onMouseEnter={() => handleMenuEnter('view')}
       >
-        <span>{t.view}</span>
+        <span>{t.view} (V)</span>
         {activeMenu === 'view' && (
           <div className="dropdown-menu" style={{ minWidth: '160px' }}>
-            <div onClick={onFitView} className="dropdown-item">
+            <div onClick={() => { setActiveMenu(null); onFitView(); }} className="dropdown-item">
               <span>{t.fitView}</span>
             </div>
-            <div onClick={onToggleDrawingExtents} className={`dropdown-item ${showDrawingExtents ? 'checked' : ''}`}>
+            <div onClick={() => { setActiveMenu(null); onToggleDrawingExtents(); }} className={`dropdown-item ${showDrawingExtents ? 'checked' : ''}`}>
               <span>{t.showDrawingExtents}</span>
             </div>
             <div className="divider"></div>
-            <div onClick={() => onSetLang(lang === 'zh' ? 'en' : 'zh')} className="dropdown-item">
+            <div onClick={() => { setActiveMenu(null); onSetLang(lang === 'zh' ? 'en' : 'zh'); }} className="dropdown-item">
               <span>{t.language}: {lang === 'zh' ? 'English' : '简体中文'}</span>
             </div>
           </div>
@@ -95,23 +94,23 @@ const ToolBar: React.FC<ToolBarProps> = ({
       {/* 界面 Menu (Ref 3DBrowser) */}
       <div 
         className={`menu-item ${activeMenu === 'interface' ? 'active' : ''}`}
-        onMouseEnter={() => setActiveMenu('interface')}
-        onMouseLeave={() => setActiveMenu(null)}
+        onClick={(e) => toggleMenu(e, 'interface')}
+        onMouseEnter={() => handleMenuEnter('interface')}
       >
-        <span>{lang === 'zh' ? '界面' : 'Interface'}</span>
+        <span>{lang === 'zh' ? '界面 (I)' : 'Interface (I)'}</span>
         {activeMenu === 'interface' && (
           <div className="dropdown-menu" style={{ minWidth: '180px' }}>
-            <div onClick={onToggleSidebar} className={`dropdown-item ${showSidebar ? 'checked' : ''}`}>
+            <div onClick={() => { setActiveMenu(null); onToggleSidebar(); }} className={`dropdown-item ${showSidebar ? 'checked' : ''}`}>
               <span>{t.layers}</span>
             </div>
-            <div onClick={onToggleProperties} className={`dropdown-item ${showProperties ? 'checked' : ''}`}>
+            <div onClick={() => { setActiveMenu(null); onToggleProperties(); }} className={`dropdown-item ${showProperties ? 'checked' : ''}`}>
                <span>{t.properties}</span>
             </div>
             <div className="divider"></div>
-            <div onClick={() => onSetUiTheme('light')} className={`dropdown-item ${uiTheme === 'light' ? 'checked' : ''}`}>
+            <div onClick={() => { setActiveMenu(null); onSetUiTheme('light'); }} className={`dropdown-item ${uiTheme === 'light' ? 'checked' : ''}`}>
               <span>{lang === 'zh' ? '浅色模式' : 'Light Mode'}</span>
             </div>
-            <div onClick={() => onSetUiTheme('dark')} className={`dropdown-item ${uiTheme === 'dark' ? 'checked' : ''}`}>
+            <div onClick={() => { setActiveMenu(null); onSetUiTheme('dark'); }} className={`dropdown-item ${uiTheme === 'dark' ? 'checked' : ''}`}>
               <span>{lang === 'zh' ? '深色模式' : 'Dark Mode'}</span>
             </div>
           </div>
@@ -121,22 +120,22 @@ const ToolBar: React.FC<ToolBarProps> = ({
       {/* 设置 Menu (Background) */}
       <div 
         className={`menu-item ${activeMenu === 'settings' ? 'active' : ''}`}
-        onMouseEnter={() => setActiveMenu('settings')}
-        onMouseLeave={() => setActiveMenu(null)}
+        onClick={(e) => toggleMenu(e, 'settings')}
+        onMouseEnter={() => handleMenuEnter('settings')}
       >
-        <span>{lang === 'zh' ? '设置' : 'Settings'}</span>
+        <span>{lang === 'zh' ? '工具 (T)' : 'Tools (T)'}</span>
         {activeMenu === 'settings' && (
           <div className="dropdown-menu" style={{ minWidth: '180px' }}>
             <div className="dropdown-header" style={{ padding: '4px 12px', fontSize: '10px', color: 'var(--text-secondary)' }}>
               {lang === 'zh' ? '背景颜色' : 'Background Color'}
             </div>
-            <div onClick={() => onSetCanvasTheme('black')} className={`dropdown-item ${canvasTheme === 'black' ? 'checked' : ''}`}>
+            <div onClick={() => { setActiveMenu(null); onSetCanvasTheme('black'); }} className={`dropdown-item ${canvasTheme === 'black' ? 'checked' : ''}`}>
               <span>{lang === 'zh' ? '黑色' : 'Black'}</span>
             </div>
-            <div onClick={() => onSetCanvasTheme('white')} className={`dropdown-item ${canvasTheme === 'white' ? 'checked' : ''}`}>
+            <div onClick={() => { setActiveMenu(null); onSetCanvasTheme('white'); }} className={`dropdown-item ${canvasTheme === 'white' ? 'checked' : ''}`}>
               <span>{lang === 'zh' ? '白色' : 'White'}</span>
             </div>
-            <div onClick={() => onSetCanvasTheme('gray')} className={`dropdown-item ${canvasTheme === 'gray' ? 'checked' : ''}`}>
+            <div onClick={() => { setActiveMenu(null); onSetCanvasTheme('gray'); }} className={`dropdown-item ${canvasTheme === 'gray' ? 'checked' : ''}`}>
               <span>{lang === 'zh' ? '灰色' : 'Gray'}</span>
             </div>
           </div>

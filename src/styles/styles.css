@@ -509,3 +509,52 @@ body {
 .hidden {
   display: none;
 }
+
+/* Toast Notification */
+.toast-container {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.toast {
+  background-color: #f44336;
+  color: white;
+  padding: 12px 20px;
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 250px;
+  animation: slideIn 0.3s ease-out;
+}
+
+.toast.success {
+  background-color: #4CAF50;
+}
+
+.toast-message {
+  flex: 1;
+  font-size: 13px;
+  margin-right: 15px;
+}
+
+.toast-close {
+  cursor: pointer;
+  font-weight: bold;
+  opacity: 0.8;
+}
+
+.toast-close:hover {
+  opacity: 1;
+}
+
+@keyframes slideIn {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
