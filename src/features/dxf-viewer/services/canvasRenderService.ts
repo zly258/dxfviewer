@@ -1,24 +1,31 @@
-import { AnyEntity, EntityType, DxfLayer, DxfBlock, DxfStyle, Point2D, DxfInsert, HatchLoop, DxfText, DxfLineType, ViewPort } from '../types';
-import { DEFAULT_COLOR } from '../constants';
-import { getAutoCadColor, AUTO_CAD_COLORS, trueColorToHex } from '../utils/colorUtils';
+import { AnyEntity, EntityType, DxfLayer, DxfBlock, DxfStyle, Point2D, DxfInsert, HatchLoop, DxfText, DxfLineType, ViewPort } from '../../../types';
+import { CANVAS_THEME_COLORS, DEFAULT_ENTITY_COLOR, FALLBACK_DRAWING_COLORS, SELECTION_CONFIG, TEXT_RENDER_CONFIG } from '../../../shared/config/viewerConfig';
+import { CAD_BY_BLOCK_COLOR, CAD_BY_LAYER_COLOR, CAD_DEFAULT_TEXT_HEIGHT, CAD_DEFAULT_TEXT_STYLE } from '../../../shared/constants/cadConstants';
+import { CanvasTheme } from '../../../shared/types/ui';
+import { getAutoCadColor, AUTO_CAD_COLORS, trueColorToHex, ensureReadableColor } from '../utils/colorUtils';
 import { getBSplinePoints, cleanMText } from './dxfService';
 import { getStyleFontFamily, FONT_STACKS, mapCadFontToWebFont } from './fontService';
 
-const SELECTION_COLOR = '#0078d4'; // 选中颜色
+const SELECTION_COLOR = SELECTION_CONFIG.color;
 
 /**
  * 获取实体颜色
  */
-const getColor = (ent: AnyEntity, layer: DxfLayer | undefined, parentColor: string | undefined, theme: 'black' | 'white' | 'gray'): string => {
-    if (ent.trueColor !== undefined) return trueColorToHex(ent.trueColor);
-    const entColor = ent.color;
-    if (entColor === 0 && parentColor) return parentColor; // 随块 (ByBlock)
-    if (entColor === 256 || entColor === undefined) { // 随层 (ByLayer)
-        if (layer?.trueColor !== undefined) return trueColorToHex(layer.trueColor);
-        const bgIsDark = theme === 'black' || theme === 'gray';
-        return layer ? getAutoCadColor(layer.color, theme) : (bgIsDark ? '#FFFFFF' : '#000000');
+const getColor = (ent: AnyEntity, layer: DxfLayer | undefined, parentColor: string | undefined, theme: CanvasTheme): string => {
+    let color: string;
+    if (ent.trueColor !== undefined) {
+        color = trueColorToHex(ent.trueColor);
+    } else {
+        const entColor = ent.color;
+        if (entColor === CAD_BY_BLOCK_COLOR && parentColor) color = parentColor;
+        else if (entColor === CAD_BY_LAYER_COLOR || entColor === undefined) {
+            if (layer?.trueColor !== undefined) color = trueColorToHex(layer.trueColor);
+            else color = layer ? getAutoCadColor(layer.color, theme) : (FALLBACK_DRAWING_COLORS[theme]);
+        } else {
+            color = getAutoCadColor(entColor, theme);
+        }
     }
-    return getAutoCadColor(entColor, theme);
+    return ensureReadableColor(color, theme);
 };
 
 /**
@@ -28,7 +35,7 @@ const getCanvasFont = (ent: AnyEntity, styles: Record<string, DxfStyle> | undefi
     const textEnt = (ent.type === EntityType.TEXT || ent.type === EntityType.MTEXT || ent.type === EntityType.ATTRIB || ent.type === EntityType.ATTDEF) ? (ent as DxfText) : null;
     
     // 高度优先级：1. 内联覆盖(MTEXT), 2. 实体高度, 3. 样式高度, 4. 默认值 2.5
-    const styleName = textEnt?.styleName || 'STANDARD';
+    const styleName = textEnt?.styleName || CAD_DEFAULT_TEXT_STYLE;
     const style = styles?.[styleName] || styles?.[styleName.toUpperCase()];
     
     // 初始高度：实体高度，如果为0则使用样式高度
@@ -58,7 +65,7 @@ const getCanvasFont = (ent: AnyEntity, styles: Record<string, DxfStyle> | undefi
                 if (hMatch[1].endsWith('x')) {
                     // 乘数：如果当前高度为0，使用样式高度或默认值作为基准
                     if (height === 0) {
-                        height = style?.height || 2.5;
+                        height = style?.height || CAD_DEFAULT_TEXT_HEIGHT;
                     }
                     height *= hVal;
                 } else {
@@ -120,7 +127,7 @@ const getCanvasFont = (ent: AnyEntity, styles: Record<string, DxfStyle> | undefi
     // 而在 Web Canvas / CSS 中，字体大小 (px) 指的是整个 Em 字框 (Em-box)，其中包含了顶部和底部的行间距/衬线
     // 对于大多数标准的 Web 字体，大写字母高度通常占据 Em 框的 0.7 到 0.75
     // 因此，要在网页上物理呈现与原生 AutoCAD 丝毫不差的高度，我们必须把字体大小反向放大约 1.33+ 倍
-    const scaleFactor = isTrueType ? 1.33 : 1.4; // SHX（映射字体）通常比 TrueType 需要一个略大的微调系数
+    const scaleFactor = isTrueType ? TEXT_RENDER_CONFIG.trueTypeFontHeightFactor : TEXT_RENDER_CONFIG.shxFontHeightFactor; // SHX（映射字体）通常比 TrueType 需要一个略大的微调系数
     const correctedHeight = height * scaleFactor; 
 
     return `${fontStyle} ${fontWeight} ${correctedHeight}px ${fontFamily}`;
@@ -355,13 +362,11 @@ export const renderEntitiesToCanvas = (
     selectedIds: Set<string>,
     width: number,
     height: number,
-    theme: 'black' | 'white' | 'gray',
+    theme: CanvasTheme,
     overlayExtents?: { min: Point2D, max: Point2D } | null
 ) => {
     // 使用背景颜色清除画布
-    if (theme === 'white') ctx.fillStyle = '#FFFFFF';
-    else if (theme === 'gray') ctx.fillStyle = '#808080';
-    else ctx.fillStyle = '#212121';
+    ctx.fillStyle = CANVAS_THEME_COLORS[theme];
     ctx.fillRect(0, 0, width, height);
 
     const safeZoom = isNaN(viewPort.zoom) || viewPort.zoom === 0 ? 1 : viewPort.zoom;
@@ -577,8 +582,7 @@ export const renderEntitiesToCanvas = (
             case EntityType.MTEXT:
             case EntityType.ATTRIB:
             case EntityType.ATTDEF: {
-                // 根据实体类型使用不同的清理函数
-                // TEXT实体使用简单清理，MTEXT使用专门的清理函数
+                // TEXT 与 MTEXT 的格式控制码不同，分别清理后再绘制。
                 const text = ent.type === EntityType.MTEXT 
                     ? cleanMText(ent.value)
                     : cleanTextContent(ent.value);
@@ -603,8 +607,8 @@ export const renderEntitiesToCanvas = (
                 }
                 
                 // 确保宽度因子不为零，避免文本宽度为零
-                if (Math.abs(widthFactor) < 0.01) {
-                    widthFactor = widthFactor >= 0 ? 0.01 : -0.01;
+                if (Math.abs(widthFactor) < TEXT_RENDER_CONFIG.minimumWidthFactor) {
+                    widthFactor = widthFactor >= 0 ? TEXT_RENDER_CONFIG.minimumWidthFactor : -TEXT_RENDER_CONFIG.minimumWidthFactor;
                 }
 
                 ctx.save();
@@ -641,7 +645,7 @@ export const renderEntitiesToCanvas = (
                     effectiveHeight = style.height;
                 }
                 if (effectiveHeight === 0) {
-                    effectiveHeight = 2.5;
+                    effectiveHeight = CAD_DEFAULT_TEXT_HEIGHT;
                 }
                 
                 // 处理 MTEXT 内联高度覆盖 \H...;
@@ -653,7 +657,7 @@ export const renderEntitiesToCanvas = (
                             if (hMatch[1].endsWith('x')) {
                                 // 乘数：如果当前高度为0，使用样式高度或默认值作为基准
                                 if (effectiveHeight === 0) {
-                                    effectiveHeight = style?.height || 2.5;
+                                    effectiveHeight = style?.height || CAD_DEFAULT_TEXT_HEIGHT;
                                 }
                                 effectiveHeight *= hVal;
                             } else {
@@ -667,10 +671,10 @@ export const renderEntitiesToCanvas = (
                 // 将文本高度缩放到像素
                 const textHeightPixels = effectiveHeight * transform.scale;
                 
-                // === 极速性能优化：文本 Greeking (微缩模糊) ===
-                if (textHeightPixels < 3 && !isSelected) {
+                // 极小文字以占位块绘制，避免大量不可读文字拖慢视图缩放。
+                if (textHeightPixels < TEXT_RENDER_CONFIG.tinyTextPixelHeight && !isSelected) {
                     let roughLen = text.length;
-                    let approxWidth = roughLen * textHeightPixels * 0.7 * widthFactor;
+                    let approxWidth = roughLen * textHeightPixels * TEXT_RENDER_CONFIG.averageCharacterWidthFactor * widthFactor;
                     let blockH = textHeightPixels;
                     
                     let rx = 0;
@@ -683,7 +687,7 @@ export const renderEntitiesToCanvas = (
                         if (vAlign === 1) ry = -textHeightPixels;
                         else if (vAlign === 2 || hAlign === 4) ry = -textHeightPixels / 2;
                         else if (vAlign === 3) ry = 0;
-                        else ry = -textHeightPixels * 0.8; // 基线近似值 (alphabetic baseline)
+                        else ry = -textHeightPixels * TEXT_RENDER_CONFIG.alphabeticBaselineOffsetFactor; // 基线近似值 (alphabetic baseline)
                     } else {
                         // MText 支持多行，预估几何块大小以防止远处看变成极长单行
                         const mtextMaxWidth = (ent.width && ent.width > 0) ? (ent.width * transform.scale) : 0;
@@ -692,16 +696,16 @@ export const renderEntitiesToCanvas = (
                         
                         // 基于最大宽度粗略计算自动换行的行数
                         if (mtextMaxWidth > 0) {
-                            const charsPerLine = Math.max(1, mtextMaxWidth / (textHeightPixels * 0.7 * widthFactor));
+                            const charsPerLine = Math.max(1, mtextMaxWidth / (textHeightPixels * TEXT_RENDER_CONFIG.averageCharacterWidthFactor * widthFactor));
                             estimatedTotalLines = Math.max(explicitLines, Math.ceil(roughLen / charsPerLine));
                             approxWidth = Math.min(approxWidth, mtextMaxWidth); 
                         } else if (explicitLines > 1) {
-                            approxWidth = (roughLen / explicitLines) * textHeightPixels * 0.7 * widthFactor;
+                            approxWidth = (roughLen / explicitLines) * textHeightPixels * TEXT_RENDER_CONFIG.averageCharacterWidthFactor * widthFactor;
                         }
                         
                         const lineSpacingRaw = (ent as any).lineSpacingFactor;
                         const lineSpacingFactor = (lineSpacingRaw !== undefined && !isNaN(lineSpacingRaw)) ? lineSpacingRaw : 1;
-                        const lineHeight = textHeightPixels * 1.666 * lineSpacingFactor; 
+                        const lineHeight = textHeightPixels * TEXT_RENDER_CONFIG.mtextDefaultLineSpacingFactor * lineSpacingFactor; 
                         blockH = (estimatedTotalLines > 0) ? ((estimatedTotalLines - 1) * lineHeight + textHeightPixels) : 0;
                         
                         const ap = ent.attachmentPoint || 1;
@@ -717,8 +721,6 @@ export const renderEntitiesToCanvas = (
                     ctx.restore();
                     break;
                 }
-                // === 优化结束 ===
-
                 // 为画布字体更新字体高度
                 const originalHeight = ent.height;
                 ent.height = textHeightPixels;
@@ -733,7 +735,7 @@ export const renderEntitiesToCanvas = (
                     ctx.scale(widthFactor, 1.0);
                     
                     // MTEXT 宽度约束 (如果是0表示不自动换行)
-                    const mtextMaxWidth = (ent.width && ent.width > 0) ? (ent.width * transform.scale / Math.max(0.01, widthFactor)) : 0;
+                    const mtextMaxWidth = (ent.width && ent.width > 0) ? (ent.width * transform.scale / Math.max(TEXT_RENDER_CONFIG.minimumWidthFactor, widthFactor)) : 0;
                     const lines = noMTextWrap ? text.split('\n') : wrapText(ctx, text, mtextMaxWidth);
                     
                     // 根据 AutoCAD DXF 规范：
@@ -741,7 +743,7 @@ export const renderEntitiesToCanvas = (
                     // 并且组码 44 乘数决定了这个标准间距的比例系数。
                     const lineSpacingRaw = (ent as any).lineSpacingFactor;
                     const lineSpacingFactor = (lineSpacingRaw !== undefined && !isNaN(lineSpacingRaw)) ? lineSpacingRaw : 1;
-                    const lineHeight = textHeightPixels * 1.666 * lineSpacingFactor; 
+                    const lineHeight = textHeightPixels * TEXT_RENDER_CONFIG.mtextDefaultLineSpacingFactor * lineSpacingFactor; 
                     
                     // 多行文本块几何学上的真实净高度是指：
                     // （行数 - 1）* 它们之间的行间距间隙 + 最后一行的文字本身净高
@@ -763,10 +765,10 @@ export const renderEntitiesToCanvas = (
                     if ((ent as any).bgFill) {
                         ctx.save();
                         // 背景颜色
-                        if ((ent as any).bgColor !== undefined && (ent as any).bgColor !== 256) {
+                        if ((ent as any).bgColor !== undefined && (ent as any).bgColor !== CAD_BY_LAYER_COLOR) {
                             ctx.fillStyle = getAutoCadColor((ent as any).bgColor, theme);
                         } else {
-                            ctx.fillStyle = theme === 'white' ? '#FFFFFF' : (theme === 'gray' ? '#808080' : '#212121');
+                            ctx.fillStyle = CANVAS_THEME_COLORS[theme];
                         }
                         
                         let maxLineWidth = 0;
@@ -776,7 +778,7 @@ export const renderEntitiesToCanvas = (
                         });
                         
                         const actualBlockWidth = (mtextMaxWidth > 0 && maxLineWidth > mtextMaxWidth) ? mtextMaxWidth : maxLineWidth;
-                        const bgPadding = textHeightPixels * 0.1;
+                        const bgPadding = textHeightPixels * TEXT_RENDER_CONFIG.mtextBackgroundPaddingFactor;
                         
                         let bgX = 0;
                         if (align === 'center') bgX = -actualBlockWidth / 2;
@@ -803,7 +805,7 @@ export const renderEntitiesToCanvas = (
                             const metrics = ctx.measureText(text);
                             const textWidth = metrics.width;
                             
-                            if (textWidth > 0.001) {
+                            if (textWidth > TEXT_RENDER_CONFIG.minimumMeasuredTextWidth) {
                                 if (hAlign === 5) {
                                     // Fit (5): 横向拉伸填满 dist。
                                     const targetWidth = dist * transform.scale;
@@ -851,35 +853,11 @@ export const renderEntitiesToCanvas = (
             case EntityType.INSERT: {
                 let block = blocks[ent.blockName];
                 
-                // 恢复块渲染，但增加校验
-                // 如果是 ACAD_TABLE，我们需要确保块的变换是合理的
-                // 之前的问题可能是 ACAD_TABLE 实体的 scale 属性导致了块内容的扭曲
-                // 或者 ACAD_TABLE 的 block 内部实体的坐标系与标准 INSERT 不同
-                
-                if (ent.type === EntityType.ACAD_TABLE) {
-                    // 对于 ACAD_TABLE，如果存在对应的匿名块，通常是最佳的渲染方式。
-                    // 但是，如果之前的渲染有问题，可能是因为我们在嵌套变换中重复应用了某些属性。
-                    // DXF 规范中，ACAD_TABLE 的 Block Record 包含了完整的几何图形。
-                    // 关键在于：这个 Block 是如何被插入的。
-                    // 
-                    // 如果我们找不到块，或者块是空的，才回退到自绘。
-                    // 现在的策略：如果找到块，使用块；找不到，使用自绘。
-                    // 为了修复“高度巨大宽度巨小”，我们需要检查 ACAD_TABLE 的 direction 向量对渲染的影响
-                    // 
-                    // 暂时保留块渲染，但在嵌套变换中做特殊处理
-                }
+                // 表格优先使用匿名块渲染；块缺失或为空时回退到网格和单元格文字绘制。
 
-                // 如果未设置或找不到 blockName，则为 ACAD_TABLE 提供兜底处理
-                if (ent.type === EntityType.ACAD_TABLE && !block) {
-                    // 尝试查找以 *T 开头且可能相关的块
-                    // （这是一种 hack 手法，但表格的匿名块通常以 *T 开头）
-                    if (!ent.blockName) {
-                        // 如果没有 blockName，除了单元格内容兜底外，目前无法做更多处理
-                    }
-                }
+                const shouldDrawTableFallback = ent.type === EntityType.ACAD_TABLE && (!block || !block.entities || block.entities.length === 0);
 
-                if (!block) {
-                        // 绘制表格绘制兜底：如果找不到对应的块定义，则尝试手动绘制网格
+                if (!block || shouldDrawTableFallback) {
                         if (ent.type === EntityType.ACAD_TABLE) {
                             const table = ent as any;
                 const rowHeights = table.rowHeights || [];
@@ -910,7 +888,7 @@ export const renderEntitiesToCanvas = (
                 let currentY = 0;
                 for (let i = 0; i < rowCount; i++) {
                     const h = (rowHeights[i] !== undefined ? rowHeights[i] : defaultRowH) * scale.y;
-                    currentY -= Math.max(h, 0.1); // 确保高度不为负或过小
+                    currentY -= Math.max(h, TEXT_RENDER_CONFIG.minimumTableCellSize);
                     rowY.push(currentY);
                 }
                 
@@ -919,7 +897,7 @@ export const renderEntitiesToCanvas = (
                 let currentX = 0;
                 for (let j = 0; j < colCount; j++) {
                     const w = (colWidths[j] !== undefined ? colWidths[j] : defaultColW) * scale.x;
-                    currentX += Math.max(w, 0.1);
+                    currentX += Math.max(w, TEXT_RENDER_CONFIG.minimumTableCellSize);
                     colX.push(currentX);
                 }
                 
@@ -962,16 +940,12 @@ export const renderEntitiesToCanvas = (
                             const cellW = Math.abs(xRight - xLeft);
                             
                             const tx = (xLeft + cellW / 2) * sScale;
-                            const ty = (yTop - cellH / 2) * sScale; // 向上为正，但在 Canvas 中我们之前 rotate 翻转过或者 translate 逻辑
-                            // Wait, 之前的逻辑是 y = -i * spacing，所以 y 是负值。
-                            // rowY 存储的是负值。
-                            // 所以 ty 应该是 (yTop + yBottom) / 2 * sScale
                             const tyCenter = (yTop + yBottom) / 2 * sScale;
 
-                            const fontSize = (cellH * 0.5) * sScale;
+                            const fontSize = (cellH * TEXT_RENDER_CONFIG.tableTextHeightFactor) * sScale;
                             ctx.font = `${fontSize}px sans-serif`;
 
-                            const marginX = (cellW * 0.1) * sScale;
+                            const marginX = (cellW * TEXT_RENDER_CONFIG.tableTextHorizontalPaddingFactor) * sScale;
                             ctx.fillText(cleanedCell, tx, tyCenter, (cellW * sScale) - 2 * marginX);
                         }
                     });
@@ -1149,7 +1123,7 @@ export const renderEntitiesToCanvas = (
                      const last = pts[pts.length-1];
                      const prev = pts[pts.length-2];
                      const dx = last.x - prev.x;
-                     const hookLen = 2.5; 
+                     const hookLen = SELECTION_CONFIG.leaderHookLength; 
                      const dir = dx >= 0 ? 1 : -1;
                      const sp = transform.project({ x: last.x + dir * hookLen, y: last.y });
                      ctx.lineTo(sp.x, sp.y);
@@ -1161,7 +1135,7 @@ export const renderEntitiesToCanvas = (
                     const p1 = transform.project(pts[0]);
                     const p2 = transform.project(pts[1]);
                     const ang = Math.atan2(p2.y - p1.y, p2.x - p1.x);
-                    const s = 2.5 * transform.scale; 
+                    const s = SELECTION_CONFIG.gripSize * transform.scale; 
                     const a1 = ang + Math.PI/6; 
                     const a2 = ang - Math.PI/6;
                     ctx.beginPath();
@@ -1260,8 +1234,8 @@ export const hitTest = (x: number, y: number, threshold: number, entities: AnyEn
         
         // 文字判定优化：增加额外的容差范围，解决点选偏差问题
         const isTextEntity = [EntityType.TEXT, EntityType.MTEXT, EntityType.ATTRIB, EntityType.ATTDEF].includes(ent.type);
-        // 对于文字，判定范围增加到 2.5 倍，使其更易选中
-        const effectiveThreshold = isTextEntity ? (threshold * 2.5) : threshold;
+        // 对于文字，使用文字选择阈值系数，使其更易选中
+        const effectiveThreshold = isTextEntity ? (threshold * SELECTION_CONFIG.textThresholdMultiplier) : threshold;
 
         // 包围盒选择优化
         // 如果实体有预计算的包围盒，将其用于初步点击测试

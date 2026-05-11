@@ -1,7 +1,9 @@
 import React, { useRef, useState, WheelEvent, MouseEvent, useEffect, useLayoutEffect, useCallback } from 'react';
-import { AnyEntity, ViewPort, DxfLayer, DxfBlock, DxfStyle, DxfLineType, EntityType, Point2D } from '../types';
+import { AnyEntity, ViewPort, DxfLayer, DxfBlock, DxfStyle, DxfLineType, EntityType, Point2D } from '../../../types';
 import { renderEntitiesToCanvas, hitTest, hitTestBox } from '../services/canvasRenderService';
-import { Language, UI_TRANSLATIONS } from '../constants/i18n';
+import { Language, UI_TRANSLATIONS } from '../../../constants/i18n';
+import { VIEWER_DEFAULTS, ZOOM_CONFIG } from '../../../shared/config/viewerConfig';
+import { CanvasTheme } from '../../../shared/types/ui';
 
 /**
  * DXF 渲染核心组件
@@ -21,9 +23,10 @@ interface DxfViewerProps {
   worldOffset?: Point2D; // 坐标偏移（用于显示原始坐标）
   overlayExtents?: { min: Point2D, max: Point2D } | null;
   ltScale?: number; // 全局线型比例
-  theme: 'black' | 'white' | 'gray'; // 画布背景主题
+  theme: CanvasTheme; // 画布背景主题
   lang: Language; // 当前语言
   onMouseMoveWorld?: (x: number, y: number) => void; // 鼠标移动时的世界坐标回调
+  onRenderError?: (message: string | null) => void; // 渲染异常回调
 }
 
 const DxfViewer: React.FC<DxfViewerProps> = ({ 
@@ -38,10 +41,11 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
     onSelectIds, 
     worldOffset, 
     overlayExtents,
-    ltScale = 1.0, 
+    ltScale = VIEWER_DEFAULTS.defaultLineTypeScale, 
     theme, 
     lang,
-    onMouseMoveWorld
+    onMouseMoveWorld,
+    onRenderError
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -118,7 +122,15 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.scale(dpr, dpr);
 
-        renderEntitiesToCanvas(ctx, entities, layers, blocks, styles, lineTypes, ltScale, viewPort, selectedEntityIds, rect.width, rect.height, theme, overlayExtents);
+        try {
+            renderEntitiesToCanvas(ctx, entities, layers, blocks, styles, lineTypes, ltScale, viewPort, selectedEntityIds, rect.width, rect.height, theme, overlayExtents);
+            onRenderError?.(null);
+        } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            ctx.fillStyle = theme === 'white' ? '#FFFFFF' : '#212121';
+            ctx.fillRect(0, 0, rect.width, rect.height);
+            onRenderError?.(message);
+        }
      };
 
      if (renderRef.current) cancelAnimationFrame(renderRef.current);
@@ -127,7 +139,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
      return () => {
         if (renderRef.current) cancelAnimationFrame(renderRef.current);
      };
-  }, [entities, layers, blocks, styles, lineTypes, ltScale, viewPort, selectedEntityIds, worldOffset, theme]);
+  }, [entities, layers, blocks, styles, lineTypes, ltScale, viewPort, selectedEntityIds, worldOffset, theme, overlayExtents, onRenderError]);
 
   // 处理滚轮事件，使用 passive: false 以允许 preventDefault
   useEffect(() => {

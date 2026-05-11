@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { AnyEntity, EntityType, DxfLayer } from '../types';
+import { AnyEntity, EntityType, DxfLayer } from '../../../types';
 import { getAutoCadColor } from '../utils/colorUtils';
-import { Language, UI_TRANSLATIONS, ENTITY_TYPE_NAMES } from '../constants/i18n';
+import { Language, UI_TRANSLATIONS, ENTITY_TYPE_NAMES } from '../../../constants/i18n';
 
 interface SidebarProps {
   layers: Record<string, DxfLayer>;

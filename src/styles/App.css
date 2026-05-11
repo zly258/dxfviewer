@@ -1,21 +1,34 @@
 .app-main-container {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
   background-color: var(--bg-primary, #f0f0f0);
+  overflow: hidden;
 }
 
 .tabs-container {
   display: flex;
-  background-color: #2b2b2b;
-  color: #ccc;
-  overflow-x: auto;
   align-items: center;
+  min-height: 30px;
+  background-color: var(--bg-secondary, #f3f3f3);
+  color: var(--text-primary, #333333);
+  border-bottom: 1px solid var(--border-color, #cccccc);
+  overflow-x: auto;
+  overflow-y: hidden;
   user-select: none;
-  scrollbar-width: none; /* Firefox */
-  -ms-overflow-style: none; /* IE/Edge */
   white-space: nowrap;
-  scroll-behavior: auto; /* For smoother trackpad feeling, do not use smooth since mousewheel uses discrete steps */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  position: relative;
+  z-index: 450;
 }
 
-/* Chrome/Safari */
+.theme-dark .tabs-container {
+  background-color: var(--bg-secondary, #252526);
+  color: var(--text-primary, #cccccc);
+}
+
 .tabs-container::-webkit-scrollbar {
   display: none;
 }
@@ -23,61 +36,119 @@
 .tab-item {
   display: flex;
   align-items: center;
-  padding: 8px 16px;
-  background-color: #383838;
-  border-right: 1px solid #222;
+  max-width: 220px;
+  height: 30px;
+  padding: 0 10px 0 12px;
+  background-color: var(--bg-tertiary, #eeeeee);
+  border-right: 1px solid var(--border-color, #cccccc);
+  border-top: 2px solid transparent;
+  box-sizing: border-box;
   cursor: pointer;
-  max-width: 200px;
   flex-shrink: 0;
 }
 
 .tab-item:hover {
-  background-color: #444;
+  background-color: var(--bg-hover, #e5e5e5);
 }
 
 .tab-item.active {
-  background-color: #505050;
-  color: #fff;
-  border-top: 2px solid #007acc;
+  background-color: var(--bg-primary, #ffffff);
+  color: var(--text-bright, #000000);
+  border-top-color: var(--accent-blue, #007acc);
+}
+
+.theme-dark .tab-item {
+  background-color: var(--bg-tertiary, #2d2d2d);
+}
+
+.theme-dark .tab-item:hover {
+  background-color: var(--bg-hover, #37373d);
+}
+
+.theme-dark .tab-item.active {
+  background-color: var(--bg-primary, #1e1e1e);
+  color: var(--text-bright, #ffffff);
 }
 
 .tab-name {
-  white-space: nowrap;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
   flex: 1;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .tab-close {
-  margin-left: 8px;
-  font-size: 16px;
-  line-height: 1;
-  height: 16px;
-  width: 16px;
-  text-align: center;
-  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  opacity: 0.6;
+  width: 16px;
+  height: 16px;
+  margin-left: 8px;
+  border-radius: 2px;
+  line-height: 1;
+  opacity: 0.72;
 }
 
 .tab-close:hover {
-  background-color: rgba(255, 255, 255, 0.2);
+  background-color: rgba(0, 0, 0, 0.08);
   opacity: 1;
 }
 
-.tab-new {
-  padding: 8px 16px;
-  cursor: pointer;
-  font-size: 18px;
-  font-weight: bold;
-  line-height: 1;
-  color: #888;
-  flex-shrink: 0;
+.theme-dark .tab-close:hover {
+  background-color: rgba(255, 255, 255, 0.16);
 }
 
-.tab-new:hover {
-  color: #fff;
+.tab-context-menu {
+  position: fixed;
+  min-width: 132px;
+  padding: 4px 0;
+  background-color: var(--bg-primary, #ffffff);
+  color: var(--text-primary, #333333);
+  border: 1px solid var(--border-color, #cccccc);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+  z-index: 3000;
+}
+
+.theme-dark .tab-context-menu {
+  background-color: var(--bg-secondary, #252526);
+  color: var(--text-primary, #cccccc);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.42);
+}
+
+.tab-context-menu button {
+  display: block;
+  width: 100%;
+  height: 28px;
+  padding: 0 14px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.tab-context-menu button:hover {
+  background-color: var(--accent-blue, #007acc);
+  color: #ffffff;
+}
+
+.tab-context-divider {
+  height: 1px;
+  margin: 4px 0;
+  background-color: var(--border-color, #cccccc);
+}
+
+.tabs-content {
+  flex: 1;
+  position: relative;
+  min-height: 0;
+  background-color: var(--canvas-bg, #212121);
+}
+
+.tab-viewer-host {
+  position: absolute;
+  inset: 0;
 }

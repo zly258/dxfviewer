@@ -1,4 +1,6 @@
-import { AnyEntity, DxfData, EntityType, DxfLayer, DxfBlock, Point2D, Point3D, DxfHatch, HatchLoop, HatchEdge, DxfStyle, DxfPolyline, DxfInsert, DxfHeader, DxfSpline, DxfText, DxfLeader, DxfTable, DxfLineType } from '../types';
+import { CAD_BY_LAYER_COLOR, CAD_DEFAULT_LAYER_COLOR, CAD_DEFAULT_LAYER_NAME, CAD_DEFAULT_TEXT_HEIGHT, CAD_DEFAULT_TEXT_STYLE } from '../../../shared/constants/cadConstants';
+import { DEFAULT_TEXT_STYLE } from '../../../shared/config/viewerConfig';
+import { AnyEntity, DxfData, EntityType, DxfLayer, DxfBlock, Point2D, Point3D, DxfHatch, HatchLoop, HatchEdge, DxfStyle, DxfPolyline, DxfInsert, DxfHeader, DxfSpline, DxfText, DxfLeader, DxfTable, DxfLineType } from '../../../types';
 export { cleanMText };
 import { cleanMText } from '../utils/textUtils';
 
@@ -346,7 +348,18 @@ const getWcsRotation = (rotation: number, ocs: ReturnType<typeof getOcsToWcsMatr
     return Math.atan2(wy, wx) * 180 / Math.PI;
 };
 
+const ensureDxfStructure = (dxfString: string) => {
+  const text = dxfString.replace(/^\uFEFF/, '');
+  const hasSection = /(?:^|\r?\n)\s*0\s*\r?\n\s*SECTION\s*(?:\r?\n|$)/i.test(text);
+  const hasEntities = /(?:^|\r?\n)\s*2\s*\r?\n\s*ENTITIES\s*(?:\r?\n|$)/i.test(text);
+
+  if (!hasSection || !hasEntities) {
+    throw new Error('未找到 SECTION 或 ENTITIES 段，可能不是有效 DXF 文件或编码识别错误');
+  }
+};
+
 export const parseDxf = async (dxfString: string, onProgress?: (percent: number) => void): Promise<DxfData> => {
+  ensureDxfStructure(dxfString);
   const state = new DxfParserState(dxfString);
   const entities: AnyEntity[] = [];
   const layers: Record<string, DxfLayer> = {};
@@ -356,8 +369,8 @@ export const parseDxf = async (dxfString: string, onProgress?: (percent: number)
   const blockHandleMap: Record<string, string> = {}; 
   let header: DxfHeader | undefined;
   
-  layers['0'] = { name: '0', color: 7, isVisible: true };
-  styles['STANDARD'] = { name: 'STANDARD', fontFileName: 'txt', height: 0, widthFactor: 1 };
+  layers[CAD_DEFAULT_LAYER_NAME] = { name: CAD_DEFAULT_LAYER_NAME, color: CAD_DEFAULT_LAYER_COLOR, isVisible: true };
+  styles[CAD_DEFAULT_TEXT_STYLE] = DEFAULT_TEXT_STYLE;
   lineTypes['CONTINUOUS'] = { name: 'CONTINUOUS', pattern: [], totalLength: 0 };
 
   // 进度估计的总大小：字符串长度 / 每行约 15 字节
@@ -574,7 +587,7 @@ const parseCommon = (state: DxfParserState): any => {
         id: crypto.randomUUID(),
         handle: '',
         layer: '0',
-        color: 256,
+        color: CAD_BY_LAYER_COLOR,
         lineType: 'ByLayer',
         lineTypeScale: 1.0,
         visible: true,
@@ -729,7 +742,7 @@ const parseAcadTable = (state: DxfParserState, common: any, blockHandleMap?: Rec
         if (!entity.rowCount || entity.rowCount < 1 || entity.rowCount > 10000) entity.rowCount = 1;
     }
 
-    const minRowH = 2.5;
+    const minRowH = CAD_DEFAULT_TEXT_HEIGHT;
     const minColW = 10;
     if (!entity.rowSpacing || !Number.isFinite(entity.rowSpacing) || entity.rowSpacing < minRowH) entity.rowSpacing = 10;
     if (!entity.columnSpacing || !Number.isFinite(entity.columnSpacing) || entity.columnSpacing < minColW) entity.columnSpacing = 50;
@@ -837,7 +850,7 @@ const parseText = (state: DxfParserState, common: any, type: EntityType): DxfTex
         // 这允许渲染器查看字体/高度等格式化代码。
     }
     
-    if (!entity.styleName) entity.styleName = 'STANDARD';
+    if (!entity.styleName) entity.styleName = CAD_DEFAULT_TEXT_STYLE;
     if (!entity.height) entity.height = 0; 
     if (!entity.widthFactor) entity.widthFactor = 0; 
 
@@ -1692,7 +1705,7 @@ const getEntityExtents = (ent: AnyEntity, blocks: Record<string, DxfBlock>): { m
         case EntityType.ATTDEF:
             update(ent.position.x, ent.position.y);
             if (ent.type !== EntityType.POINT) {
-                const h = (ent as any).height || 2.5;
+                const h = (ent as any).height || CAD_DEFAULT_TEXT_HEIGHT;
                 let text = (ent as any).value || "";
                 if (ent.type === EntityType.MTEXT) {
                     text = cleanMText(text);
@@ -2109,8 +2122,8 @@ export const calculateSmartExtents = (entities: AnyEntity[], blocks: Record<stri
     if (robust) {
         const rWidth = robust.maxX - robust.minX;
         const rHeight = robust.maxY - robust.minY;
-        if ((isFinite(rWidth) && rWidth > 0 && fWidth > rWidth * 2.5) ||
-            (isFinite(rHeight) && rHeight > 0 && fHeight > rHeight * 2.5)) {
+        if ((isFinite(rWidth) && rWidth > 0 && fWidth > rWidth * CAD_DEFAULT_TEXT_HEIGHT) ||
+            (isFinite(rHeight) && rHeight > 0 && fHeight > rHeight * CAD_DEFAULT_TEXT_HEIGHT)) {
             finalMinX = robust.minX;
             finalMaxX = robust.maxX;
             finalMinY = robust.minY;

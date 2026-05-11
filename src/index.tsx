@@ -1,8 +1,8 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './styles/styles.css';
-import DxfViewerMain from './DxfViewerMain';
-import App from './App';
+import DxfViewerMain from './features/dxf-viewer/DxfViewerMain';
+import App from './app/App';
 
 // 作为库使用时的导出
 export { DxfViewerMain };

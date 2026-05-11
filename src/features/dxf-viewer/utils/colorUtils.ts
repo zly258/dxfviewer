@@ -1,4 +1,4 @@
-import { DEFAULT_COLOR } from '../constants';
+import { DEFAULT_ENTITY_COLOR, CANVAS_THEME_COLORS } from '../../../shared/config/viewerConfig';
 
 // 用于快速查询的基础颜色
 export const AUTO_CAD_COLORS: Record<number, string> = {
@@ -83,4 +83,40 @@ export const getAutoCadColor = (index: number, theme: 'black' | 'white' | 'gray'
   const bs = b.toString(16).padStart(2, '0');
   
   return `#${rs}${gs}${bs}`;
+};
+
+
+const parseHexColor = (hex: string) => {
+  const normalized = hex.replace('#', '').trim();
+  if (normalized.length !== 6) return null;
+  const value = parseInt(normalized, 16);
+  if (!Number.isFinite(value)) return null;
+  return {
+    r: (value >> 16) & 0xFF,
+    g: (value >> 8) & 0xFF,
+    b: value & 0xFF
+  };
+};
+
+const getRelativeLuminance = (hex: string): number => {
+  const rgb = parseHexColor(hex);
+  if (!rgb) return 0;
+  const toLinear = (channel: number) => {
+    const value = channel / 255;
+    return value <= 0.03928 ? value / 12.92 : Math.pow((value + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * toLinear(rgb.r) + 0.7152 * toLinear(rgb.g) + 0.0722 * toLinear(rgb.b);
+};
+
+const getBackgroundColor = (theme: 'black' | 'white' | 'gray'): string => {
+  return CANVAS_THEME_COLORS[theme];
+};
+
+export const ensureReadableColor = (color: string, theme: 'black' | 'white' | 'gray'): string => {
+  const bg = getBackgroundColor(theme);
+  const colorLum = getRelativeLuminance(color);
+  const bgLum = getRelativeLuminance(bg);
+  const contrast = (Math.max(colorLum, bgLum) + 0.05) / (Math.min(colorLum, bgLum) + 0.05);
+  if (contrast >= 1.8) return color;
+  return bgLum > 0.5 ? '#111111' : '#F5F5F5';
 };

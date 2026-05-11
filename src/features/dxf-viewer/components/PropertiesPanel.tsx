@@ -1,8 +1,10 @@
 import React from 'react';
-import { AnyEntity, EntityType, DxfStyle } from '../types';
+import { AnyEntity, EntityType, DxfStyle } from '../../../types';
 import { getAutoCadColor } from '../utils/colorUtils';
-import { Language, UI_TRANSLATIONS, ENTITY_TYPE_NAMES } from '../constants/i18n';
+import { Language, UI_TRANSLATIONS, ENTITY_TYPE_NAMES } from '../../../constants/i18n';
 import { getStyleFontFamily } from '../services/fontService';
+import { CAD_BY_BLOCK_COLOR, CAD_BY_LAYER_COLOR, CAD_DEFAULT_LAYER_COLOR, CAD_DEFAULT_TEXT_STYLE } from '../../../shared/constants/cadConstants';
+import { CanvasTheme } from '../../../shared/types/ui';
 
 /**
  * 属性面板组件
@@ -13,7 +15,7 @@ interface PropertiesPanelProps {
   layers?: any[]; // 图层列表
   styles?: Record<string, DxfStyle>; // 样式表
   offset?: { x: number, y: number }; // 世界坐标偏移（用于显示原始坐标）
-  theme: 'black' | 'white' | 'gray'; // 画布主题（用于颜色转换）
+  theme: CanvasTheme; // 画布主题（用于颜色转换）
   lang: Language; // 当前语言
 }
 
@@ -56,10 +58,10 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, layers, sty
    * 支持随层 (ByLayer)、随块 (ByBlock) 以及索引颜色的 HEX 预览
    */
   const renderColorValue = (color: number | undefined) => {
-    if (color === 256) return <span style={{ color: 'var(--text-secondary)' }}>随层 (ByLayer)</span>;
-    if (color === 0) return <span style={{ color: 'var(--text-secondary)' }}>随块 (ByBlock)</span>;
+    if (color === CAD_BY_LAYER_COLOR) return <span style={{ color: 'var(--text-secondary)' }}>随层 (ByLayer)</span>;
+    if (color === CAD_BY_BLOCK_COLOR) return <span style={{ color: 'var(--text-secondary)' }}>随块 (ByBlock)</span>;
     
-    const hex = getAutoCadColor(color || 7, theme);
+    const hex = getAutoCadColor(color || CAD_DEFAULT_LAYER_COLOR, theme);
     return (
       <div className="color-preview-container">
         <span style={{ color: 'var(--text-secondary)', fontSize: '10px' }}>({color})</span>
@@ -156,7 +158,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, layers, sty
           case EntityType.ATTRIB:
           case EntityType.ATTDEF: {
               const textEnt = ent;
-              const styleName = textEnt.styleName || 'STANDARD';
+              const styleName = textEnt.styleName || CAD_DEFAULT_TEXT_STYLE;
               const style = styles[styleName] || styles[styleName.toUpperCase()];
               const fontFamily = getStyleFontFamily(styleName, styles);
               
