@@ -79,14 +79,64 @@ export const DEFAULT_ENTITY_COLOR = '#FFFFFF';
 export const TEXT_RENDER_CONFIG = {
   minimumWidthFactor: 0.01,
   tinyTextPixelHeight: 3,
-  averageCharacterWidthFactor: 0.7,
+  averageCharacterWidthFactor: 0.72,
+  cjkCharacterWidthFactor: 1.0,
+  latinCharacterWidthFactor: 0.58,
+  digitCharacterWidthFactor: 0.56,
+  punctuationCharacterWidthFactor: 0.34,
+  spaceCharacterWidthFactor: 0.28,
+  textWidthPaddingFactor: 0.02,
   alphabeticBaselineOffsetFactor: 0.8,
   mtextDefaultLineSpacingFactor: 1.666,
   mtextBackgroundPaddingFactor: 0.1,
   trueTypeFontHeightFactor: 1.33,
   shxFontHeightFactor: 1.4,
+  trueTypeRenderWidthFactor: 0.96,
+  shxRenderWidthFactor: 0.84,
+  cjkRenderWidthFactor: 0.92,
+  extentsTrueTypeWidthCompensation: 1.0,
+  extentsShxWidthCompensation: 0.92,
   minimumMeasuredTextWidth: 0.001,
   tableTextHeightFactor: 0.5,
   tableTextHorizontalPaddingFactor: 0.1,
   minimumTableCellSize: 0.1,
+};
+
+
+export const TABLE_EXTENTS_CONFIG = {
+  defaultRowHeight: 10,
+  defaultColumnWidth: 50,
+  minRowHeight: 0.1,
+  minColumnWidth: 0.1,
+  maxRowHeight: 10000,
+  maxColumnWidth: 100000,
+  maxFallbackRows: 200,
+  maxFallbackColumns: 100,
+  maxFallbackTotalWidth: 20000,
+  maxFallbackTotalHeight: 20000,
+  maxFallbackAspectRatio: 20,
+};
+
+export const EXTENTS_CONFIG = {
+  minGeometryEntityCountForStableDrawingExtents: 1,
+  maxFiniteCoordinate: 1e50,
+  maxFiniteExtent: 1e50,
+  minimumEntitySize: 1e-9,
+  infiniteGuideLength: 1000,
+  dimensionLocalBlockDistanceFactor: 5,
+  useSmartExtentWhenEntityCountAtLeast: 8,
+  smartExtentOutlierRatioLimit: 80,
+  smartExtentIqrMultiplier: 2.5,
+  ignoreGuideLinesInDrawingExtents: true,
+  includePointsInDrawingExtents: false,
+  minDrawableEntityExtent: 1e-8,
+  annotationNearGeometryFactor: 3,
+  annotationNearGeometryMinimumPadding: 100,
+};
+
+export const LEADER_RENDER_CONFIG = {
+  defaultHookLength: 2.5,
+  annotationGapFactor: 0.3,
+  arrowSizeFactor: 2.5,
+  arrowHalfAngleRadians: Math.PI / 6,
 };

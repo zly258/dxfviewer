@@ -1,8 +1,8 @@
 import { CAD_BY_LAYER_COLOR, CAD_DEFAULT_LAYER_COLOR, CAD_DEFAULT_LAYER_NAME, CAD_DEFAULT_TEXT_HEIGHT, CAD_DEFAULT_TEXT_STYLE } from '../../../shared/constants/cadConstants';
-import { DEFAULT_TEXT_STYLE } from '../../../shared/config/viewerConfig';
+import { DEFAULT_TEXT_STYLE, EXTENTS_CONFIG, TABLE_EXTENTS_CONFIG } from '../../../shared/config/viewerConfig';
 import { AnyEntity, DxfData, EntityType, DxfLayer, DxfBlock, Point2D, Point3D, DxfHatch, HatchLoop, HatchEdge, DxfStyle, DxfPolyline, DxfInsert, DxfHeader, DxfSpline, DxfText, DxfLeader, DxfTable, DxfLineType } from '../../../types';
 export { cleanMText };
-import { cleanMText } from '../utils/textUtils';
+import { cleanMText, getCadTextExtents, pointsToExtents } from '../utils/textUtils';
 
 class DxfParserState {
   private text: string;
@@ -438,17 +438,17 @@ export const parseDxf = async (dxfString: string, onProgress?: (percent: number)
 
   // 预计算块范围，用于裁剪和全局范围计算
   // 1. 在原始坐标上进行初始预计算（以获得正确的初始中心）
-  precomputeBlockExtents(blocks);
+  precomputeBlockExtents(blocks, styles);
 
   // 2. 计算初始全局范围以找到中心点
     const offset = (() => {
     const centersX: number[] = [];
     const centersY: number[] = [];
-    const isValid = (v: number) => isFinite(v) && Math.abs(v) < 1e50;
+    const isValid = (v: number) => isFinite(v) && Math.abs(v) < EXTENTS_CONFIG.maxFiniteExtent;
 
     entities.forEach(ent => {
       if (ent.visible === false || ent.type === EntityType.ATTDEF || ent.type === EntityType.ATTRIB) return;
-      const ext = getEntityExtents(ent, blocks);
+      const ext = getEntityExtents(ent, blocks, styles);
       if (!ext) return;
       const cx = (ext.min.x + ext.max.x) / 2;
       const cy = (ext.min.y + ext.max.y) / 2;
@@ -459,7 +459,7 @@ export const parseDxf = async (dxfString: string, onProgress?: (percent: number)
     });
 
     if (centersX.length === 0) {
-      const initialExtents = calculateExtents(entities, blocks);
+      const initialExtents = calculateExtents(entities, blocks, styles);
       return { x: initialExtents.center.x, y: initialExtents.center.y };
     }
 
@@ -483,10 +483,10 @@ export const parseDxf = async (dxfString: string, onProgress?: (percent: number)
   });
 
   // 4. 重新预计算块范围（现在处于偏移后的坐标系中）
-  precomputeBlockExtents(blocks);
+  precomputeBlockExtents(blocks, styles);
 
   // 5. 为偏移后的实体重新计算最终全局范围
-  const extents = calculateExtents(entities, blocks);
+  const extents = calculateExtents(entities, blocks, styles);
 
   return { header, entities, layers, blocks, styles, lineTypes, offset, extents };
 };
@@ -650,6 +650,64 @@ const parseEntityDispatcher = (type: string, state: DxfParserState, blockHandleM
     }
 }
 
+
+const clampTableCount = (value: unknown, fallback: number, maxCount: number): number => {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n < 1) return fallback;
+    return Math.max(1, Math.min(maxCount, Math.floor(n)));
+};
+
+const normalizeTableDimensionArray = (
+    values: number[] | undefined,
+    count: number,
+    fallback: number,
+    minValue: number,
+    maxValue: number,
+): number[] => {
+    const source = Array.isArray(values) ? values : [];
+    const valid = source.filter(value => Number.isFinite(value) && value >= minValue && value <= maxValue);
+    if (valid.length === count) return valid.slice(0, count);
+    if (valid.length > 0 && valid.length < count) {
+        const result = valid.slice();
+        while (result.length < count) result.push(fallback);
+        return result;
+    }
+    return new Array(count).fill(fallback);
+};
+
+const normalizeAcadTableGeometry = (table: DxfTable) => {
+    const explicitColumns = clampTableCount(table.columnCount, 1, TABLE_EXTENTS_CONFIG.maxFallbackColumns);
+    const cellCount = table.cells?.length || 0;
+    table.columnCount = explicitColumns;
+    table.rowCount = cellCount > 0
+        ? clampTableCount(Math.ceil(cellCount / explicitColumns), 1, TABLE_EXTENTS_CONFIG.maxFallbackRows)
+        : clampTableCount(table.rowCount, 1, TABLE_EXTENTS_CONFIG.maxFallbackRows);
+
+    const rowSpacing = Number(table.rowSpacing);
+    const columnSpacing = Number(table.columnSpacing);
+    table.rowSpacing = Number.isFinite(rowSpacing) && rowSpacing >= TABLE_EXTENTS_CONFIG.minRowHeight && rowSpacing <= TABLE_EXTENTS_CONFIG.maxRowHeight
+        ? rowSpacing
+        : TABLE_EXTENTS_CONFIG.defaultRowHeight;
+    table.columnSpacing = Number.isFinite(columnSpacing) && columnSpacing >= TABLE_EXTENTS_CONFIG.minColumnWidth && columnSpacing <= TABLE_EXTENTS_CONFIG.maxColumnWidth
+        ? columnSpacing
+        : TABLE_EXTENTS_CONFIG.defaultColumnWidth;
+
+    table.rowHeights = normalizeTableDimensionArray(
+        table.rowHeights,
+        table.rowCount,
+        table.rowSpacing,
+        TABLE_EXTENTS_CONFIG.minRowHeight,
+        TABLE_EXTENTS_CONFIG.maxRowHeight,
+    );
+    table.colWidths = normalizeTableDimensionArray(
+        table.colWidths,
+        table.columnCount,
+        table.columnSpacing,
+        TABLE_EXTENTS_CONFIG.minColumnWidth,
+        TABLE_EXTENTS_CONFIG.maxColumnWidth,
+    );
+};
+
 const parseAcadTable = (state: DxfParserState, common: any, blockHandleMap?: Record<string, string>): DxfTable | null => {
     const entity: DxfTable = { 
         ...common, 
@@ -694,20 +752,18 @@ const parseAcadTable = (state: DxfParserState, common: any, blockHandleMap?: Rec
                 break;
             case 91: entity.rowCount = parseInt(g.value); break;
             case 92: entity.columnCount = parseInt(g.value); break;
-            case 141: 
-                let rh = parseFloat(g.value);
-                // 极小值保护：如果行高太小（可能是错误的单位或解析问题），强制设为默认值 10
-                if (Math.abs(rh) < 0.1) rh = 10;
-                entity.rowSpacing = rh; 
-                entity.rowHeights?.push(rh);
-                break; 
-            case 142: 
-                let cw = parseFloat(g.value);
-                // 极小值保护：如果列宽太小，强制设为默认值 50
-                if (Math.abs(cw) < 0.1) cw = 50;
-                entity.columnSpacing = cw;
-                entity.colWidths?.push(cw);
+            case 141: {
+                const rowHeight = parseFloat(g.value);
+                entity.rowSpacing = rowHeight;
+                entity.rowHeights?.push(rowHeight);
                 break;
+            }
+            case 142: {
+                const columnWidth = parseFloat(g.value);
+                entity.columnSpacing = columnWidth;
+                entity.colWidths?.push(columnWidth);
+                break;
+            }
             case 44: entity.columnSpacing = parseFloat(g.value); break;
             case 45: entity.rowSpacing = parseFloat(g.value); break;
             case 1: 
@@ -728,31 +784,7 @@ const parseAcadTable = (state: DxfParserState, common: any, blockHandleMap?: Rec
         entity.blockName = blockHandleMap[blockHandle] || '';
     }
 
-    // === 行列数/尺寸修复（按规范更稳的策略） ===
-    // 1) DXF 中 91/92 在某些文件里会被写成标志位或异常值（如 262129 = 0x40001）
-    // 2) 我们优先依据单元格数量推导行数（更可靠）
-    // 3) rowSpacing/columnSpacing 的 0.01 等极小值通常不代表实际表格尺寸（否则会不可见），因此给出合理下限
-    if (entity.cells && entity.cells.length > 0) {
-        let col = entity.columnCount || 1;
-        if (!Number.isFinite(col) || col < 1 || col > 1000) col = 1;
-        entity.columnCount = col;
-        entity.rowCount = Math.max(1, Math.ceil(entity.cells.length / col));
-    } else {
-        if (!entity.columnCount || entity.columnCount < 1 || entity.columnCount > 1000) entity.columnCount = 1;
-        if (!entity.rowCount || entity.rowCount < 1 || entity.rowCount > 10000) entity.rowCount = 1;
-    }
-
-    const minRowH = CAD_DEFAULT_TEXT_HEIGHT;
-    const minColW = 10;
-    if (!entity.rowSpacing || !Number.isFinite(entity.rowSpacing) || entity.rowSpacing < minRowH) entity.rowSpacing = 10;
-    if (!entity.columnSpacing || !Number.isFinite(entity.columnSpacing) || entity.columnSpacing < minColW) entity.columnSpacing = 50;
-
-    if (!entity.rowHeights || entity.rowHeights.length === 0) {
-        entity.rowHeights = new Array(entity.rowCount || 1).fill(entity.rowSpacing);
-    }
-    if (!entity.colWidths || entity.colWidths.length === 0) {
-        entity.colWidths = new Array(entity.columnCount || 1).fill(entity.columnSpacing);
-    }
+    normalizeAcadTableGeometry(entity);
 
     const ocs = getOcsToWcsMatrix(entity.extrusion!.x, entity.extrusion!.y, entity.extrusion!.z);
     entity.position = applyOcs(entity.position, ocs, z);
@@ -764,71 +796,69 @@ const parseAcadTable = (state: DxfParserState, common: any, blockHandleMap?: Rec
 }
 
 const parseText = (state: DxfParserState, common: any, type: EntityType): DxfText => {
-    const entity: any = { 
-        ...common, 
-        type: type, 
-        position: {x:0, y:0}, 
-        height: 0, 
-        value: "", 
-        rotation: 0, 
-        widthFactor: 0, 
-        hAlign: 0, vAlign: 0
+    const entity: any = {
+        ...common,
+        type,
+        position: { x: 0, y: 0 },
+        height: 0,
+        value: '',
+        rotation: 0,
+        widthFactor: 0,
+        hAlign: 0,
+        vAlign: 0,
     };
-    
+
     let z = 0;
+    let z2 = 0;
     const valueParts: string[] = [];
     let secondPos: Point2D | undefined;
     let direction: Point2D | undefined;
-    let z2 = 0;
 
-    while(state.hasNext) {
+    while (state.hasNext) {
         const p = state.peek();
         if (!p || p.code === 0) break;
         const g = state.next()!;
         applyCommonGroup(entity, g.code, g.value);
-        switch(g.code) {
+        switch (g.code) {
             case 1: valueParts.push(g.value); break;
-            case 3: valueParts.unshift(g.value); break; 
+            case 3: valueParts.unshift(g.value); break;
             case 10: entity.position.x = parseFloat(g.value); break;
             case 20: entity.position.y = parseFloat(g.value); break;
             case 30: z = parseFloat(g.value); break;
             case 40: entity.height = parseFloat(g.value); break;
             case 50: entity.rotation = parseFloat(g.value); break;
-            case 41: 
-                if (type === EntityType.MTEXT) {
-                     entity.width = parseFloat(g.value);
-                } else {
-                     entity.widthFactor = parseFloat(g.value);
-                }
+            case 41:
+                if (type === EntityType.MTEXT) entity.width = parseFloat(g.value);
+                else entity.widthFactor = parseFloat(g.value);
                 break;
             case 72: entity.hAlign = parseInt(g.value); break;
             case 73: entity.vAlign = parseInt(g.value); break;
-            case 11: 
+            case 11:
                 if (type === EntityType.MTEXT) {
-                    if (!direction) direction = {x:0, y:0};
+                    if (!direction) direction = { x: 0, y: 0 };
                     direction.x = parseFloat(g.value);
                 } else {
-                    if (!secondPos) secondPos = {x:0, y:0};
-                    secondPos.x = parseFloat(g.value); 
+                    if (!secondPos) secondPos = { x: 0, y: 0 };
+                    secondPos.x = parseFloat(g.value);
                 }
                 break;
-            case 21: 
+            case 21:
                 if (type === EntityType.MTEXT) {
-                    if (!direction) direction = {x:0, y:0};
+                    if (!direction) direction = { x: 0, y: 0 };
                     direction.y = parseFloat(g.value);
                 } else {
-                    if (!secondPos) secondPos = {x:0, y:0};
-                    secondPos.y = parseFloat(g.value); 
+                    if (!secondPos) secondPos = { x: 0, y: 0 };
+                    secondPos.y = parseFloat(g.value);
                 }
                 break;
             case 31: z2 = parseFloat(g.value); break;
-            case 71: entity.attachmentPoint = parseInt(g.value); break; 
-            case 43: entity.boxHeight = parseFloat(g.value); break; 
+            case 71: entity.attachmentPoint = parseInt(g.value); break;
+            case 43: entity.boxHeight = parseFloat(g.value); break;
             case 44: if (type === EntityType.MTEXT) entity.lineSpacingFactor = parseFloat(g.value); break;
             case 2: if (type === EntityType.ATTDEF) entity.tag = g.value; break;
             case 70: if (type === EntityType.ATTDEF) entity.flags = parseInt(g.value); break;
             case 63: if (type === EntityType.MTEXT) entity.bgColor = parseInt(g.value); break;
-            case 90: 
+            case 90:
                 if (type === EntityType.MTEXT) {
                     const mask = parseInt(g.value);
                     entity.bgFill = (mask & 1) === 1 || (mask & 2) === 2;
@@ -837,78 +867,27 @@ const parseText = (state: DxfParserState, common: any, type: EntityType): DxfTex
             case 7: entity.styleName = g.value; break;
         }
     }
+
     entity.value = valueParts.join('');
-    
     if (type === EntityType.MTEXT) {
-        // 从原始值解析宽度因子
-        // 支持 \W 和 \w，以及可选的分号
         const matches = entity.value.match(/\\[Ww](\d+(\.\d+)?)(?:;|$)/);
-        if (matches && matches[1]) {
-            entity.widthFactor = parseFloat(matches[1]);
-        }
-        // 此处不要清理，渲染器会进行清理。
-        // 这允许渲染器查看字体/高度等格式化代码。
+        if (matches?.[1]) entity.widthFactor = parseFloat(matches[1]);
     }
-    
+
     if (!entity.styleName) entity.styleName = CAD_DEFAULT_TEXT_STYLE;
-    if (!entity.height) entity.height = 0; 
-    if (!entity.widthFactor) entity.widthFactor = 0; 
+    if (!entity.height) entity.height = 0;
+    if (!entity.widthFactor) entity.widthFactor = 0;
 
     const ocs = getOcsToWcsMatrix(entity.extrusion.x, entity.extrusion.y, entity.extrusion.z);
-    
     if (type === EntityType.MTEXT) {
         if (direction && (Math.abs(direction.x) > 1e-6 || Math.abs(direction.y) > 1e-6)) {
-             // 根据 DXF 规范，MTEXT 方向向量 (11, 21, 31) 已经在 WCS 中
-             entity.rotation = Math.atan2(direction.y, direction.x) * 180 / Math.PI;
+            entity.rotation = Math.atan2(direction.y, direction.x) * 180 / Math.PI;
         } else {
-             // MTEXT 旋转角度（代码 50）以弧度为单位，并且已经在 WCS 中
-             entity.rotation = entity.rotation * 180 / Math.PI;
+            entity.rotation = entity.rotation * 180 / Math.PI;
         }
-        // 根据 DXF 规范，MTEXT 位置 (10, 20, 30) 已经在 WCS 中
-        
-        // 计算 MTEXT 的包围盒
-        // MTEXT 宽度由组码 41 定义，高度由内容决定，但通常组码 43 可能给出高度参考，或者我们用 height 估算
-        const width = entity.width || 0;
-        // 如果没有 width (0), MTEXT 不会自动换行，宽度由内容决定。这里简化处理，如果没有 width，暂时给一个较小值避免无限大
-        // 估算高度：lines * height
-        // 这里只是非常粗略的估算，为了避免包围盒为 0
-        const estimatedW = width > 0 ? width : (entity.value.length * entity.height * 0.7); 
-        const estimatedH = entity.height * (entity.value.split('\\P').length || 1) * 1.5;
-        
-        // 简单的旋转矩形包围盒计算
-        const rad = entity.rotation * Math.PI / 180;
-        const cos = Math.cos(rad);
-        const sin = Math.sin(rad);
-        
-        // MTEXT 插入点通常是 Top-Left (附件点 1) 或其他
-        // 简化假设为 Top-Left，向下向右延伸
-        // 实际应用中 attachmentPoint (71) 决定了对齐方式，这里为了修复包围盒异常，先做保守估算
-        // 局部坐标四个角点
-        const p0 = {x: 0, y: 0};
-        const p1 = {x: estimatedW, y: 0};
-        const p2 = {x: estimatedW, y: -estimatedH};
-        const p3 = {x: 0, y: -estimatedH};
-        
-        const pts = [p0, p1, p2, p3].map(p => ({
-            x: entity.position.x + p.x * cos - p.y * sin,
-            y: entity.position.y + p.x * sin + p.y * cos
-        }));
-        
-        let minX = pts[0].x, maxX = pts[0].x, minY = pts[0].y, maxY = pts[0].y;
-        pts.forEach(p => {
-            minX = Math.min(minX, p.x);
-            maxX = Math.max(maxX, p.x);
-            minY = Math.min(minY, p.y);
-            maxY = Math.max(maxY, p.y);
-        });
-        
-        entity.extents = { min: {x: minX, y: minY}, max: {x: maxX, y: maxY} };
-
     } else {
         entity.position = applyOcs(entity.position, ocs, z);
-        if (secondPos) {
-            entity.secondPosition = applyOcs(secondPos, ocs, z2);
-        }
+        if (secondPos) entity.secondPosition = applyOcs(secondPos, ocs, z2);
         entity.rotation = getWcsRotation(entity.rotation, ocs);
     }
 
@@ -919,22 +898,11 @@ const parseText = (state: DxfParserState, common: any, type: EntityType): DxfTex
         }
     }
 
-    // 如果 2D 行列式为负，处理 OCS 的镜像
     if (ocs) {
         const det2D = ocs.Ax.x * ocs.Ay.y - ocs.Ax.y * ocs.Ay.x;
-        if (det2D < 0) {
-            // 对于镜像 OCS，我们需要翻转旋转或缩放以保持正确的外观。
-            // 在 AutoCAD 中，镜像 OCS（如 Nz=-1）意味着从“背面”查看 2D 平面。
-            if (type === EntityType.MTEXT) {
-                // MTEXT 宽度已由方向或旋转处理。
-                // 但宽度因子（如果有）或内部缩放可能需要翻转。
-                entity.widthFactor = -(entity.widthFactor || 1);
-            } else {
-                entity.widthFactor = -(entity.widthFactor || 1);
-            }
-        }
+        if (det2D < 0) entity.widthFactor = -(entity.widthFactor || 1);
     }
-    
+
     return entity;
 }
 
@@ -1667,273 +1635,311 @@ const updateBulgeSegmentExtents = (update: (x: number, y: number) => void, p1: P
     updateArcExtrema(update, cx, cy, r, a1, a2, ccw);
 };
 
-const getEntityExtents = (ent: AnyEntity, blocks: Record<string, DxfBlock>): { min: Point2D, max: Point2D } | null => {
-    // 获取实体的包围盒范围 (Extents)
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+const createBoundsUpdater = () => {
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+
     const update = (x: number, y: number) => {
-        if (x < minX) minX = x; if (x > maxX) maxX = x;
-        if (y < minY) minY = y; if (y > maxY) maxY = y;
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+        if (Math.abs(x) > EXTENTS_CONFIG.maxFiniteCoordinate || Math.abs(y) > EXTENTS_CONFIG.maxFiniteCoordinate) return;
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x);
+        maxY = Math.max(maxY, y);
     };
+
+    const updateExtents = (extents: { min: Point2D; max: Point2D } | null) => {
+        if (!extents) return;
+        update(extents.min.x, extents.min.y);
+        update(extents.max.x, extents.max.y);
+    };
+
+    const finish = (): { min: Point2D; max: Point2D } | null => {
+        if (minX === Infinity || minY === Infinity || maxX === -Infinity || maxY === -Infinity) return null;
+        return { min: { x: minX, y: minY }, max: { x: maxX, y: maxY } };
+    };
+
+    return { update, updateExtents, finish };
+};
+
+const transformPoint = (point: Point2D, position: Point2D, scale: { x: number; y: number; z?: number }, rotationDegrees: number): Point2D => {
+    const rotation = rotationDegrees * Math.PI / 180;
+    const sx = point.x * scale.x;
+    const sy = point.y * scale.y;
+    const cos = Math.cos(rotation);
+    const sin = Math.sin(rotation);
+    return {
+        x: position.x + sx * cos - sy * sin,
+        y: position.y + sx * sin + sy * cos,
+    };
+};
+
+const transformExtentsCorners = (
+    extents: { min: Point2D; max: Point2D },
+    basePoint: Point2D,
+    position: Point2D,
+    scale: { x: number; y: number; z?: number },
+    rotationDegrees: number,
+): { min: Point2D; max: Point2D } | null => {
+    return pointsToExtents([
+        { x: extents.min.x - basePoint.x, y: extents.min.y - basePoint.y },
+        { x: extents.max.x - basePoint.x, y: extents.min.y - basePoint.y },
+        { x: extents.min.x - basePoint.x, y: extents.max.y - basePoint.y },
+        { x: extents.max.x - basePoint.x, y: extents.max.y - basePoint.y },
+    ].map(point => transformPoint(point, position, scale, rotationDegrees)));
+};
+
+
+const hasTableTextContent = (table: DxfTable): boolean => {
+    return Array.isArray(table.cells) && table.cells.some(cell => cleanMText(String(cell || '')).trim().length > 0);
+};
+
+const getTableFallbackGeometry = (table: DxfTable): { width: number; height: number; rowCount: number; colCount: number } | null => {
+    normalizeAcadTableGeometry(table);
+    const rowCount = clampTableCount(table.rowCount, 1, TABLE_EXTENTS_CONFIG.maxFallbackRows);
+    const colCount = clampTableCount(table.columnCount, 1, TABLE_EXTENTS_CONFIG.maxFallbackColumns);
+    const rowHeights = normalizeTableDimensionArray(table.rowHeights, rowCount, table.rowSpacing || TABLE_EXTENTS_CONFIG.defaultRowHeight, TABLE_EXTENTS_CONFIG.minRowHeight, TABLE_EXTENTS_CONFIG.maxRowHeight);
+    const colWidths = normalizeTableDimensionArray(table.colWidths, colCount, table.columnSpacing || TABLE_EXTENTS_CONFIG.defaultColumnWidth, TABLE_EXTENTS_CONFIG.minColumnWidth, TABLE_EXTENTS_CONFIG.maxColumnWidth);
+    const width = colWidths.reduce((sum, value) => sum + Math.abs(value), 0);
+    const height = rowHeights.reduce((sum, value) => sum + Math.abs(value), 0);
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return null;
+    if (width > TABLE_EXTENTS_CONFIG.maxFallbackTotalWidth || height > TABLE_EXTENTS_CONFIG.maxFallbackTotalHeight) return null;
+    const aspectRatio = Math.max(width / height, height / width);
+    if (aspectRatio > TABLE_EXTENTS_CONFIG.maxFallbackAspectRatio) return null;
+    return { width, height, rowCount, colCount };
+};
+
+const canUseTableFallbackGeometry = (table: DxfTable): boolean => {
+    return hasTableTextContent(table) && !!getTableFallbackGeometry(table);
+};
+
+const getTableFallbackExtents = (table: DxfTable): { min: Point2D; max: Point2D } | null => {
+    if (!hasTableTextContent(table)) return null;
+    const geometry = getTableFallbackGeometry(table);
+    if (!geometry) return null;
+    const scale = table.scale || { x: 1, y: 1, z: 1 };
+    const rotation = table.rotation || 0;
+    return pointsToExtents([
+        { x: 0, y: 0 },
+        { x: geometry.width, y: 0 },
+        { x: 0, y: -geometry.height },
+        { x: geometry.width, y: -geometry.height },
+    ].map(point => transformPoint(point, table.position, scale, rotation)));
+};
+
+
+const isDrawableBlockEntity = (entity: AnyEntity): boolean => {
+    if (entity.visible === false) return false;
+    if (entity.type === EntityType.ATTDEF || entity.type === EntityType.ATTRIB) return false;
+    if (entity.type === EntityType.POINT || isGuideEntity(entity)) return false;
+    if (entity.type === EntityType.ACAD_TABLE) return false;
+    return true;
+};
+
+const hasDrawableBlockGeometry = (block?: DxfBlock): boolean => {
+    return !!block && Array.isArray(block.entities) && block.entities.some(isDrawableBlockEntity);
+};
+
+const getDimensionBlockExtents = (ent: AnyEntity, blocks: Record<string, DxfBlock>): { min: Point2D; max: Point2D } | null => {
+    if (ent.type !== EntityType.DIMENSION || !ent.blockName) return null;
+    const block = blocks[ent.blockName];
+    if (!block?.extents) return null;
+
+    const definitionPoint = ent.definitionPoint;
+    const blockWidth = block.extents.max.x - block.extents.min.x;
+    const blockHeight = block.extents.max.y - block.extents.min.y;
+    const blockSize = Math.max(Math.abs(blockWidth), Math.abs(blockHeight), 1);
+    const blockCenter = {
+        x: (block.extents.min.x + block.extents.max.x) / 2,
+        y: (block.extents.min.y + block.extents.max.y) / 2,
+    };
+    const distance = Math.hypot(blockCenter.x - definitionPoint.x, blockCenter.y - definitionPoint.y);
+    const isLocalBlock = distance > blockSize * EXTENTS_CONFIG.dimensionLocalBlockDistanceFactor;
+
+    if (!isLocalBlock) return block.extents;
+
+    return transformExtentsCorners(
+        block.extents,
+        block.basePoint,
+        definitionPoint,
+        { x: 1, y: 1, z: 1 },
+        0,
+    );
+};
+
+const getEntityExtents = (
+    ent: AnyEntity,
+    blocks: Record<string, DxfBlock>,
+    styles?: Record<string, DxfStyle>,
+): { min: Point2D, max: Point2D } | null => {
+    if (ent.visible === false || ent.type === EntityType.ATTDEF) return null;
+
+    const bounds = createBoundsUpdater();
 
     switch (ent.type) {
         case EntityType.LINE:
-            update(ent.start.x, ent.start.y);
-            update(ent.end.x, ent.end.y);
+            bounds.update(ent.start.x, ent.start.y);
+            bounds.update(ent.end.x, ent.end.y);
             break;
-        case EntityType.CIRCLE:
-        case EntityType.ARC:
-            update(ent.center.x - ent.radius, ent.center.y - ent.radius);
-            update(ent.center.x + ent.radius, ent.center.y + ent.radius);
-            break;
-        case EntityType.LWPOLYLINE:
-        case EntityType.POLYLINE:
-            if (ent.points && ent.points.length > 0) {
-                const isFlipped = (ent.extrusion?.z || 1) < 0;
-                for (let i = 0; i < (ent.closed ? ent.points.length : ent.points.length - 1); i++) {
-                    const p1 = ent.points[i];
-                    const p2 = ent.points[(i + 1) % ent.points.length];
-                    const bulge = ent.bulges ? (ent.bulges[i] || 0) : 0;
-                    updateBulgeSegmentExtents(update, p1, p2, bulge, isFlipped);
-                }
-                ent.points.forEach(p => update(p.x, p.y));
+        case EntityType.RAY:
+        case EntityType.XLINE: {
+            const length = EXTENTS_CONFIG.infiniteGuideLength;
+            const dirLen = Math.hypot(ent.direction.x, ent.direction.y) || 1;
+            const ux = ent.direction.x / dirLen;
+            const uy = ent.direction.y / dirLen;
+            if (ent.type === EntityType.RAY) {
+                bounds.update(ent.basePoint.x, ent.basePoint.y);
+                bounds.update(ent.basePoint.x + ux * length, ent.basePoint.y + uy * length);
+            } else {
+                bounds.update(ent.basePoint.x - ux * length, ent.basePoint.y - uy * length);
+                bounds.update(ent.basePoint.x + ux * length, ent.basePoint.y + uy * length);
             }
             break;
+        }
+        case EntityType.CIRCLE:
+            if (Number.isFinite(ent.radius) && ent.radius >= 0) {
+                bounds.update(ent.center.x - ent.radius, ent.center.y - ent.radius);
+                bounds.update(ent.center.x + ent.radius, ent.center.y + ent.radius);
+            }
+            break;
+        case EntityType.ARC: {
+            if (!Number.isFinite(ent.radius) || ent.radius < 0) break;
+            const startAngle = ent.startAngle * Math.PI / 180;
+            const endAngle = ent.endAngle * Math.PI / 180;
+            const start = { x: ent.center.x + ent.radius * Math.cos(startAngle), y: ent.center.y + ent.radius * Math.sin(startAngle) };
+            const end = { x: ent.center.x + ent.radius * Math.cos(endAngle), y: ent.center.y + ent.radius * Math.sin(endAngle) };
+            bounds.update(start.x, start.y);
+            bounds.update(end.x, end.y);
+            updateArcExtrema(bounds.update, ent.center.x, ent.center.y, ent.radius, startAngle, endAngle, ent.isCounterClockwise ?? true);
+            break;
+        }
+        case EntityType.LWPOLYLINE:
+        case EntityType.POLYLINE: {
+            if (!ent.points || ent.points.length === 0) break;
+            const isFlipped = (ent.extrusion?.z || 1) < 0;
+            const segmentCount = ent.closed ? ent.points.length : Math.max(0, ent.points.length - 1);
+            for (let i = 0; i < segmentCount; i++) {
+                const p1 = ent.points[i];
+                const p2 = ent.points[(i + 1) % ent.points.length];
+                const bulge = ent.bulges?.[i] || 0;
+                updateBulgeSegmentExtents(bounds.update, p1, p2, bulge, isFlipped);
+            }
+            ent.points.forEach(point => bounds.update(point.x, point.y));
+            break;
+        }
         case EntityType.POINT:
+            bounds.update(ent.position.x, ent.position.y);
+            break;
         case EntityType.TEXT:
         case EntityType.MTEXT:
         case EntityType.ATTRIB:
-        case EntityType.ATTDEF:
-            update(ent.position.x, ent.position.y);
-            if (ent.type !== EntityType.POINT) {
-                const h = (ent as any).height || CAD_DEFAULT_TEXT_HEIGHT;
-                let text = (ent as any).value || "";
-                if (ent.type === EntityType.MTEXT) {
-                    text = cleanMText(text);
-                }
-                const widthFactor = Math.abs((ent as any).widthFactor || 1);
-                const rotation = (ent as any).rotation || 0;
-                
-                // 处理文本高度、宽度因子和行间距
-                const lines = text.split('\n');
-                const maxLineLen = Math.max(...lines.map(l => l.length), 1);
-                const totalHeight = lines.length * h * 1.3; // 增加行间距以优化点选范围
-                const totalWidth = h * 0.8 * maxLineLen * widthFactor; // 字符宽度的近似值
-
-                const rad = rotation * Math.PI / 180;
-                const cos = Math.cos(rad);
-                const sin = Math.sin(rad);
-
-                // 处理 MText 插入点 (组码 71) 和 Text 对齐 (组码 72, 73)
-                let ox = 0, oy = 0;
-                if (ent.type === EntityType.MTEXT) {
-                    const ap = (ent as any).attachmentPoint || 1;
-                    // 插入点枚举：1=左上, 2=中上, 3=右上, 4=左中, 5=正中, 6=右中, 7=左下, 8=中下, 9=右下
-                    if ([2, 5, 8].includes(ap)) ox = -totalWidth / 2;
-                    else if ([3, 6, 9].includes(ap)) ox = -totalWidth;
-                    
-                    if ([4, 5, 6].includes(ap)) oy = totalHeight / 2;
-                    else if ([7, 8, 9].includes(ap)) oy = totalHeight;
-                } else {
-                    const ha = (ent as any).hAlign || 0;
-                    const va = (ent as any).vAlign || 0;
-                    // 文字对齐方式的简化处理：
-                    if (ha === 1) ox = -totalWidth / 2; // 居中
-                    else if (ha === 2) ox = -totalWidth; // 右对齐
-                    
-                    if (va === 1) oy = h * 0.5; // 底部
-                    else if (va === 2) oy = h * 1.0; // 中间
-                    else if (va === 3) oy = h * 1.5; // 顶部
-                }
-
-                const corners = [
-                    {x: ox, y: oy}, 
-                    {x: ox + totalWidth, y: oy}, 
-                    {x: ox, y: oy - totalHeight}, 
-                    {x: ox + totalWidth, y: oy - totalHeight}
-                ];
-                corners.forEach(c => {
-                    update(ent.position.x + c.x * cos - c.y * sin, ent.position.y + c.x * sin + c.y * cos);
-                });
-            }
+            bounds.updateExtents(getCadTextExtents(ent, styles));
             break;
         case EntityType.ELLIPSE: {
             const mx = ent.majorAxis.x;
             const my = ent.majorAxis.y;
             const ratio = ent.ratio || 0;
-            const a = Math.hypot(mx, my);
-            if (!isFinite(a) || a <= 0 || !isFinite(ratio) || ratio <= 0) {
-                update(ent.center.x, ent.center.y);
+            const major = Math.hypot(mx, my);
+            if (!Number.isFinite(major) || major <= 0 || !Number.isFinite(ratio) || ratio <= 0) {
+                bounds.update(ent.center.x, ent.center.y);
                 break;
             }
             const minor = { x: -my * ratio, y: mx * ratio };
-            let s = ent.startParam ?? 0;
-            let e = ent.endParam ?? (Math.PI * 2);
-            if (!isFinite(s)) s = 0;
-            if (!isFinite(e)) e = Math.PI * 2;
-            const span = Math.abs(e - s);
-            const steps = Math.max(12, Math.min(96, Math.ceil((span / (Math.PI * 2)) * 72)));
+            let startParam = ent.startParam ?? 0;
+            let endParam = ent.endParam ?? Math.PI * 2;
+            if (!Number.isFinite(startParam)) startParam = 0;
+            if (!Number.isFinite(endParam)) endParam = Math.PI * 2;
+            const span = Math.abs(endParam - startParam);
+            const steps = Math.max(24, Math.min(144, Math.ceil((span / (Math.PI * 2)) * 96)));
             for (let i = 0; i <= steps; i++) {
-                const t = s + (e - s) * (i / steps);
-                const cos = Math.cos(t);
-                const sin = Math.sin(t);
-                update(ent.center.x + mx * cos + minor.x * sin, ent.center.y + my * cos + minor.y * sin);
+                const t = startParam + (endParam - startParam) * (i / steps);
+                bounds.update(ent.center.x + mx * Math.cos(t) + minor.x * Math.sin(t), ent.center.y + my * Math.cos(t) + minor.y * Math.sin(t));
             }
             break;
         }
         case EntityType.SPLINE: {
-            const pts = ent.calculatedPoints || ent.controlPoints || ent.fitPoints || [];
-            pts.forEach(p => update(p.x, p.y));
+            const points = ent.calculatedPoints || ent.fitPoints || ent.controlPoints || [];
+            points.forEach(point => bounds.update(point.x, point.y));
             break;
         }
         case EntityType.SOLID:
         case EntityType.THREEDFACE:
-            ent.points.forEach(p => update(p.x, p.y));
+            ent.points.forEach(point => bounds.update(point.x, point.y));
             break;
         case EntityType.HATCH:
             ent.loops.forEach(loop => {
-                if (loop.points) loop.points.forEach(p => update(p.x, p.y));
+                loop.points?.forEach(point => bounds.update(point.x, point.y));
                 loop.edges.forEach(edge => {
-                    if (edge.calculatedPoints) edge.calculatedPoints.forEach(p => update(p.x, p.y));
-                    else if (edge.start && edge.end) { update(edge.start.x, edge.start.y); update(edge.end.x, edge.end.y); }
-                    else if (edge.center && edge.radius) {
-                        update(edge.center.x - edge.radius, edge.center.y - edge.radius);
-                        update(edge.center.x + edge.radius, edge.center.y + edge.radius);
+                    edge.calculatedPoints?.forEach(point => bounds.update(point.x, point.y));
+                    if (edge.start) bounds.update(edge.start.x, edge.start.y);
+                    if (edge.end) bounds.update(edge.end.x, edge.end.y);
+                    if (edge.center && edge.radius) {
+                        bounds.update(edge.center.x - edge.radius, edge.center.y - edge.radius);
+                        bounds.update(edge.center.x + edge.radius, edge.center.y + edge.radius);
                     }
                 });
             });
             break;
-        case EntityType.INSERT:
-        case EntityType.ACAD_TABLE: {
-            if (ent.type === EntityType.INSERT && ((ent as any).rowCount > 1 || (ent as any).colCount > 1)) {
-                const block = blocks[ent.blockName];
-                if (block && block.extents) {
-                    const rot = (ent as any).rotation || 0;
-                    const scale = (ent as any).scale || { x: 1, y: 1, z: 1 };
-                    const cos = Math.cos(rot * Math.PI / 180);
-                    const sin = Math.sin(rot * Math.PI / 180);
-                    const rowCount = Math.max(1, (ent as any).rowCount || 1);
-                    const colCount = Math.max(1, (ent as any).colCount || 1);
-                    const rowSpacing = (ent as any).rowSpacing || 0;
-                    const colSpacing = (ent as any).colSpacing || 0;
-                    const baseCorners = [
-                        { x: block.extents.min.x - block.basePoint.x, y: block.extents.min.y - block.basePoint.y },
-                        { x: block.extents.max.x - block.basePoint.x, y: block.extents.min.y - block.basePoint.y },
-                        { x: block.extents.min.x - block.basePoint.x, y: block.extents.max.y - block.basePoint.y },
-                        { x: block.extents.max.x - block.basePoint.x, y: block.extents.max.y - block.basePoint.y }
-                    ];
+        case EntityType.INSERT: {
+            const block = blocks[ent.blockName];
+            if (!block?.extents) {
+                bounds.update(ent.position.x, ent.position.y);
+                break;
+            }
 
-                    for (let r = 0; r < rowCount; r++) {
-                        for (let c = 0; c < colCount; c++) {
-                            const offX = c * colSpacing;
-                            const offY = r * rowSpacing;
-                            baseCorners.forEach(p => {
-                                const sx = (p.x + offX) * scale.x;
-                                const sy = (p.y + offY) * scale.y;
-                                update(ent.position.x + sx * cos - sy * sin, ent.position.y + sx * sin + sy * cos);
-                            });
-                        }
-                    }
-                    break;
+            const rowCount = Math.max(1, ent.rowCount || 1);
+            const colCount = Math.max(1, ent.colCount || 1);
+            for (let row = 0; row < rowCount; row++) {
+                for (let col = 0; col < colCount; col++) {
+                    const position = {
+                        x: ent.position.x + col * (ent.colSpacing || 0),
+                        y: ent.position.y + row * (ent.rowSpacing || 0),
+                    };
+                    bounds.updateExtents(transformExtentsCorners(block.extents, block.basePoint, position, ent.scale || { x: 1, y: 1, z: 1 }, ent.rotation || 0));
                 }
             }
+            ent.attributes?.forEach(attribute => {
+                const text = cleanMText(String((attribute as any).text || '')).trim();
+                if (text.length > 0) bounds.updateExtents(getCadTextExtents(attribute, styles));
+            });
+            break;
+        }
+        case EntityType.ACAD_TABLE: {
             const block = blocks[ent.blockName];
-            if (block && block.extents) {
-                const rot = (ent as any).rotation || 0;
-                const scale = (ent as any).scale || { x: 1, y: 1, z: 1 };
-                const cos = Math.cos(rot * Math.PI / 180);
-                const sin = Math.sin(rot * Math.PI / 180);
-                const corners = [
-                    { x: block.extents.min.x - block.basePoint.x, y: block.extents.min.y - block.basePoint.y },
-                    { x: block.extents.max.x - block.basePoint.x, y: block.extents.min.y - block.basePoint.y },
-                    { x: block.extents.min.x - block.basePoint.x, y: block.extents.max.y - block.basePoint.y },
-                    { x: block.extents.max.x - block.basePoint.x, y: block.extents.max.y - block.basePoint.y }
-                ];
-                corners.forEach(p => {
-                    const sx = p.x * scale.x;
-                    const sy = p.y * scale.y;
-                    update(ent.position.x + sx * cos - sy * sin, ent.position.y + sx * sin + sy * cos);
-                });
-            } else if (ent.type === EntityType.ACAD_TABLE) {
-                const table = ent as any;
-                const rowHeights: number[] = Array.isArray(table.rowHeights) ? table.rowHeights : [];
-                const colWidths: number[] = Array.isArray(table.colWidths) ? table.colWidths : [];
-                const rowCount = table.rowCount || rowHeights.length || 1;
-                const colCount = table.columnCount || colWidths.length || 1;
-                const defaultRowH = table.rowSpacing || 10;
-                const defaultColW = table.columnSpacing || 50;
-                const rot = table.rotation || 0;
-                const scale = table.scale || { x: 1, y: 1, z: 1 };
-
-                let w = 0;
-                for (let i = 0; i < colCount; i++) {
-                    w += (colWidths[i] !== undefined ? colWidths[i] : defaultColW);
-                }
-                let h = 0;
-                for (let i = 0; i < rowCount; i++) {
-                    h += (rowHeights[i] !== undefined ? rowHeights[i] : defaultRowH);
-                }
-
-                w *= scale.x;
-                h *= scale.y;
-
-                const cos = Math.cos(rot * Math.PI / 180);
-                const sin = Math.sin(rot * Math.PI / 180);
-                const corners = [
-                    { x: 0, y: 0 },
-                    { x: w, y: 0 },
-                    { x: 0, y: -h },
-                    { x: w, y: -h }
-                ];
-                corners.forEach(p => {
-                    update(ent.position.x + p.x * cos - p.y * sin, ent.position.y + p.x * sin + p.y * cos);
-                });
+            if (hasDrawableBlockGeometry(block) && block?.extents) {
+                bounds.updateExtents(transformExtentsCorners(block.extents, block.basePoint, ent.position, ent.scale || { x: 1, y: 1, z: 1 }, ent.rotation || 0));
             } else {
-                update(ent.position.x, ent.position.y);
+                bounds.updateExtents(getTableFallbackExtents(ent));
             }
             break;
         }
-        case EntityType.DIMENSION:
-            update(ent.definitionPoint.x, ent.definitionPoint.y);
-            if (ent.textMidPoint) update(ent.textMidPoint.x, ent.textMidPoint.y);
-            if (ent.linearP1) update(ent.linearP1.x, ent.linearP1.y);
-            if (ent.linearP2) update(ent.linearP2.x, ent.linearP2.y);
-            if (ent.arcP1) update(ent.arcP1.x, ent.arcP1.y);
-            if (ent.arcP2) update(ent.arcP2.x, ent.arcP2.y);
-            
-            if (ent.blockName && blocks[ent.blockName] && blocks[ent.blockName].extents) {
-                const b = blocks[ent.blockName];
-                const bw = b.extents!.max.x - b.extents!.min.x;
-                const bh = b.extents!.max.y - b.extents!.min.y;
-                const size = Math.max(Math.abs(bw), Math.abs(bh), 1);
-                const bc = { x: (b.extents!.min.x + b.extents!.max.x) / 2, y: (b.extents!.min.y + b.extents!.max.y) / 2 };
-                const dp = ent.definitionPoint;
-                const dist = Math.hypot(bc.x - dp.x, bc.y - dp.y);
-                const treatAsLocal = dist > size * 5;
-
-                if (treatAsLocal) {
-                    const corners = [
-                        { x: b.extents!.min.x - b.basePoint.x, y: b.extents!.min.y - b.basePoint.y },
-                        { x: b.extents!.max.x - b.basePoint.x, y: b.extents!.min.y - b.basePoint.y },
-                        { x: b.extents!.min.x - b.basePoint.x, y: b.extents!.max.y - b.basePoint.y },
-                        { x: b.extents!.max.x - b.basePoint.x, y: b.extents!.max.y - b.basePoint.y }
-                    ];
-                    corners.forEach(p => update(dp.x + p.x, dp.y + p.y));
-                } else {
-                    update(b.extents!.min.x, b.extents!.min.y);
-                    update(b.extents!.max.x, b.extents!.max.y);
-                }
+        case EntityType.DIMENSION: {
+            const blockExtents = getDimensionBlockExtents(ent, blocks);
+            if (blockExtents) {
+                bounds.updateExtents(blockExtents);
+                break;
             }
+            bounds.update(ent.definitionPoint.x, ent.definitionPoint.y);
+            if (ent.textMidPoint) bounds.update(ent.textMidPoint.x, ent.textMidPoint.y);
+            if (ent.linearP1) bounds.update(ent.linearP1.x, ent.linearP1.y);
+            if (ent.linearP2) bounds.update(ent.linearP2.x, ent.linearP2.y);
+            if (ent.arcP1) bounds.update(ent.arcP1.x, ent.arcP1.y);
+            if (ent.arcP2) bounds.update(ent.arcP2.x, ent.arcP2.y);
             break;
+        }
         case EntityType.LEADER:
-            ent.points.forEach(p => update(p.x, p.y));
+            ent.points.forEach(point => bounds.update(point.x, point.y));
+            break;
+        default:
             break;
     }
 
-    if (minX === Infinity) return null;
-    return { min: { x: minX, y: minY }, max: { x: maxX, y: maxY } };
+    return bounds.finish();
 };
 
-const precomputeBlockExtents = (blocks: Record<string, DxfBlock>) => {
+const precomputeBlockExtents = (blocks: Record<string, DxfBlock>, styles?: Record<string, DxfStyle>) => {
     // 预计算块的包围盒范围
     const visited = new Set<string>();
     const computing = new Set<string>();
@@ -1956,13 +1962,14 @@ const precomputeBlockExtents = (blocks: Record<string, DxfBlock>) => {
         block.entities.forEach(ent => {
             if (ent.visible === false) return;
             if (ent.type === EntityType.ATTDEF || ent.type === EntityType.ATTRIB) return;
-            const ext = getEntityExtents(ent, blocks);
+            if (ent.type === EntityType.ACAD_TABLE) return;
+            const ext = getEntityExtents(ent, blocks, styles);
             if (ext) {
                 // 同时更新实体自身的包围盒，用于渲染时的剔除 (Culling) 和点选 (Hit test)
                 ent.extents = ext;
                 
                 // 使用较大的限制以允许极端坐标，但防止出现 Infinity
-                const isValid = (v: number) => isFinite(v) && Math.abs(v) < 1e100;
+                const isValid = (v: number) => isFinite(v) && Math.abs(v) < EXTENTS_CONFIG.maxFiniteExtent;
                 if (isValid(ext.min.x) && ext.min.x < minX) minX = ext.min.x; 
                 if (isValid(ext.max.x) && ext.max.x > maxX) maxX = ext.max.x;
                 if (isValid(ext.min.y) && ext.min.y < minY) minY = ext.min.y; 
@@ -1981,31 +1988,75 @@ const precomputeBlockExtents = (blocks: Record<string, DxfBlock>) => {
     Object.keys(blocks).forEach(compute);
 };
 
-export const calculateExtents = (entities: AnyEntity[], blocks: Record<string, DxfBlock>): { center: Point2D, width: number, height: number, min: Point2D, max: Point2D } => {
-    // 计算所有实体的总包围盒
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
 
-    entities.forEach(ent => {
-        if (ent.visible === false || ent.type === EntityType.ATTRIB) return;
-        const ext = getEntityExtents(ent, blocks);
-        if (ext) {
-            // 使用较大的限制以允许极端坐标，但防止出现 Infinity
-            const isValid = (v: number) => isFinite(v) && Math.abs(v) < 1e100;
-            
-            if (isValid(ext.min.x) && ext.min.x < minX) minX = ext.min.x; 
-            if (isValid(ext.max.x) && ext.max.x > maxX) maxX = ext.max.x;
-            if (isValid(ext.min.y) && ext.min.y < minY) minY = ext.min.y; 
-            if (isValid(ext.max.y) && ext.max.y > maxY) maxY = ext.max.y;
-            
-            // 同时更新实体自身的包围盒，用于渲染时的剔除 (Culling)
-            ent.extents = ext;
-        }
+const isDefpointsLayer = (layerName?: string): boolean => (layerName || '').toLowerCase() === 'defpoints';
+
+const isGuideEntity = (ent: AnyEntity): boolean => ent.type === EntityType.RAY || ent.type === EntityType.XLINE;
+
+const isTextLikeEntity = (ent: AnyEntity): boolean => (
+    ent.type === EntityType.TEXT
+    || ent.type === EntityType.MTEXT
+    || ent.type === EntityType.ATTRIB
+    || ent.type === EntityType.ATTDEF
+);
+
+const isTableWithDrawableBlock = (ent: AnyEntity, blocks: Record<string, DxfBlock>): boolean => {
+    if (ent.type !== EntityType.ACAD_TABLE || !ent.blockName) return false;
+    return hasDrawableBlockGeometry(blocks[ent.blockName]);
+};
+
+const isBlockInsertWithDrawableExtents = (ent: AnyEntity, blocks: Record<string, DxfBlock>): boolean => {
+    if (ent.type !== EntityType.INSERT || !ent.blockName) return true;
+    const block = blocks[ent.blockName];
+    return !!block?.extents && hasDrawableBlockGeometry(block);
+};
+
+const isPrimaryGeometryEntity = (ent: AnyEntity, blocks?: Record<string, DxfBlock>): boolean => {
+    if (isTextLikeEntity(ent)) return false;
+    if (ent.type === EntityType.POINT) return false;
+    if (isGuideEntity(ent)) return false;
+    if (ent.type === EntityType.ACAD_TABLE) return blocks ? isTableWithDrawableBlock(ent, blocks) : false;
+    if (ent.type === EntityType.INSERT && blocks && !isBlockInsertWithDrawableExtents(ent, blocks)) return false;
+    return true;
+};
+
+const hasNonPointGeometryForExtents = (entities: AnyEntity[], blocks: Record<string, DxfBlock>): boolean => {
+    return entities.some(ent => {
+        if (ent.visible === false || ent.type === EntityType.ATTDEF) return false;
+        if (isDefpointsLayer((ent as any).layer)) return false;
+        return isPrimaryGeometryEntity(ent, blocks);
     });
+};
 
-    if (minX === Infinity || minY === Infinity || maxX === -Infinity || maxY === -Infinity) {
+const shouldUseEntityForDrawingExtents = (ent: AnyEntity, hasPrimaryGeometry: boolean, blocks: Record<string, DxfBlock>): boolean => {
+    if (ent.visible === false || ent.type === EntityType.ATTDEF) return false;
+    if (isDefpointsLayer((ent as any).layer)) return false;
+    if (EXTENTS_CONFIG.ignoreGuideLinesInDrawingExtents && isGuideEntity(ent)) return false;
+    if (!EXTENTS_CONFIG.includePointsInDrawingExtents && ent.type === EntityType.POINT && hasPrimaryGeometry) return false;
+    if (ent.type === EntityType.ACAD_TABLE && !isTableWithDrawableBlock(ent, blocks)) return false;
+    if (ent.type === EntityType.INSERT && !isBlockInsertWithDrawableExtents(ent, blocks)) return false;
+    return true;
+};
+
+const isValidExtents = (ext: { min: Point2D; max: Point2D }): boolean => {
+    const values = [ext.min.x, ext.min.y, ext.max.x, ext.max.y];
+    if (!values.every(value => Number.isFinite(value) && Math.abs(value) < EXTENTS_CONFIG.maxFiniteExtent)) return false;
+    const width = Math.abs(ext.max.x - ext.min.x);
+    const height = Math.abs(ext.max.y - ext.min.y);
+    return width >= EXTENTS_CONFIG.minDrawableEntityExtent || height >= EXTENTS_CONFIG.minDrawableEntityExtent;
+};
+
+const mergeExtentsList = (items: { min: Point2D; max: Point2D }[]): { center: Point2D, width: number, height: number, min: Point2D, max: Point2D } => {
+    if (items.length === 0) {
         return { center: { x: 0, y: 0 }, width: 0, height: 0, min: { x: 0, y: 0 }, max: { x: 0, y: 0 } };
     }
-
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    items.forEach(ext => {
+        minX = Math.min(minX, ext.min.x);
+        minY = Math.min(minY, ext.min.y);
+        maxX = Math.max(maxX, ext.max.x);
+        maxY = Math.max(maxY, ext.max.y);
+    });
     const width = maxX - minX;
     const height = maxY - minY;
     return {
@@ -2017,17 +2068,58 @@ export const calculateExtents = (entities: AnyEntity[], blocks: Record<string, D
     };
 };
 
+const isExtentsNearBase = (ext: { min: Point2D; max: Point2D }, base: { min: Point2D; max: Point2D }): boolean => {
+    const baseWidth = Math.abs(base.max.x - base.min.x);
+    const baseHeight = Math.abs(base.max.y - base.min.y);
+    const pad = Math.max(
+        EXTENTS_CONFIG.annotationNearGeometryMinimumPadding,
+        baseWidth * EXTENTS_CONFIG.annotationNearGeometryFactor,
+        baseHeight * EXTENTS_CONFIG.annotationNearGeometryFactor,
+    );
+    return ext.max.x >= base.min.x - pad
+        && ext.min.x <= base.max.x + pad
+        && ext.max.y >= base.min.y - pad
+        && ext.min.y <= base.max.y + pad;
+};
+
+export const calculateExtents = (entities: AnyEntity[], blocks: Record<string, DxfBlock>, styles?: Record<string, DxfStyle>): { center: Point2D, width: number, height: number, min: Point2D, max: Point2D } => {
+    const primaryExtents: { min: Point2D; max: Point2D }[] = [];
+    const annotationExtents: { min: Point2D; max: Point2D }[] = [];
+    const fallbackExtents: { min: Point2D; max: Point2D }[] = [];
+    const hasPrimaryGeometry = hasNonPointGeometryForExtents(entities, blocks);
+
+    entities.forEach(ent => {
+        if (!shouldUseEntityForDrawingExtents(ent, hasPrimaryGeometry, blocks)) return;
+        const ext = getEntityExtents(ent, blocks, styles);
+        if (!ext || !isValidExtents(ext)) return;
+        ent.extents = ext;
+
+        if (isPrimaryGeometryEntity(ent, blocks)) primaryExtents.push(ext);
+        else if (isTextLikeEntity(ent)) annotationExtents.push(ext);
+        else fallbackExtents.push(ext);
+    });
+
+    if (primaryExtents.length === 0) {
+        return mergeExtentsList([...fallbackExtents, ...annotationExtents]);
+    }
+
+    const primaryBounds = mergeExtentsList(primaryExtents);
+    const nearbyAnnotations = annotationExtents.filter(ext => isExtentsNearBase(ext, primaryBounds));
+    return mergeExtentsList([...primaryExtents, ...fallbackExtents, ...nearbyAnnotations]);
+};
+
 /**
  * 智能计算范围：通过忽略离群值并专注于最密集的区域来计算范围。
  */
-export const calculateSmartExtents = (entities: AnyEntity[], blocks: Record<string, DxfBlock>): { center: Point2D, width: number, height: number, min: Point2D, max: Point2D } => {
+export const calculateSmartExtents = (entities: AnyEntity[], blocks: Record<string, DxfBlock>, styles?: Record<string, DxfStyle>): { center: Point2D, width: number, height: number, min: Point2D, max: Point2D } => {
     const validExtents: {min: Point2D, max: Point2D, center: Point2D}[] = [];
     
+    const hasOtherGeometry = hasNonPointGeometryForExtents(entities, blocks);
     entities.forEach(ent => {
-        if (ent.visible === false || ent.type === EntityType.ATTDEF || ent.type === EntityType.ATTRIB) return;
-        const ext = getEntityExtents(ent, blocks);
+        if (!shouldUseEntityForDrawingExtents(ent, hasOtherGeometry, blocks)) return;
+        const ext = getEntityExtents(ent, blocks, styles);
         if (ext) {
-            const isValid = (v: number) => isFinite(v) && Math.abs(v) < 1e50;
+            const isValid = (v: number) => isFinite(v) && Math.abs(v) < EXTENTS_CONFIG.maxFiniteExtent;
             if (isValid(ext.min.x) && isValid(ext.max.x) && isValid(ext.min.y) && isValid(ext.max.y)) {
                 validExtents.push({
                     min: ext.min,
@@ -2044,7 +2136,7 @@ export const calculateSmartExtents = (entities: AnyEntity[], blocks: Record<stri
     }
 
     if (validExtents.length <= 2) {
-        return calculateExtents(entities, blocks);
+        return calculateExtents(entities, blocks, styles);
     }
 
     // 1. 计算完整的包围盒

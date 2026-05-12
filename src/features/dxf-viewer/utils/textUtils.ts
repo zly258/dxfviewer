@@ -1,8 +1,18 @@
+import { TEXT_RENDER_CONFIG } from '../../../shared/config/viewerConfig';
+import { CAD_DEFAULT_TEXT_HEIGHT, CAD_DEFAULT_TEXT_STYLE } from '../../../shared/constants/cadConstants';
+import { DxfStyle, DxfText, EntityType, Point2D } from '../../../types';
+
 const TEMP_BACKSLASH = '\x01';
 const TEMP_LEFT_BRACE = '\x02';
 const TEMP_RIGHT_BRACE = '\x03';
 
 const decodeUnicodeEscape = (_: string, hex: string) => String.fromCharCode(parseInt(hex, 16));
+
+const isCjk = (char: string) => /[\u2e80-\u9fff\uf900-\ufaff]/.test(char);
+const isDigit = (char: string) => /[0-9]/.test(char);
+const isLatin = (char: string) => /[A-Za-z]/.test(char);
+const isSpace = (char: string) => /\s/.test(char);
+const isPunctuation = (char: string) => /[.,;:!?，。；：！？、'"`~^_\-+=|/\\()[\]{}<>《》【】（）]/.test(char);
 
 export function cleanMText(text: string): string {
   if (!text) return '';
@@ -19,7 +29,8 @@ export function cleanMText(text: string): string {
   result = result.replace(/\\[Pp]/g, '\n');
   result = result.replace(/\\[Ss]([^;]*)[#^/]([^;]*);/g, '$1/$2');
 
-  // 常见内联格式：字体、颜色、高度、宽度、倾斜、跟踪、对齐、段落等。
+  result = result.replace(/\\[Ff][^;]*;/g, '');
+  result = result.replace(/\\[HhWwTtQqCcAa][^;]*;/g, '');
   result = result.replace(/\\[A-Za-z][^;]*;/g, '');
   result = result.replace(/\\[LlOoKk]/g, '');
   result = result.replace(/\\~/g, ' ');
@@ -30,4 +41,309 @@ export function cleanMText(text: string): string {
   result = result.replace(new RegExp(TEMP_RIGHT_BRACE, 'g'), '}');
 
   return result.replace(/\r\n?/g, '\n').trim();
+}
+
+export function cleanCadText(text: string): string {
+  if (!text) return '';
+  return cleanMText(text);
+}
+
+export function getStyleForText(ent: DxfText, styles?: Record<string, DxfStyle>): DxfStyle | undefined {
+  if (!styles) return undefined;
+  const styleName = ent.styleName || CAD_DEFAULT_TEXT_STYLE;
+  return styles[styleName] || styles[styleName.toUpperCase()];
+}
+
+export function getEffectiveTextHeight(ent: DxfText, styles?: Record<string, DxfStyle>): number {
+  const style = getStyleForText(ent, styles);
+  let height = Number(ent.height) || 0;
+  if (height <= 0 && style?.height) height = style.height;
+  if (height <= 0) height = CAD_DEFAULT_TEXT_HEIGHT;
+
+  if (ent.type === EntityType.MTEXT) {
+    const hMatch = ent.value?.match(/\\[Hh]([^;]+);/);
+    if (hMatch?.[1]) {
+      const raw = hMatch[1].trim();
+      const value = parseFloat(raw);
+      if (Number.isFinite(value) && value > 0) {
+        height = raw.toLowerCase().endsWith('x') ? height * value : value;
+      }
+    }
+  }
+
+  return height;
+}
+
+export function getEffectiveTextWidthFactor(ent: DxfText, styles?: Record<string, DxfStyle>): number {
+  const style = getStyleForText(ent, styles);
+  let factor = Number(ent.widthFactor) || 0;
+
+  if (ent.type === EntityType.MTEXT) {
+    const wMatch = ent.value?.match(/\\[Ww]([^;]+);?/);
+    const parsed = wMatch?.[1] ? parseFloat(wMatch[1]) : NaN;
+    if (Number.isFinite(parsed) && parsed !== 0) factor = parsed;
+  }
+
+  if (!factor) factor = style?.widthFactor || 1;
+  if (Math.abs(factor) < TEXT_RENDER_CONFIG.minimumWidthFactor) {
+    return factor >= 0 ? TEXT_RENDER_CONFIG.minimumWidthFactor : -TEXT_RENDER_CONFIG.minimumWidthFactor;
+  }
+  return factor;
+}
+
+
+export function getCadFontWidthCompensation(ent: DxfText, styles?: Record<string, DxfStyle>): number {
+  const style = getStyleForText(ent, styles);
+  const fontName = (style?.fontFileName || '').toLowerCase();
+  const hasInlineFont = ent.type === EntityType.MTEXT && /\\[fF][^;|]+/.test(ent.value || '');
+  const isTrueType = hasInlineFont
+    || fontName.endsWith('.ttf')
+    || fontName.endsWith('.otf')
+    || fontName.includes('simsun')
+    || fontName.includes('simhei')
+    || fontName.includes('arial')
+    || fontName.includes('msyh')
+    || fontName.includes('yahei');
+  const text = ent.value || '';
+  const hasCjkText = /[\u2e80-\u9fff\uf900-\ufaff]/.test(text);
+  if (hasCjkText) return TEXT_RENDER_CONFIG.cjkRenderWidthFactor;
+  return isTrueType
+    ? TEXT_RENDER_CONFIG.trueTypeRenderWidthFactor
+    : TEXT_RENDER_CONFIG.shxRenderWidthFactor;
+}
+
+export function getCadTextExtentsWidthCompensation(ent: DxfText, styles?: Record<string, DxfStyle>): number {
+  const style = getStyleForText(ent, styles);
+  const fontName = (style?.fontFileName || '').toLowerCase();
+  const hasInlineFont = ent.type === EntityType.MTEXT && /\\[fF][^;|]+/.test(ent.value || '');
+  const isTrueType = hasInlineFont
+    || fontName.endsWith('.ttf')
+    || fontName.endsWith('.otf')
+    || fontName.includes('simsun')
+    || fontName.includes('simhei')
+    || fontName.includes('arial')
+    || fontName.includes('msyh')
+    || fontName.includes('yahei');
+  return isTrueType
+    ? TEXT_RENDER_CONFIG.extentsTrueTypeWidthCompensation
+    : TEXT_RENDER_CONFIG.extentsShxWidthCompensation;
+}
+
+export function estimateCadLineWidth(line: string, textHeight: number, widthFactor: number): number {
+  let units = 0;
+  for (const char of line) {
+    if (isCjk(char)) units += TEXT_RENDER_CONFIG.cjkCharacterWidthFactor;
+    else if (isDigit(char)) units += TEXT_RENDER_CONFIG.digitCharacterWidthFactor;
+    else if (isLatin(char)) units += TEXT_RENDER_CONFIG.latinCharacterWidthFactor;
+    else if (isSpace(char)) units += TEXT_RENDER_CONFIG.spaceCharacterWidthFactor;
+    else if (isPunctuation(char)) units += TEXT_RENDER_CONFIG.punctuationCharacterWidthFactor;
+    else units += TEXT_RENDER_CONFIG.averageCharacterWidthFactor;
+  }
+  const padded = units * (1 + TEXT_RENDER_CONFIG.textWidthPaddingFactor);
+  return Math.max(0, padded * textHeight * Math.abs(widthFactor));
+}
+
+
+export interface CadFormattedTextSegment {
+  text: string;
+  underline: boolean;
+}
+
+export function splitCadFormattedText(rawText: string): CadFormattedTextSegment[] {
+  const segments: CadFormattedTextSegment[] = [];
+  let underline = false;
+  let buffer = '';
+
+  const flush = () => {
+    if (!buffer) return;
+    segments.push({ text: cleanCadText(buffer), underline });
+    buffer = '';
+  };
+
+  for (let index = 0; index < rawText.length; index++) {
+    const char = rawText[index];
+    if (char !== '\\') {
+      buffer += char;
+      continue;
+    }
+
+    const next = rawText[index + 1];
+    if (next === 'L' || next === 'l') {
+      flush();
+      underline = next === 'L';
+      index++;
+      continue;
+    }
+    if (next === 'P' || next === 'p') {
+      buffer += '\\P';
+      index++;
+      continue;
+    }
+    buffer += char;
+  }
+
+  flush();
+  return segments.length > 0 ? segments.filter(segment => segment.text.length > 0) : [{ text: cleanCadText(rawText), underline: false }];
+}
+
+export interface TextLayoutEstimate {
+  plainText: string;
+  lines: string[];
+  textHeight: number;
+  widthFactor: number;
+  lineHeight: number;
+  blockWidth: number;
+  blockHeight: number;
+}
+
+export function estimateCadTextLayout(ent: DxfText, styles?: Record<string, DxfStyle>): TextLayoutEstimate {
+  const plainText = ent.type === EntityType.MTEXT ? cleanMText(ent.value) : cleanCadText(ent.value);
+  const sourceLines = plainText ? plainText.split('\n') : [''];
+  const textHeight = getEffectiveTextHeight(ent, styles);
+  const widthFactor = getEffectiveTextWidthFactor(ent, styles);
+  const isMText = ent.type === EntityType.MTEXT;
+  const lineSpacingRaw = (ent as any).lineSpacingFactor;
+  const lineSpacingFactor = Number.isFinite(lineSpacingRaw) ? lineSpacingRaw : 1;
+  const lineHeight = isMText
+    ? textHeight * TEXT_RENDER_CONFIG.mtextDefaultLineSpacingFactor * lineSpacingFactor
+    : textHeight;
+
+  const wrappedLines: string[] = [];
+  if (isMText && ent.width && ent.width > 0) {
+    sourceLines.forEach(line => {
+      if (!line) {
+        wrappedLines.push('');
+        return;
+      }
+      let current = '';
+      for (const char of line) {
+        const testLine = current + char;
+        if (estimateCadLineWidth(testLine, textHeight, widthFactor) * getCadTextExtentsWidthCompensation(ent, styles) > ent.width! && current) {
+          wrappedLines.push(current);
+          current = char;
+        } else {
+          current = testLine;
+        }
+      }
+      wrappedLines.push(current);
+    });
+  } else {
+    wrappedLines.push(...sourceLines);
+  }
+
+  const widthCompensation = getCadTextExtentsWidthCompensation(ent, styles);
+  const lineWidths = wrappedLines.map(line => estimateCadLineWidth(line, textHeight, widthFactor) * widthCompensation);
+  const measuredWidth = Math.max(...lineWidths, 0);
+  const blockWidth = isMText && ent.width && ent.width > 0 ? Math.max(ent.width, measuredWidth) : measuredWidth;
+  const blockHeight = wrappedLines.length > 0
+    ? (wrappedLines.length - 1) * lineHeight + textHeight
+    : textHeight;
+
+  return {
+    plainText,
+    lines: wrappedLines,
+    textHeight,
+    widthFactor,
+    lineHeight,
+    blockWidth,
+    blockHeight,
+  };
+}
+
+const rotateTranslate = (origin: Point2D, point: Point2D, rotationDegrees: number): Point2D => {
+  const rad = rotationDegrees * Math.PI / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  return {
+    x: origin.x + point.x * cos - point.y * sin,
+    y: origin.y + point.x * sin + point.y * cos,
+  };
+};
+
+export function getCadTextAnchorPosition(ent: DxfText): Point2D {
+  const hAlign = ent.hAlign || 0;
+  const vAlign = ent.vAlign || 0;
+  if (ent.type !== EntityType.MTEXT && (hAlign !== 0 || vAlign !== 0) && ent.secondPosition && hAlign !== 3 && hAlign !== 5) {
+    return ent.secondPosition;
+  }
+  return ent.position;
+}
+
+export function getCadTextLocalCorners(ent: DxfText, layout: TextLayoutEstimate): Point2D[] {
+  const isMText = ent.type === EntityType.MTEXT;
+  const width = layout.blockWidth;
+  const height = layout.blockHeight;
+  let ox = 0;
+  let oy = 0;
+
+  if (isMText) {
+    const ap = ent.attachmentPoint || 1;
+    if ([2, 5, 8].includes(ap)) ox = -width / 2;
+    else if ([3, 6, 9].includes(ap)) ox = -width;
+
+    if ([1, 2, 3].includes(ap)) oy = 0;
+    else if ([4, 5, 6].includes(ap)) oy = height / 2;
+    else if ([7, 8, 9].includes(ap)) oy = height;
+  } else {
+    const hAlign = ent.hAlign || 0;
+    const vAlign = ent.vAlign || 0;
+    if (hAlign === 1 || hAlign === 4) ox = -width / 2;
+    else if (hAlign === 2) ox = -width;
+
+    if (vAlign === 1) oy = 0;
+    else if (vAlign === 2 || hAlign === 4) oy = height / 2;
+    else if (vAlign === 3) oy = height;
+    else oy = layout.textHeight * TEXT_RENDER_CONFIG.alphabeticBaselineOffsetFactor;
+  }
+
+  return [
+    { x: ox, y: oy },
+    { x: ox + width, y: oy },
+    { x: ox, y: oy - height },
+    { x: ox + width, y: oy - height },
+  ];
+}
+
+export function getCadTextExtents(ent: DxfText, styles?: Record<string, DxfStyle>): { min: Point2D; max: Point2D } | null {
+  const layout = estimateCadTextLayout(ent, styles);
+  if (!layout.plainText) return null;
+
+  if ((ent.hAlign === 3 || ent.hAlign === 5) && ent.secondPosition) {
+    const halfHeight = layout.textHeight / 2;
+    const p1 = ent.position;
+    const p2 = ent.secondPosition;
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = -dy / len * halfHeight;
+    const ny = dx / len * halfHeight;
+    const pts = [
+      { x: p1.x + nx, y: p1.y + ny },
+      { x: p1.x - nx, y: p1.y - ny },
+      { x: p2.x + nx, y: p2.y + ny },
+      { x: p2.x - nx, y: p2.y - ny },
+    ];
+    return pointsToExtents(pts);
+  }
+
+  const anchor = getCadTextAnchorPosition(ent);
+  const rotation = ent.rotation || 0;
+  const corners = getCadTextLocalCorners(ent, layout).map(p => rotateTranslate(anchor, p, rotation));
+  return pointsToExtents(corners);
+}
+
+export function pointsToExtents(points: Point2D[]): { min: Point2D; max: Point2D } | null {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  points.forEach(point => {
+    if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return;
+    minX = Math.min(minX, point.x);
+    minY = Math.min(minY, point.y);
+    maxX = Math.max(maxX, point.x);
+    maxY = Math.max(maxY, point.y);
+  });
+  if (minX === Infinity) return null;
+  return { min: { x: minX, y: minY }, max: { x: maxX, y: maxY } };
 }

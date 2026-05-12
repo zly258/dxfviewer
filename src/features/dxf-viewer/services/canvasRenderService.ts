@@ -1,12 +1,33 @@
 import { AnyEntity, EntityType, DxfLayer, DxfBlock, DxfStyle, Point2D, DxfInsert, HatchLoop, DxfText, DxfLineType, ViewPort } from '../../../types';
-import { CANVAS_THEME_COLORS, DEFAULT_ENTITY_COLOR, FALLBACK_DRAWING_COLORS, SELECTION_CONFIG, TEXT_RENDER_CONFIG } from '../../../shared/config/viewerConfig';
+import { CANVAS_THEME_COLORS, DEFAULT_ENTITY_COLOR, FALLBACK_DRAWING_COLORS, SELECTION_CONFIG, TEXT_RENDER_CONFIG, LEADER_RENDER_CONFIG, TABLE_EXTENTS_CONFIG } from '../../../shared/config/viewerConfig';
 import { CAD_BY_BLOCK_COLOR, CAD_BY_LAYER_COLOR, CAD_DEFAULT_TEXT_HEIGHT, CAD_DEFAULT_TEXT_STYLE } from '../../../shared/constants/cadConstants';
 import { CanvasTheme } from '../../../shared/types/ui';
 import { getAutoCadColor, AUTO_CAD_COLORS, trueColorToHex, ensureReadableColor } from '../utils/colorUtils';
-import { getBSplinePoints, cleanMText } from './dxfService';
+import { getBSplinePoints } from './dxfService';
 import { getStyleFontFamily, FONT_STACKS, mapCadFontToWebFont } from './fontService';
+import { cleanCadText, cleanMText, estimateCadTextLayout, getCadTextAnchorPosition, getEffectiveTextHeight, getEffectiveTextWidthFactor, getCadFontWidthCompensation, splitCadFormattedText } from '../utils/textUtils';
 
 const SELECTION_COLOR = SELECTION_CONFIG.color;
+
+const getTextHeightCorrectionFactor = (ent: DxfText, styles: Record<string, DxfStyle> | undefined): number => {
+    const styleName = ent.styleName || CAD_DEFAULT_TEXT_STYLE;
+    const style = styles?.[styleName] || styles?.[styleName.toUpperCase()];
+    const styleFontLower = (style?.fontFileName || '').toLowerCase();
+    const hasInlineFont = ent.type === EntityType.MTEXT && /\\[fF][^;|]+/.test(ent.value || '');
+    const isTrueType = hasInlineFont
+        || styleFontLower.endsWith('.ttf')
+        || styleFontLower.endsWith('.otf')
+        || styleFontLower.includes('simsun')
+        || styleFontLower.includes('simhei')
+        || styleFontLower.includes('arial')
+        || styleFontLower.includes('msyh');
+    return isTrueType ? TEXT_RENDER_CONFIG.trueTypeFontHeightFactor : TEXT_RENDER_CONFIG.shxFontHeightFactor;
+};
+
+const getHorizontalTextScale = (ent: DxfText, styles: Record<string, DxfStyle> | undefined, widthFactor: number): number => {
+    return widthFactor * getCadFontWidthCompensation(ent, styles);
+};
+
 
 /**
  * 获取实体颜色
@@ -122,40 +143,11 @@ const getCanvasFont = (ent: AnyEntity, styles: Record<string, DxfStyle> | undefi
         }
     }
 
-    // 根据字体类型调整高度
-    // 在 AutoCAD 中，文本高度 (height) 指的是纯粹的大写字母高度 (Cap Height)
-    // 而在 Web Canvas / CSS 中，字体大小 (px) 指的是整个 Em 字框 (Em-box)，其中包含了顶部和底部的行间距/衬线
-    // 对于大多数标准的 Web 字体，大写字母高度通常占据 Em 框的 0.7 到 0.75
-    // 因此，要在网页上物理呈现与原生 AutoCAD 丝毫不差的高度，我们必须把字体大小反向放大约 1.33+ 倍
-    const scaleFactor = isTrueType ? TEXT_RENDER_CONFIG.trueTypeFontHeightFactor : TEXT_RENDER_CONFIG.shxFontHeightFactor; // SHX（映射字体）通常比 TrueType 需要一个略大的微调系数
+    // CAD 文字高度更接近可见字高，Canvas font-size 是 em 框高度，需要按字体类型做高度换算。
+    const scaleFactor = isTrueType ? TEXT_RENDER_CONFIG.trueTypeFontHeightFactor : TEXT_RENDER_CONFIG.shxFontHeightFactor;
     const correctedHeight = height * scaleFactor; 
 
     return `${fontStyle} ${fontWeight} ${correctedHeight}px ${fontFamily}`;
-};
-
-/**
- * 清理文本内容，移除 MText 格式化代码
- */
-const cleanTextContent = (text: string): string => {
-    if (!text) return "";
-    let result = text;
-    result = result.replace(/\\\\/g, '\x01');
-    result = result.replace(/\\\{/g, '\x02');
-    result = result.replace(/\\\}/g, '\x03');
-    result = result.replace(/\\U\+([0-9A-Fa-f]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
-    result = result.replace(/%%[cC]/g, 'Ø');
-    result = result.replace(/%%[dD]/g, '°');
-    result = result.replace(/%%[pP]/g, '±');
-    result = result.replace(/\\[Pp]/g, '\n');
-    result = result.replace(/\\[Ss]([^;]*)[#^/]([^;]*);/g, '$1/$2');
-    result = result.replace(/\\[A-Za-z0-9][^;]*;/g, '');
-    result = result.replace(/\\[L|l|O|o|K|k]/g, '');
-    result = result.replace(/\\~/g, ' ');
-    result = result.replace(/[{}]/g, '');
-    result = result.replace(/\x01/g, '\\');
-    result = result.replace(/\x02/g, '{');
-    result = result.replace(/\x03/g, '}');
-    return result.trim();
 };
 
 /**
@@ -393,6 +385,36 @@ export const renderEntitiesToCanvas = (
     const vMinY = Math.min(worldTop, worldBottom);
     const vMaxY = Math.max(worldTop, worldBottom);
 
+    const entityByHandle = new Map<string, AnyEntity>();
+    entities.forEach(entity => {
+        if (entity.handle) entityByHandle.set(entity.handle, entity);
+    });
+
+    const drawFormattedTextLine = (rawText: string, fallbackText: string, y: number, align: CanvasTextAlign, baseline: CanvasTextBaseline, textHeightPixels: number) => {
+        const segments = splitCadFormattedText(rawText);
+        const plainText = segments.map(segment => segment.text).join('') || fallbackText;
+        const totalWidth = ctx.measureText(plainText).width;
+        let x = 0;
+        if (align === 'center') x = -totalWidth / 2;
+        else if (align === 'right' || align === 'end') x = -totalWidth;
+
+        ctx.textAlign = 'left';
+        ctx.textBaseline = baseline;
+        segments.forEach(segment => {
+            if (!segment.text) return;
+            ctx.fillText(segment.text, x, y);
+            const segmentWidth = ctx.measureText(segment.text).width;
+            if (segment.underline) {
+                const underlineY = y + textHeightPixels * (baseline === 'top' ? 0.92 : baseline === 'middle' ? 0.42 : 0.12);
+                ctx.beginPath();
+                ctx.moveTo(x, underlineY);
+                ctx.lineTo(x + segmentWidth, underlineY);
+                ctx.stroke();
+            }
+            x += segmentWidth;
+        });
+    };
+
     const drawEntity = (ent: AnyEntity, transform: RenderTransform, parentLayerName?: string, parentColor?: string, parentSelected: boolean = false, depth: number = 0, noMTextWrap: boolean = false) => {
         if (ent.visible === false || depth > 20) return;
 
@@ -585,50 +607,19 @@ export const renderEntitiesToCanvas = (
                 // TEXT 与 MTEXT 的格式控制码不同，分别清理后再绘制。
                 const text = ent.type === EntityType.MTEXT 
                     ? cleanMText(ent.value)
-                    : cleanTextContent(ent.value);
+                    : cleanCadText(ent.value);
                 if (!text) break;
                 
-                let widthFactor = 1;
-                const style = styles[ent.styleName || 'STANDARD'];
+                const style = styles[ent.styleName || 'STANDARD'] || styles[(ent.styleName || 'STANDARD').toUpperCase()];
                 const isMText = ent.type === EntityType.MTEXT;
-                
-                // 如果有预解析的宽度因子则使用它，否则尝试解析它
-                if (ent.widthFactor !== undefined && ent.widthFactor !== 0) {
-                    widthFactor = ent.widthFactor;
-                } else if (isMText) {
-                    const matches = ent.value.match(/\\[Ww](\d+(\.\d+)?)(?:;|$)/);
-                    if (matches && matches[1]) {
-                        widthFactor = parseFloat(matches[1]);
-                    } else {
-                        widthFactor = style?.widthFactor || 1;
-                    }
-                } else {
-                    widthFactor = style?.widthFactor || 1;
-                }
-                
-                // 确保宽度因子不为零，避免文本宽度为零
-                if (Math.abs(widthFactor) < TEXT_RENDER_CONFIG.minimumWidthFactor) {
-                    widthFactor = widthFactor >= 0 ? TEXT_RENDER_CONFIG.minimumWidthFactor : -TEXT_RENDER_CONFIG.minimumWidthFactor;
-                }
+                const widthFactor = getEffectiveTextWidthFactor(ent, styles);
 
                 ctx.save();
                 
                 const hAlign = ent.hAlign || 0;
                 const vAlign = ent.vAlign || 0;
 
-                // 位置选择逻辑：根据 DXF 规范
-                let pos = ent.position;
-                if (!isMText && (hAlign !== 0 || vAlign !== 0) && ent.secondPosition) {
-                    // 对于绝大多数有对齐点的 TEXT，第二坐标是基线对齐点
-                    // 但对于 Aligned(3) 和 Fit(5) 来说，文本是排在 position 和 secondPosition 之间的
-                    if (hAlign !== 3 && hAlign !== 5) {
-                        pos = ent.secondPosition;
-                    } else {
-                        // 在 3 和 5 模式下，项目起始点是 position，但我们需要它居中以配合我们的对齐逻辑，或者直接变换
-                        // 这里我们使用 position 作为起始，然后在下面特殊处理
-                        pos = ent.position;
-                    }
-                }
+                const pos = getCadTextAnchorPosition(ent);
                 
                 const sPos = transform.project(pos);
                 ctx.translate(sPos.x, sPos.y);
@@ -639,84 +630,38 @@ export const renderEntitiesToCanvas = (
                     ctx.rotate(-totalRotation);
                 }
                 
-                // 计算有效高度：实体高度，如果为0则使用样式高度，如果样式高度为0则使用默认值2.5
-                let effectiveHeight = ent.height;
-                if (effectiveHeight === 0 && style?.height) {
-                    effectiveHeight = style.height;
-                }
-                if (effectiveHeight === 0) {
-                    effectiveHeight = CAD_DEFAULT_TEXT_HEIGHT;
-                }
-                
-                // 处理 MTEXT 内联高度覆盖 \H...;
-                if (isMText) {
-                    const hMatch = ent.value.match(/\\H([^;]+);/);
-                    if (hMatch && hMatch[1]) {
-                        const hVal = parseFloat(hMatch[1]);
-                        if (!isNaN(hVal)) {
-                            if (hMatch[1].endsWith('x')) {
-                                // 乘数：如果当前高度为0，使用样式高度或默认值作为基准
-                                if (effectiveHeight === 0) {
-                                    effectiveHeight = style?.height || CAD_DEFAULT_TEXT_HEIGHT;
-                                }
-                                effectiveHeight *= hVal;
-                            } else {
-                                // 绝对值：直接设置高度
-                                effectiveHeight = hVal;
-                            }
-                        }
-                    }
-                }
+                const effectiveHeight = getEffectiveTextHeight(ent, styles);
                 
                 // 将文本高度缩放到像素
                 const textHeightPixels = effectiveHeight * transform.scale;
+                const horizontalTextScale = getHorizontalTextScale(ent, styles, widthFactor);
                 
                 // 极小文字以占位块绘制，避免大量不可读文字拖慢视图缩放。
                 if (textHeightPixels < TEXT_RENDER_CONFIG.tinyTextPixelHeight && !isSelected) {
-                    let roughLen = text.length;
-                    let approxWidth = roughLen * textHeightPixels * TEXT_RENDER_CONFIG.averageCharacterWidthFactor * widthFactor;
-                    let blockH = textHeightPixels;
-                    
+                    const layout = estimateCadTextLayout(ent, styles);
+                    const approxWidth = Math.max(layout.blockWidth * transform.scale, textHeightPixels);
+                    const blockH = Math.max(layout.blockHeight * transform.scale, textHeightPixels);
                     let rx = 0;
                     let ry = 0;
-                    
+
                     if (!isMText) {
                         if (hAlign === 1 || hAlign === 4) rx = -approxWidth / 2;
                         else if (hAlign === 2) rx = -approxWidth;
-                        
+
                         if (vAlign === 1) ry = -textHeightPixels;
                         else if (vAlign === 2 || hAlign === 4) ry = -textHeightPixels / 2;
                         else if (vAlign === 3) ry = 0;
-                        else ry = -textHeightPixels * TEXT_RENDER_CONFIG.alphabeticBaselineOffsetFactor; // 基线近似值 (alphabetic baseline)
+                        else ry = -textHeightPixels * TEXT_RENDER_CONFIG.alphabeticBaselineOffsetFactor;
                     } else {
-                        // MText 支持多行，预估几何块大小以防止远处看变成极长单行
-                        const mtextMaxWidth = (ent.width && ent.width > 0) ? (ent.width * transform.scale) : 0;
-                        const explicitLines = (text.match(/\n/g) || []).length + 1;
-                        let estimatedTotalLines = explicitLines;
-                        
-                        // 基于最大宽度粗略计算自动换行的行数
-                        if (mtextMaxWidth > 0) {
-                            const charsPerLine = Math.max(1, mtextMaxWidth / (textHeightPixels * TEXT_RENDER_CONFIG.averageCharacterWidthFactor * widthFactor));
-                            estimatedTotalLines = Math.max(explicitLines, Math.ceil(roughLen / charsPerLine));
-                            approxWidth = Math.min(approxWidth, mtextMaxWidth); 
-                        } else if (explicitLines > 1) {
-                            approxWidth = (roughLen / explicitLines) * textHeightPixels * TEXT_RENDER_CONFIG.averageCharacterWidthFactor * widthFactor;
-                        }
-                        
-                        const lineSpacingRaw = (ent as any).lineSpacingFactor;
-                        const lineSpacingFactor = (lineSpacingRaw !== undefined && !isNaN(lineSpacingRaw)) ? lineSpacingRaw : 1;
-                        const lineHeight = textHeightPixels * TEXT_RENDER_CONFIG.mtextDefaultLineSpacingFactor * lineSpacingFactor; 
-                        blockH = (estimatedTotalLines > 0) ? ((estimatedTotalLines - 1) * lineHeight + textHeightPixels) : 0;
-                        
                         const ap = ent.attachmentPoint || 1;
                         if ([2, 5, 8].includes(ap)) rx = -approxWidth / 2;
                         else if ([3, 6, 9].includes(ap)) rx = -approxWidth;
-                        
-                        if ([1, 2, 3].includes(ap)) ry = 0; 
-                        if ([4, 5, 6].includes(ap)) ry = -blockH / 2; 
-                        if ([7, 8, 9].includes(ap)) ry = -blockH; 
+
+                        if ([1, 2, 3].includes(ap)) ry = 0;
+                        if ([4, 5, 6].includes(ap)) ry = -blockH / 2;
+                        if ([7, 8, 9].includes(ap)) ry = -blockH;
                     }
-                    
+
                     ctx.fillRect(rx, ry, approxWidth, blockH);
                     ctx.restore();
                     break;
@@ -732,10 +677,10 @@ export const renderEntitiesToCanvas = (
                 let dy = 0;
 
                 if (isMText) {
-                    ctx.scale(widthFactor, 1.0);
+                    ctx.scale(horizontalTextScale, 1.0);
                     
                     // MTEXT 宽度约束 (如果是0表示不自动换行)
-                    const mtextMaxWidth = (ent.width && ent.width > 0) ? (ent.width * transform.scale / Math.max(TEXT_RENDER_CONFIG.minimumWidthFactor, widthFactor)) : 0;
+                    const mtextMaxWidth = (ent.width && ent.width > 0) ? (ent.width * transform.scale / Math.max(TEXT_RENDER_CONFIG.minimumWidthFactor, Math.abs(horizontalTextScale))) : 0;
                     const lines = noMTextWrap ? text.split('\n') : wrapText(ctx, text, mtextMaxWidth);
                     
                     // 根据 AutoCAD DXF 规范：
@@ -789,7 +734,7 @@ export const renderEntitiesToCanvas = (
                     }
                     
                     lines.forEach((line, i) => {
-                        ctx.fillText(line, 0, dy + i * lineHeight);
+                        drawFormattedTextLine(line, line, dy + i * lineHeight, align, baseline, textHeightPixels);
                     });
                 } else {
                     // 普通文本对齐逻辑优化
@@ -823,7 +768,7 @@ export const renderEntitiesToCanvas = (
                         baseline = (vAlign === 0) ? 'alphabetic' : (vAlign === 1 ? 'bottom' : (vAlign === 2 ? 'middle' : 'top'));
                     } else {
                         // 常规对齐应用默认 widthFactor
-                        ctx.scale(widthFactor, 1.0);
+                        ctx.scale(horizontalTextScale, 1.0);
 
                         if (hAlign === 0) align = 'left';
                         else if (hAlign === 1) align = 'center';
@@ -842,9 +787,7 @@ export const renderEntitiesToCanvas = (
                         }
                     }
 
-                    ctx.textAlign = align;
-                    ctx.textBaseline = baseline;
-                    ctx.fillText(text, 0, 0);
+                    drawFormattedTextLine(ent.value || text, text, 0, align, baseline, textHeightPixels);
                 }
                 ctx.restore();
                 break;
@@ -855,21 +798,23 @@ export const renderEntitiesToCanvas = (
                 
                 // 表格优先使用匿名块渲染；块缺失或为空时回退到网格和单元格文字绘制。
 
-                const shouldDrawTableFallback = ent.type === EntityType.ACAD_TABLE && (!block || !block.entities || block.entities.length === 0);
+                const tableHasTextContent = ent.type === EntityType.ACAD_TABLE
+                    && Array.isArray((ent as any).cells)
+                    && (ent as any).cells.some((cell: unknown) => cleanMText(String(cell || '')).trim().length > 0);
+                const shouldDrawTableFallback = ent.type === EntityType.ACAD_TABLE
+                    && tableHasTextContent
+                    && (!block || !block.entities || block.entities.length === 0);
 
                 if (!block || shouldDrawTableFallback) {
                         if (ent.type === EntityType.ACAD_TABLE) {
+                            if (!shouldDrawTableFallback) break;
                             const table = ent as any;
-                const rowHeights = table.rowHeights || [];
-                const colWidths = table.colWidths || [];
-                
-                // 如果没有 rowHeights/colWidths，回退到均匀网格
-                // 确保至少有一个默认值
-                const defaultRowH = Math.max(table.rowSpacing || 10, 1.0);
-                const defaultColW = Math.max(table.columnSpacing || 50, 1.0);
-                
-                const rowCount = Math.max(table.rowCount || 1, rowHeights.length);
-                const colCount = Math.max(table.columnCount || 1, colWidths.length);
+                const rowCount = Math.max(1, Math.min(TABLE_EXTENTS_CONFIG.maxFallbackRows, Math.floor(table.rowCount || 1)));
+                const colCount = Math.max(1, Math.min(TABLE_EXTENTS_CONFIG.maxFallbackColumns, Math.floor(table.columnCount || 1)));
+                const rowHeights = Array.isArray(table.rowHeights) ? table.rowHeights.slice(0, rowCount) : [];
+                const colWidths = Array.isArray(table.colWidths) ? table.colWidths.slice(0, colCount) : [];
+                const defaultRowH = Math.max(table.rowSpacing || TABLE_EXTENTS_CONFIG.defaultRowHeight, TABLE_EXTENTS_CONFIG.minRowHeight);
+                const defaultColW = Math.max(table.columnSpacing || TABLE_EXTENTS_CONFIG.defaultColumnWidth, TABLE_EXTENTS_CONFIG.minColumnWidth);
 
                 const scale = ent.scale || { x: 1, y: 1, z: 1 };
                 
@@ -902,7 +847,14 @@ export const renderEntitiesToCanvas = (
                 }
                 
                 const totalWidth = colX[colCount];
-                const totalHeight = -rowY[rowCount]; // 注意 rowY 是负值
+                const totalHeight = -rowY[rowCount];
+                const tableAspectRatio = totalWidth > 0 && totalHeight > 0 ? Math.max(totalWidth / totalHeight, totalHeight / totalWidth) : Infinity;
+                if (totalWidth > TABLE_EXTENTS_CONFIG.maxFallbackTotalWidth
+                    || totalHeight > TABLE_EXTENTS_CONFIG.maxFallbackTotalHeight
+                    || tableAspectRatio > TABLE_EXTENTS_CONFIG.maxFallbackAspectRatio) {
+                    ctx.restore();
+                    break;
+                }
 
                 // 绘制横线
                 for (let i = 0; i <= rowCount; i++) {
@@ -1039,11 +991,44 @@ export const renderEntitiesToCanvas = (
             }
             case EntityType.DIMENSION: {
                 const block = blocks[ent.blockName];
-                if (!block || !block.entities || block.entities.length === 0) break;
-
                 const layerName = (ent.layer === '0' && parentLayerName) ? parentLayerName : ent.layer;
-                const dp = ent.definitionPoint;
 
+                if (!block || !block.entities || block.entities.length === 0) {
+                    const p1 = ent.linearP1 || ent.arcP1;
+                    const p2 = ent.linearP2 || ent.arcP2;
+                    if (p1 && p2) {
+                        const sp1 = transform.project(p1);
+                        const sp2 = transform.project(p2);
+                        ctx.beginPath();
+                        ctx.moveTo(sp1.x, sp1.y);
+                        ctx.lineTo(sp2.x, sp2.y);
+                        if (ent.definitionPoint) {
+                            const dp = transform.project(ent.definitionPoint);
+                            ctx.moveTo(sp1.x, sp1.y);
+                            ctx.lineTo(dp.x, dp.y);
+                            ctx.moveTo(sp2.x, sp2.y);
+                            ctx.lineTo(dp.x, dp.y);
+                        }
+                        ctx.stroke();
+                    }
+
+                    const label = ent.text && ent.text !== '<>'
+                        ? cleanCadText(ent.text)
+                        : (Number.isFinite(ent.measurement) && ent.measurement !== 0 ? String(Math.round(ent.measurement * 1000) / 1000) : '');
+                    if (label && ent.textMidPoint) {
+                        const tp = transform.project(ent.textMidPoint);
+                        ctx.save();
+                        ctx.font = `${Math.max(10, CAD_DEFAULT_TEXT_HEIGHT * transform.scale)}px sans-serif`;
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillStyle = color;
+                        ctx.fillText(label, tp.x, tp.y);
+                        ctx.restore();
+                    }
+                    break;
+                }
+
+                const dp = ent.definitionPoint;
                 let treatAsLocal = false;
                 if (block.extents) {
                     const bw = block.extents.max.x - block.extents.min.x;
@@ -1123,7 +1108,15 @@ export const renderEntitiesToCanvas = (
                      const last = pts[pts.length-1];
                      const prev = pts[pts.length-2];
                      const dx = last.x - prev.x;
-                     const hookLen = SELECTION_CONFIG.leaderHookLength; 
+                     let hookLen = LEADER_RENDER_CONFIG.defaultHookLength;
+                     const annotation = ent.annotationHandle ? entityByHandle.get(ent.annotationHandle) : undefined;
+                     if (annotation?.extents) {
+                         const annotationCenterX = (annotation.extents.min.x + annotation.extents.max.x) / 2;
+                         const targetX = annotationCenterX >= last.x ? annotation.extents.min.x : annotation.extents.max.x;
+                         const gap = Math.abs(targetX - last.x);
+                         hookLen = Math.max(0, gap - TEXT_RENDER_CONFIG.minimumTableCellSize * LEADER_RENDER_CONFIG.annotationGapFactor);
+                     }
+                     
                      const dir = dx >= 0 ? 1 : -1;
                      const sp = transform.project({ x: last.x + dir * hookLen, y: last.y });
                      ctx.lineTo(sp.x, sp.y);
@@ -1135,9 +1128,9 @@ export const renderEntitiesToCanvas = (
                     const p1 = transform.project(pts[0]);
                     const p2 = transform.project(pts[1]);
                     const ang = Math.atan2(p2.y - p1.y, p2.x - p1.x);
-                    const s = SELECTION_CONFIG.gripSize * transform.scale; 
-                    const a1 = ang + Math.PI/6; 
-                    const a2 = ang - Math.PI/6;
+                    const s = LEADER_RENDER_CONFIG.arrowSizeFactor * transform.scale; 
+                    const a1 = ang + LEADER_RENDER_CONFIG.arrowHalfAngleRadians; 
+                    const a2 = ang - LEADER_RENDER_CONFIG.arrowHalfAngleRadians;
                     ctx.beginPath();
                     ctx.moveTo(p1.x, p1.y);
                     ctx.lineTo(p1.x + Math.cos(a1)*s, p1.y + Math.sin(a1)*s);

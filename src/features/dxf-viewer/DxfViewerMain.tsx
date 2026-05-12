@@ -81,12 +81,12 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
     onLanguageChange?.(newLang);
   }, [onLanguageChange]);
 
-  const fitView = useCallback((ents: AnyEntity[], blks: Record<string, DxfBlock>) => {
+  const fitView = useCallback((ents: AnyEntity[], blks: Record<string, DxfBlock>, currentStyles: Record<string, DxfStyle> = styles) => {
     if (ents.length === 0) return;
     const visibleEnts = ents.filter(e => e.visible !== false && e.type !== EntityType.ATTDEF);
     if (visibleEnts.length === 0) return;
 
-    const extents = calculateExtents(visibleEnts, blks);
+    const extents = calculateExtents(visibleEnts, blks, currentStyles);
 
     // 第 2 步：计算世界中心
     const centerX = extents.center.x;
@@ -135,20 +135,33 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
         targetY: centerY, 
         zoom 
     });
-  }, [showSidebar, showProperties]);
+  }, [showSidebar, showProperties, styles]);
 
   const drawingExtents = useMemo(() => {
     if (entities.length === 0) return null;
     const visibleEnts = entities.filter(e => e.visible !== false && e.type !== EntityType.ATTDEF && e.type !== EntityType.ATTRIB);
     if (visibleEnts.length === 0) return null;
-    return calculateExtents(visibleEnts, blocks);
-  }, [entities, blocks]);
+    return calculateExtents(visibleEnts, blocks, styles);
+  }, [entities, blocks, styles]);
 
   const processBuffer = async (buffer: ArrayBuffer) => {
-    const content = decodeDxfBuffer(buffer);
+    let decoded: ReturnType<typeof decodeDxfBuffer>;
+    try {
+        decoded = decodeDxfBuffer(buffer);
+    } catch (err) {
+        const error = err instanceof Error ? err : new Error(String(err));
+        onError?.(error);
+        const message = lang === 'zh' ? `DXF 解码失败：${error.message}` : `DXF decode failed: ${error.message}`;
+        setParseErrorMessage(message);
+        setRenderErrorMessage(null);
+        setEntities([]);
+        showToast(message);
+        setIsLoading(false);
+        return;
+    }
 
     try {
-        const data = await parseDxf(content, (progress) => {
+        const data = await parseDxf(decoded.text, (progress) => {
             setLoadingProgress(progress);
         });
         setParseErrorMessage(null);
@@ -160,9 +173,9 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
         setLineTypes(data.lineTypes);
         setLtScale(data.header?.ltScale ?? VIEWER_DEFAULTS.defaultLineTypeScale);
         setWorldOffset(data.offset);
-        onLoad?.(data);
+        onLoad?.({ ...data, sourceFormat: decoded.format });
         
-        const applyFitView = () => fitView(data.entities, data.blocks);
+        const applyFitView = () => fitView(data.entities, data.blocks, data.styles);
         applyFitView();
         requestAnimationFrame(applyFitView);
         window.setTimeout(applyFitView, 0);
@@ -273,7 +286,7 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
           const id = Array.from(ids)[0];
           const ent = entities.find(e => e.id === id);
           if (ent) {
-              const extents = calculateExtents([ent], blocks);
+              const extents = calculateExtents([ent], blocks, styles);
 
               const sidebarWidth = showSidebar ? LAYOUT_CONFIG.fallbackSidebarWidth : 0;
               const propsWidth = showProperties ? LAYOUT_CONFIG.fallbackPropertiesWidth : 0;
