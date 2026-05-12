@@ -72,7 +72,7 @@ const ToolBar: React.FC<ToolBarProps> = ({
   };
 
   return (
-    <div className="toolbar" style={{ backgroundColor: uiTheme === 'dark' ? '#252526' : '#f0f0f0', borderBottom: '1px solid var(--border-color)' }}>
+    <div className="toolbar">
       <input
         ref={fileInputRef}
         type="file"
@@ -90,7 +90,7 @@ const ToolBar: React.FC<ToolBarProps> = ({
         >
           <span>{lang === 'zh' ? '文件 (F)' : 'File (F)'}</span>
           {activeMenu === 'file' && (
-            <div className="dropdown-menu" style={{ minWidth: '160px' }} onClick={(event) => event.stopPropagation()}>
+            <div className="dropdown-menu" onClick={(event) => event.stopPropagation()}>
               <div onClick={openFileDialog} className="dropdown-item">
                 <span>{lang === 'zh' ? '打开 DXF...' : 'Open DXF...'}</span>
               </div>
@@ -109,7 +109,7 @@ const ToolBar: React.FC<ToolBarProps> = ({
       >
         <span>{t.view} (V)</span>
         {activeMenu === 'view' && (
-          <div className="dropdown-menu" style={{ minWidth: '160px' }} onClick={(event) => event.stopPropagation()}>
+          <div className="dropdown-menu" onClick={(event) => event.stopPropagation()}>
             <div onClick={() => { setActiveMenu(null); onFitView(); }} className="dropdown-item">
               <span>{t.fitView}</span>
             </div>
@@ -131,7 +131,7 @@ const ToolBar: React.FC<ToolBarProps> = ({
       >
         <span>{lang === 'zh' ? '界面 (I)' : 'Interface (I)'}</span>
         {activeMenu === 'interface' && (
-          <div className="dropdown-menu" style={{ minWidth: '180px' }} onClick={(event) => event.stopPropagation()}>
+          <div className="dropdown-menu" onClick={(event) => event.stopPropagation()}>
             <div onClick={() => { setActiveMenu(null); onToggleSidebar(); }} className={`dropdown-item ${showSidebar ? 'checked' : ''}`}>
               <span>{t.layers}</span>
             </div>
@@ -156,8 +156,8 @@ const ToolBar: React.FC<ToolBarProps> = ({
       >
         <span>{lang === 'zh' ? '工具 (T)' : 'Tools (T)'}</span>
         {activeMenu === 'settings' && (
-          <div className="dropdown-menu" style={{ minWidth: '180px' }} onClick={(event) => event.stopPropagation()}>
-            <div className="dropdown-header" style={{ padding: '4px 12px', fontSize: '10px', color: 'var(--text-secondary)' }}>
+          <div className="dropdown-menu" onClick={(event) => event.stopPropagation()}>
+            <div className="dropdown-header">
               {lang === 'zh' ? '背景颜色' : 'Background Color'}
             </div>
             <div onClick={() => { setActiveMenu(null); onSetCanvasTheme('black'); }} className={`dropdown-item ${canvasTheme === 'black' ? 'checked' : ''}`}>

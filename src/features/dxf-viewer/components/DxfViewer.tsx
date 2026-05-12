@@ -2,7 +2,7 @@ import React, { useRef, useState, WheelEvent, MouseEvent, useEffect, useLayoutEf
 import { AnyEntity, ViewPort, DxfLayer, DxfBlock, DxfStyle, DxfLineType, EntityType, Point2D } from '../../../types';
 import { renderEntitiesToCanvas, hitTest, hitTestBox } from '../services/canvasRenderService';
 import { Language, UI_TRANSLATIONS } from '../../../constants/i18n';
-import { VIEWER_DEFAULTS, ZOOM_CONFIG } from '../../../shared/config/viewerConfig';
+import { SELECTION_CONFIG, VIEWER_DEFAULTS, ZOOM_CONFIG } from '../../../shared/config/viewerConfig';
 import { CanvasTheme } from '../../../shared/types/ui';
 
 /**
@@ -282,7 +282,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
              onSelectIds(boxIds);
          }
       }
-      setDragStart({ x: 0, y: 0 }); // 重置拖拽起始点
+      setDragStart({ x: 0, y: 0 });
     }
   };
 
@@ -301,7 +301,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
     >
       <canvas ref={canvasRef} />
       
-      {/* 框选视觉反馈 */}
+
       {isBoxSelecting && (
         <div
           style={{
@@ -310,8 +310,8 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
             top: Math.min(dragStart.y, currentMousePos.y),
             width: Math.abs(currentMousePos.x - dragStart.x),
             height: Math.abs(currentMousePos.y - dragStart.y),
-            backgroundColor: currentMousePos.x < dragStart.x ? 'rgba(0, 255, 0, 0.1)' : 'rgba(0, 0, 255, 0.1)', // 左移绿色(交叉)，右移蓝色(包含)
-            border: `1px ${currentMousePos.x < dragStart.x ? 'dashed' : 'solid'} ${currentMousePos.x < dragStart.x ? '#00ff00' : '#0078d4'}`, // 虚线/实线
+            backgroundColor: currentMousePos.x < dragStart.x ? SELECTION_CONFIG.crossingSelectionFill : SELECTION_CONFIG.windowSelectionFill,
+            border: `1px ${currentMousePos.x < dragStart.x ? 'dashed' : 'solid'} ${currentMousePos.x < dragStart.x ? SELECTION_CONFIG.crossingSelectionBorder : SELECTION_CONFIG.windowSelectionBorder}`,
             pointerEvents: 'none'
           }}
         />

@@ -1,6 +1,6 @@
 import { CAD_BY_LAYER_COLOR, CAD_DEFAULT_LAYER_COLOR, CAD_DEFAULT_LAYER_NAME, CAD_DEFAULT_TEXT_HEIGHT, CAD_DEFAULT_TEXT_STYLE } from '../../../shared/constants/cadConstants';
-import { DEFAULT_TEXT_STYLE, EXTENTS_CONFIG, TABLE_EXTENTS_CONFIG } from '../../../shared/config/viewerConfig';
-import { AnyEntity, DxfData, EntityType, DxfLayer, DxfBlock, Point2D, Point3D, DxfHatch, HatchLoop, HatchEdge, DxfStyle, DxfPolyline, DxfInsert, DxfHeader, DxfSpline, DxfText, DxfLeader, DxfTable, DxfLineType } from '../../../types';
+import { DEFAULT_TEXT_STYLE, EXTENTS_CONFIG, TABLE_EXTENTS_CONFIG, LEADER_RENDER_CONFIG } from '../../../shared/config/viewerConfig';
+import { AnyEntity, DxfData, EntityType, DxfLayer, DxfBlock, Point2D, Point3D, DxfHatch, HatchLoop, HatchEdge, DxfStyle, DxfPolyline, DxfInsert, DxfHeader, DxfSpline, DxfText, DxfLeader, DxfTable, DxfLineType, DxfMLeader, DxfMLine } from '../../../types';
 export { cleanMText };
 import { cleanMText, getCadTextExtents, pointsToExtents } from '../utils/textUtils';
 
@@ -508,11 +508,19 @@ const offsetEntity = (ent: AnyEntity, offset: Point2D) => {
         case EntityType.LWPOLYLINE:
         case EntityType.POLYLINE:
         case EntityType.LEADER:
+        case EntityType.MLINE:
         case EntityType.SOLID:
         case EntityType.THREEDFACE:
-            if (ent.points) {
-                ent.points.forEach(p => { p.x -= ox; p.y -= oy; });
+            if ((ent as any).points) {
+                (ent as any).points.forEach((p: Point2D) => { p.x -= ox; p.y -= oy; });
             }
+            if ((ent as any).vertices) {
+                (ent as any).vertices.forEach((p: Point2D) => { p.x -= ox; p.y -= oy; });
+            }
+            break;
+        case EntityType.MLEADER:
+            ent.leaderLines.forEach(line => line.forEach(point => { point.x -= ox; point.y -= oy; }));
+            if (ent.textPosition) { ent.textPosition.x -= ox; ent.textPosition.y -= oy; }
             break;
         case EntityType.SPLINE:
             if (ent.controlPoints) ent.controlPoints.forEach(p => { p.x -= ox; p.y -= oy; });
@@ -635,6 +643,9 @@ const parseEntityDispatcher = (type: string, state: DxfParserState, blockHandleM
         case 'HATCH': return parseHatch(state, common);
         case 'DIMENSION': return parseDimension(state, common);
         case 'LEADER': return parseLeader(state, common);
+        case 'MLEADER':
+        case 'MULTILEADER': return parseMLeader(state, common);
+        case 'MLINE': return parseMLine(state, common);
         case 'ACAD_TABLE': return parseAcadTable(state, common, blockHandleMap);
         case 'RAY':
         case 'XLINE':
@@ -1234,6 +1245,163 @@ const parseLeader = (state: DxfParserState, common: any): DxfLeader => {
     return entity;
 }
 
+
+const getMLeaderTerminalPoint = (entity: Pick<DxfMLeader, 'leaderLines' | 'textPosition' | 'doglegLength' | 'enableDogleg'>): Point2D | null => {
+    const firstLine = entity.leaderLines.find(line => line.length > 0);
+    if (!firstLine) return entity.textPosition || null;
+    const last = firstLine[firstLine.length - 1];
+    if (!entity.enableDogleg) return last;
+    const prev = firstLine.length > 1 ? firstLine[firstLine.length - 2] : null;
+    const sign = entity.textPosition
+        ? (entity.textPosition.x >= last.x ? 1 : -1)
+        : (prev && last.x < prev.x ? -1 : 1);
+    return { x: last.x + sign * Math.max(0, entity.doglegLength || LEADER_RENDER_CONFIG.defaultMLeaderDoglegLength), y: last.y };
+};
+
+const getMLeaderTextPosition = (entity: Pick<DxfMLeader, 'leaderLines' | 'textPosition' | 'doglegLength' | 'enableDogleg'>): Point2D | null => {
+    if (entity.textPosition) return entity.textPosition;
+    const terminal = getMLeaderTerminalPoint(entity);
+    if (!terminal) return null;
+    const firstLine = entity.leaderLines.find(line => line.length > 0);
+    const last = firstLine ? firstLine[firstLine.length - 1] : terminal;
+    const sign = terminal.x >= last.x ? 1 : -1;
+    return { x: terminal.x + sign * LEADER_RENDER_CONFIG.mleaderTextGapFactor, y: terminal.y };
+};
+
+const parseMLeader = (state: DxfParserState, common: any): DxfMLeader => {
+    const entity: DxfMLeader = {
+        ...common,
+        type: EntityType.MLEADER,
+        leaderLines: [],
+        text: '',
+        textHeight: LEADER_RENDER_CONFIG.defaultMLeaderTextHeight,
+        textWidth: LEADER_RENDER_CONFIG.defaultMLeaderTextWidth,
+        arrowSize: 0,
+        doglegLength: LEADER_RENDER_CONFIG.defaultMLeaderDoglegLength,
+        enableLanding: true,
+        enableDogleg: true,
+        contentType: 0,
+    };
+
+    let activeLine: Point2D[] | null = null;
+    let pendingX: number | null = null;
+    const fallbackPoints: Point2D[] = [];
+    let outsidePointIndex = 0;
+
+    while (state.hasNext) {
+        const p = state.peek();
+        if (!p || p.code === 0) break;
+        const g = state.next()!;
+        applyCommonGroup(entity, g.code, g.value);
+
+        const valueUpper = String(g.value || '').toUpperCase();
+        if (g.code === 302 && valueUpper.includes('LEADER')) {
+            activeLine = [];
+            entity.leaderLines.push(activeLine);
+            pendingX = null;
+            continue;
+        }
+        if (g.code === 303 && activeLine) {
+            if (activeLine.length === 0) entity.leaderLines.pop();
+            activeLine = null;
+            pendingX = null;
+            continue;
+        }
+
+        switch (g.code) {
+            case 10:
+                pendingX = parseFloat(g.value);
+                break;
+            case 20:
+                if (pendingX !== null) {
+                    const point = { x: pendingX, y: parseFloat(g.value) };
+                    if (activeLine) activeLine.push(point);
+                    else {
+                        fallbackPoints.push(point);
+                        if (outsidePointIndex === 0) entity.textPosition = point;
+                        outsidePointIndex++;
+                    }
+                    pendingX = null;
+                }
+                break;
+            case 304:
+            case 305:
+                entity.text = entity.text ? `${entity.text}\P${g.value}` : g.value;
+                break;
+            case 40:
+                {
+                    const v = parseFloat(g.value);
+                    if (Number.isFinite(v) && v > 0 && v < 100000) entity.textHeight = v;
+                }
+                break;
+            case 41:
+                {
+                    const v = parseFloat(g.value);
+                    if (Number.isFinite(v) && v >= 0 && v < 100000) entity.doglegLength = v;
+                }
+                break;
+            case 42:
+                {
+                    const v = parseFloat(g.value);
+                    if (Number.isFinite(v) && v >= 0 && v < 100000) entity.arrowSize = v;
+                }
+                break;
+            case 43:
+                {
+                    const v = parseFloat(g.value);
+                    if (Number.isFinite(v) && v > 0 && v < 1000000) entity.textWidth = v;
+                }
+                break;
+            case 172:
+                entity.contentType = parseInt(g.value, 10);
+                break;
+            case 290:
+                entity.enableLanding = parseInt(g.value, 10) !== 0;
+                break;
+            case 291:
+                entity.enableDogleg = parseInt(g.value, 10) !== 0;
+                break;
+        }
+    }
+
+    if (entity.leaderLines.length === 0 && fallbackPoints.length >= 2) {
+        entity.leaderLines.push(fallbackPoints);
+    }
+
+    return entity;
+};
+
+const parseMLine = (state: DxfParserState, common: any): DxfMLine => {
+    const entity: DxfMLine = {
+        ...common,
+        type: EntityType.MLINE,
+        vertices: [],
+        closed: false,
+    };
+    let pendingX: number | null = null;
+    while (state.hasNext) {
+        const p = state.peek();
+        if (!p || p.code === 0) break;
+        const g = state.next()!;
+        applyCommonGroup(entity, g.code, g.value);
+        switch (g.code) {
+            case 70:
+                entity.closed = (parseInt(g.value, 10) & 1) !== 0;
+                break;
+            case 11:
+                pendingX = parseFloat(g.value);
+                break;
+            case 21:
+                if (pendingX !== null) {
+                    entity.vertices.push({ x: pendingX, y: parseFloat(g.value) });
+                    pendingX = null;
+                }
+                break;
+        }
+    }
+    return entity;
+};
+
 const parseSolid = (state: DxfParserState, common: any, type: string): AnyEntity => {
     const entity: any = { ...common, type: type === '3DFACE' ? EntityType.THREEDFACE : EntityType.SOLID, points: [] };
     const pts: ({x:number, y:number, z:number} | null)[] = [null, null, null, null];
@@ -1816,17 +1984,23 @@ const getEntityExtents = (
             break;
         }
         case EntityType.LWPOLYLINE:
-        case EntityType.POLYLINE: {
-            if (!ent.points || ent.points.length === 0) break;
+        case EntityType.POLYLINE:
+        case EntityType.MLINE: {
+            const points = ent.type === EntityType.MLINE ? ent.vertices : ent.points;
+            if (!points || points.length === 0) break;
+            if (ent.type === EntityType.MLINE) {
+                points.forEach(point => bounds.update(point.x, point.y));
+                break;
+            }
             const isFlipped = (ent.extrusion?.z || 1) < 0;
-            const segmentCount = ent.closed ? ent.points.length : Math.max(0, ent.points.length - 1);
+            const segmentCount = ent.closed ? points.length : Math.max(0, points.length - 1);
             for (let i = 0; i < segmentCount; i++) {
-                const p1 = ent.points[i];
-                const p2 = ent.points[(i + 1) % ent.points.length];
+                const p1 = points[i];
+                const p2 = points[(i + 1) % points.length];
                 const bulge = ent.bulges?.[i] || 0;
                 updateBulgeSegmentExtents(bounds.update, p1, p2, bulge, isFlipped);
             }
-            ent.points.forEach(point => bounds.update(point.x, point.y));
+            points.forEach(point => bounds.update(point.x, point.y));
             break;
         }
         case EntityType.POINT:
@@ -1931,6 +2105,24 @@ const getEntityExtents = (
         }
         case EntityType.LEADER:
             ent.points.forEach(point => bounds.update(point.x, point.y));
+            break;
+        case EntityType.MLEADER:
+            ent.leaderLines.forEach(line => line.forEach(point => bounds.update(point.x, point.y)));
+            {
+                const textPosition = getMLeaderTextPosition(ent);
+                if (ent.text && textPosition) {
+                    bounds.updateExtents(getCadTextExtents({
+                        ...ent,
+                        type: EntityType.MTEXT,
+                        position: textPosition,
+                        value: ent.text,
+                        height: ent.textHeight || LEADER_RENDER_CONFIG.defaultMLeaderTextHeight,
+                        width: ent.textWidth || LEADER_RENDER_CONFIG.defaultMLeaderTextWidth,
+                        attachmentPoint: ent.textAttachment || 4,
+                        styleName: ent.textStyleName,
+                    } as DxfText, styles));
+                }
+            }
             break;
         default:
             break;

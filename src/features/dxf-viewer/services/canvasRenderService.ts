@@ -1,8 +1,9 @@
 import { AnyEntity, EntityType, DxfLayer, DxfBlock, DxfStyle, Point2D, DxfInsert, HatchLoop, DxfText, DxfLineType, ViewPort } from '../../../types';
-import { CANVAS_THEME_COLORS, DEFAULT_ENTITY_COLOR, FALLBACK_DRAWING_COLORS, SELECTION_CONFIG, TEXT_RENDER_CONFIG, LEADER_RENDER_CONFIG, TABLE_EXTENTS_CONFIG } from '../../../shared/config/viewerConfig';
+import { CANVAS_THEME_COLORS, SELECTION_CONFIG, TEXT_RENDER_CONFIG, LEADER_RENDER_CONFIG, TABLE_EXTENTS_CONFIG, LINE_RENDER_CONFIG } from '../../../shared/config/viewerConfig';
 import { CAD_BY_BLOCK_COLOR, CAD_BY_LAYER_COLOR, CAD_DEFAULT_TEXT_HEIGHT, CAD_DEFAULT_TEXT_STYLE } from '../../../shared/constants/cadConstants';
 import { CanvasTheme } from '../../../shared/types/ui';
-import { getAutoCadColor, AUTO_CAD_COLORS, trueColorToHex, ensureReadableColor } from '../utils/colorUtils';
+import { getAutoCadColor, AUTO_CAD_COLORS } from '../utils/colorUtils';
+import { resolveEntityColor } from '../utils/entityColor';
 import { getBSplinePoints } from './dxfService';
 import { getStyleFontFamily, FONT_STACKS, mapCadFontToWebFont } from './fontService';
 import { cleanCadText, cleanMText, estimateCadTextLayout, getCadTextAnchorPosition, getEffectiveTextHeight, getEffectiveTextWidthFactor, getCadFontWidthCompensation, splitCadFormattedText } from '../utils/textUtils';
@@ -28,26 +29,6 @@ const getHorizontalTextScale = (ent: DxfText, styles: Record<string, DxfStyle> |
     return widthFactor * getCadFontWidthCompensation(ent, styles);
 };
 
-
-/**
- * 获取实体颜色
- */
-const getColor = (ent: AnyEntity, layer: DxfLayer | undefined, parentColor: string | undefined, theme: CanvasTheme): string => {
-    let color: string;
-    if (ent.trueColor !== undefined) {
-        color = trueColorToHex(ent.trueColor);
-    } else {
-        const entColor = ent.color;
-        if (entColor === CAD_BY_BLOCK_COLOR && parentColor) color = parentColor;
-        else if (entColor === CAD_BY_LAYER_COLOR || entColor === undefined) {
-            if (layer?.trueColor !== undefined) color = trueColorToHex(layer.trueColor);
-            else color = layer ? getAutoCadColor(layer.color, theme) : (FALLBACK_DRAWING_COLORS[theme]);
-        } else {
-            color = getAutoCadColor(entColor, theme);
-        }
-    }
-    return ensureReadableColor(color, theme);
-};
 
 /**
  * 获取画布字体样式
@@ -390,6 +371,43 @@ export const renderEntitiesToCanvas = (
         if (entity.handle) entityByHandle.set(entity.handle, entity);
     });
 
+
+    const getMLeaderTerminalPoint = (ent: any): Point2D | null => {
+        const line = (ent.leaderLines || []).find((items: Point2D[]) => items.length > 0);
+        if (!line) return ent.textPosition || null;
+        const last = line[line.length - 1];
+        if (!ent.enableDogleg) return last;
+        const prev = line.length > 1 ? line[line.length - 2] : null;
+        const sign = ent.textPosition ? (ent.textPosition.x >= last.x ? 1 : -1) : (prev && last.x < prev.x ? -1 : 1);
+        const length = Math.max(0, ent.doglegLength || LEADER_RENDER_CONFIG.defaultMLeaderDoglegLength);
+        return { x: last.x + sign * length, y: last.y };
+    };
+
+    const getMLeaderTextPosition = (ent: any): Point2D | null => {
+        if (ent.textPosition) return ent.textPosition;
+        const terminal = getMLeaderTerminalPoint(ent);
+        if (!terminal) return null;
+        const line = (ent.leaderLines || []).find((items: Point2D[]) => items.length > 0);
+        const last = line ? line[line.length - 1] : terminal;
+        const sign = terminal.x >= last.x ? 1 : -1;
+        return { x: terminal.x + sign * LEADER_RENDER_CONFIG.mleaderTextGapFactor, y: terminal.y };
+    };
+
+    const drawArrowHead = (tip: Point2D, next: Point2D, sizeWorld?: number) => {
+        const p1 = transform.project(tip);
+        const p2 = transform.project(next);
+        const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+        const size = Math.max(LEADER_RENDER_CONFIG.arrowSizeFactor * transform.scale, (sizeWorld || 0) * transform.scale);
+        const a1 = angle + LEADER_RENDER_CONFIG.arrowHalfAngleRadians;
+        const a2 = angle - LEADER_RENDER_CONFIG.arrowHalfAngleRadians;
+        ctx.beginPath();
+        ctx.moveTo(p1.x, p1.y);
+        ctx.lineTo(p1.x + Math.cos(a1) * size, p1.y + Math.sin(a1) * size);
+        ctx.lineTo(p1.x + Math.cos(a2) * size, p1.y + Math.sin(a2) * size);
+        ctx.closePath();
+        ctx.fill();
+    };
+
     const drawFormattedTextLine = (rawText: string, fallbackText: string, y: number, align: CanvasTextAlign, baseline: CanvasTextBaseline, textHeightPixels: number) => {
         const segments = splitCadFormattedText(rawText);
         const plainText = segments.map(segment => segment.text).join('') || fallbackText;
@@ -432,39 +450,31 @@ export const renderEntitiesToCanvas = (
         if (layer && layer.isVisible === false) return;
 
         const isSelected = selectedIds.has(ent.id) || parentSelected;
-        const color = isSelected ? SELECTION_COLOR : getColor(ent, layer, parentColor, theme);
+        const color = isSelected ? SELECTION_COLOR : resolveEntityColor(ent, layer, parentColor);
         
         ctx.strokeStyle = color;
         ctx.fillStyle = color;
 
-        // 计算线宽 (Lineweight)
         let lw = ent.lineweight;
-        if (lw === undefined || lw === -1) { // 随层 (ByLayer)
-            lw = layer?.lineweight !== undefined ? layer.lineweight : -3; 
+        if (lw === undefined || lw === LINE_RENDER_CONFIG.byLayerLineweight) {
+            lw = layer?.lineweight !== undefined ? layer.lineweight : LINE_RENDER_CONFIG.defaultLineweightCode;
         }
-        if (lw === -3 || lw === -2) lw = 25; // 默认 0.25mm
+        if (lw === LINE_RENDER_CONFIG.defaultLineweightCode || lw === LINE_RENDER_CONFIG.byBlockLineweight) {
+            lw = LINE_RENDER_CONFIG.defaultLineweight;
+        }
 
-        // 将 CAD 线宽单位 (1/100 mm) 转换为屏幕像素
-        let baseLw = lw > 0 ? (lw / 25) : 0.8;
-        if (baseLw > 2.0) baseLw = 2.0; 
-        if (baseLw < 0.5) baseLw = 0.5;
-        
-        const screenLw = isSelected ? (baseLw + 1.5) : baseLw;
-        
-        // 如果是在屏幕空间渲染，lineWidth 即为 screenLw
-        let lineWidth = screenLw;
+        let baseLw = lw > 0
+            ? lw / LINE_RENDER_CONFIG.cadLineweightToPixelFactor
+            : LINE_RENDER_CONFIG.minimumScreenLineWidth;
+        baseLw = Math.max(LINE_RENDER_CONFIG.minimumScreenLineWidth, Math.min(LINE_RENDER_CONFIG.maximumScreenLineWidth, baseLw));
 
-        // 如果实体具有恒定的世界空间宽度（如带宽度的多段线），则使用缩放后的宽度
+        let lineWidth = isSelected ? baseLw + LINE_RENDER_CONFIG.selectedLineWidthBoost : baseLw;
         if ((ent as any).constantWidth !== undefined && (ent as any).constantWidth > 0) {
             lineWidth = (ent as any).constantWidth * Math.abs(transform.scale);
         }
-        
-        // 限制最大屏幕像素宽度，避免在高缩放比例下出现“巨大的线”
-        const maxScreenPixels = isSelected ? 8 : 4; 
-        ctx.lineWidth = Math.min(lineWidth, maxScreenPixels);
-        
-        // 确保在屏幕上至少有 0.5 像素的可见度
-        if (ctx.lineWidth < 0.5) ctx.lineWidth = 0.5;
+
+        const maxScreenPixels = isSelected ? LINE_RENDER_CONFIG.selectedMaximumScreenLineWidth : LINE_RENDER_CONFIG.maximumScreenLineWidth;
+        ctx.lineWidth = Math.max(LINE_RENDER_CONFIG.minimumScreenLineWidth, Math.min(lineWidth, maxScreenPixels));
 
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
@@ -480,7 +490,7 @@ export const renderEntitiesToCanvas = (
 
                 // 优化：如果缩放后的图案太小以至于无法辨认，则不使用虚线，直接画实线
                 const totalPatternPixels = ltype.totalLength * patternScale;
-                if (totalPatternPixels < 2.0) {
+                if (totalPatternPixels < LINE_RENDER_CONFIG.minimumDashPatternPixels) {
                     ctx.setLineDash([]);
                 } else {
                     const dashPattern = ltype.pattern.map(p => Math.abs(p) * patternScale);
@@ -583,6 +593,18 @@ export const renderEntitiesToCanvas = (
                 if (ent.points.length > 1) {
                     ctx.beginPath();
                     drawPolyline(ctx, ent.points, ent.bulges, ent.closed, transform);
+                    ctx.stroke();
+                }
+                break;
+            case EntityType.MLINE:
+                if (ent.vertices.length > 1) {
+                    ctx.beginPath();
+                    ent.vertices.forEach((point, index) => {
+                        const screenPoint = transform.project(point);
+                        if (index === 0) ctx.moveTo(screenPoint.x, screenPoint.y);
+                        else ctx.lineTo(screenPoint.x, screenPoint.y);
+                    });
+                    if (ent.closed) ctx.closePath();
                     ctx.stroke();
                 }
                 break;
@@ -711,7 +733,7 @@ export const renderEntitiesToCanvas = (
                         ctx.save();
                         // 背景颜色
                         if ((ent as any).bgColor !== undefined && (ent as any).bgColor !== CAD_BY_LAYER_COLOR) {
-                            ctx.fillStyle = getAutoCadColor((ent as any).bgColor, theme);
+                            ctx.fillStyle = getAutoCadColor((ent as any).bgColor);
                         } else {
                             ctx.fillStyle = CANVAS_THEME_COLORS[theme];
                         }
@@ -1092,6 +1114,45 @@ export const renderEntitiesToCanvas = (
                 }
                 break;
             }
+            case EntityType.MLEADER: {
+                const leaderLines = (ent.leaderLines || []).filter((line: Point2D[]) => line.length > 1);
+                if (leaderLines.length === 0 && !ent.text) break;
+
+                leaderLines.forEach((line: Point2D[]) => {
+                    ctx.beginPath();
+                    line.forEach((point, index) => {
+                        const screenPoint = transform.project(point);
+                        if (index === 0) ctx.moveTo(screenPoint.x, screenPoint.y);
+                        else ctx.lineTo(screenPoint.x, screenPoint.y);
+                    });
+                    if (ent.enableDogleg !== false) {
+                        const terminal = getMLeaderTerminalPoint(ent);
+                        if (terminal) {
+                            const screenPoint = transform.project(terminal);
+                            ctx.lineTo(screenPoint.x, screenPoint.y);
+                        }
+                    }
+                    ctx.stroke();
+                    drawArrowHead(line[0], line[1], ent.arrowSize);
+                });
+
+                const textPosition = getMLeaderTextPosition(ent);
+                if (ent.text && textPosition) {
+                    const textEntity: DxfText = {
+                        ...ent,
+                        id: `${ent.id}_text`,
+                        type: EntityType.MTEXT,
+                        position: textPosition,
+                        value: ent.text,
+                        height: ent.textHeight || LEADER_RENDER_CONFIG.defaultMLeaderTextHeight,
+                        width: ent.textWidth || LEADER_RENDER_CONFIG.defaultMLeaderTextWidth,
+                        attachmentPoint: ent.textAttachment || 4,
+                        styleName: ent.textStyleName,
+                    };
+                    drawEntity(textEntity, transform, layerName, color, isSelected, depth + 1, true);
+                }
+                break;
+            }
             case EntityType.LEADER: {
                 if (ent.points.length < 2) break;
                 ctx.beginPath();
@@ -1125,19 +1186,8 @@ export const renderEntitiesToCanvas = (
 
                 // 绘制箭头 (Arrowhead)
                 if (ent.arrowHeadFlag === 1) {
-                    const p1 = transform.project(pts[0]);
-                    const p2 = transform.project(pts[1]);
-                    const ang = Math.atan2(p2.y - p1.y, p2.x - p1.x);
-                    const s = LEADER_RENDER_CONFIG.arrowSizeFactor * transform.scale; 
-                    const a1 = ang + LEADER_RENDER_CONFIG.arrowHalfAngleRadians; 
-                    const a2 = ang - LEADER_RENDER_CONFIG.arrowHalfAngleRadians;
-                    ctx.beginPath();
-                    ctx.moveTo(p1.x, p1.y);
-                    ctx.lineTo(p1.x + Math.cos(a1)*s, p1.y + Math.sin(a1)*s);
-                    ctx.lineTo(p1.x + Math.cos(a2)*s, p1.y + Math.sin(a2)*s);
-                    ctx.closePath();
                     ctx.fillStyle = color;
-                    ctx.fill();
+                    drawArrowHead(pts[0], pts[1]);
                 }
                 break;
             }

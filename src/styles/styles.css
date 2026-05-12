@@ -610,3 +610,9 @@ body {
 .viewer-error-button:hover {
   background: var(--bg-hover);
 }
+
+.dropdown-header {
+  padding: 4px 12px;
+  font-size: 10px;
+  color: var(--text-secondary);
+}

@@ -115,7 +115,7 @@ const Sidebar: React.FC<SidebarProps> = ({ layers, entities, selectedEntityIds, 
   const getEntityIcon = (type: EntityType) => <span className="entity-icon">{type.substring(0, 1)}</span>;
   
   // 获取图层颜色十六进制
-  const getLayerColorHex = (layer: DxfLayer) => getAutoCadColor(layer.color, theme);
+  const getLayerColorHex = (layer: DxfLayer) => getAutoCadColor(layer.color);
 
   const ChevronIcon = ({ expanded }: { expanded: boolean }) => (
     <svg 

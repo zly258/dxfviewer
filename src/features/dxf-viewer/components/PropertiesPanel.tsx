@@ -61,7 +61,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, layers, sty
     if (color === CAD_BY_LAYER_COLOR) return <span style={{ color: 'var(--text-secondary)' }}>随层 (ByLayer)</span>;
     if (color === CAD_BY_BLOCK_COLOR) return <span style={{ color: 'var(--text-secondary)' }}>随块 (ByBlock)</span>;
     
-    const hex = getAutoCadColor(color || CAD_DEFAULT_LAYER_COLOR, theme);
+    const hex = getAutoCadColor(color || CAD_DEFAULT_LAYER_COLOR);
     return (
       <div className="color-preview-container">
         <span style={{ color: 'var(--text-secondary)', fontSize: '10px' }}>({color})</span>

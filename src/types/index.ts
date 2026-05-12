@@ -17,6 +17,7 @@ export enum EntityType {
   ATTDEF = 'ATTDEF',
   REGION = 'REGION',
   LEADER = 'LEADER',
+  MLEADER = 'MLEADER',
   ACAD_TABLE = 'ACAD_TABLE',
   THREEDFACE = '3DFACE',
   RAY = 'RAY',
@@ -185,10 +186,32 @@ export interface DxfDimension extends DxfEntity {
 export interface DxfLeader extends DxfEntity {
   type: EntityType.LEADER;
   points: Point2D[];
-  arrowHeadFlag?: number; // 箭头标志 (组码 71)
-  pathType?: number; // 路径类型 (组码 72)
-  annotationHandle?: string; // 注解句柄 (组码 340)
-  hasHookLine?: boolean; // 是否有钩线 (组码 75)
+  arrowHeadFlag?: number;
+  pathType?: number;
+  annotationHandle?: string;
+  hasHookLine?: boolean;
+}
+
+export interface DxfMLeader extends DxfEntity {
+  type: EntityType.MLEADER;
+  leaderLines: Point2D[][];
+  text?: string;
+  textPosition?: Point2D;
+  textHeight?: number;
+  textWidth?: number;
+  textStyleName?: string;
+  textAttachment?: number;
+  arrowSize?: number;
+  doglegLength?: number;
+  enableLanding?: boolean;
+  enableDogleg?: boolean;
+  contentType?: number;
+}
+
+export interface DxfMLine extends DxfEntity {
+  type: EntityType.MLINE;
+  vertices: Point2D[];
+  closed?: boolean;
 }
 
 export interface HatchEdge {
@@ -246,7 +269,7 @@ export interface DxfTable extends DxfEntity {
   colWidths?: number[];
 }
 
-export type AnyEntity = DxfLine | DxfRay | DxfXLine | DxfPoint | DxfCircle | DxfArc | DxfPolyline | DxfText | DxfEllipse | DxfSpline | DxfSolid | Dxf3DFace | DxfInsert | DxfDimension | DxfHatch | DxfRegion | DxfLeader | DxfTable;
+export type AnyEntity = DxfLine | DxfRay | DxfXLine | DxfPoint | DxfCircle | DxfArc | DxfPolyline | DxfText | DxfEllipse | DxfSpline | DxfSolid | Dxf3DFace | DxfInsert | DxfDimension | DxfHatch | DxfRegion | DxfLeader | DxfMLeader | DxfMLine | DxfTable;
 
 export interface DxfBlock {
   name: string;

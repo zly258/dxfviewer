@@ -49,17 +49,16 @@ export const CANVAS_THEME_COLORS: Record<CanvasTheme, string> = {
   gray: '#808080',
 };
 
-export const FALLBACK_DRAWING_COLORS: Record<CanvasTheme, string> = {
-  black: '#FFFFFF',
-  white: '#000000',
-  gray: '#FFFFFF',
-};
 
 export const SELECTION_CONFIG = {
   color: '#0078d4',
   textThresholdMultiplier: 2.5,
   gripSize: 2.5,
   leaderHookLength: 2.5,
+  windowSelectionFill: 'rgba(0, 120, 212, 0.1)',
+  windowSelectionBorder: '#0078d4',
+  crossingSelectionFill: 'rgba(0, 255, 0, 0.1)',
+  crossingSelectionBorder: '#00ff00',
 };
 
 export const DEFAULT_LAYER: DxfLayer = {
@@ -134,9 +133,26 @@ export const EXTENTS_CONFIG = {
   annotationNearGeometryMinimumPadding: 100,
 };
 
+export const LINE_RENDER_CONFIG = {
+  defaultLineweight: 25,
+  byBlockLineweight: -2,
+  byLayerLineweight: -1,
+  defaultLineweightCode: -3,
+  minimumScreenLineWidth: 0.5,
+  maximumScreenLineWidth: 4,
+  selectedLineWidthBoost: 1.5,
+  selectedMaximumScreenLineWidth: 8,
+  cadLineweightToPixelFactor: 25,
+  minimumDashPatternPixels: 2,
+};
+
 export const LEADER_RENDER_CONFIG = {
   defaultHookLength: 2.5,
   annotationGapFactor: 0.3,
   arrowSizeFactor: 2.5,
   arrowHalfAngleRadians: Math.PI / 6,
+  defaultMLeaderTextHeight: 2.5,
+  defaultMLeaderTextWidth: 80,
+  defaultMLeaderDoglegLength: 4,
+  mleaderTextGapFactor: 0.8,
 };
