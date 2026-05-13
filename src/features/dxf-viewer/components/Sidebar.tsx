@@ -8,7 +8,7 @@ interface SidebarProps {
   entities: AnyEntity[];
   selectedEntityIds: Set<string>;
   onSelectIds: (ids: Set<string>) => void;
-  theme: 'black' | 'white' | 'gray';
+  theme: 'black' | 'white';
   lang: Language;
 }
 

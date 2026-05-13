@@ -1,5 +1,5 @@
 import { DxfLayer, ViewPort, DxfStyle } from '../../types';
-import { CanvasTheme } from '../types/ui';
+import { CanvasTheme, DrawingColorMode } from '../types/ui';
 import {
   CAD_DEFAULT_LAYER_COLOR,
   CAD_DEFAULT_LAYER_NAME,
@@ -17,6 +17,7 @@ export const VIEWER_DEFAULTS = {
   language: 'zh' as const,
   uiTheme: 'light' as const,
   canvasTheme: 'black' as CanvasTheme,
+  drawingColorMode: 'original' as DrawingColorMode,
   toastDurationMs: 5000,
   defaultLineTypeScale: CAD_DEFAULT_LINE_TYPE_SCALE,
 };
@@ -38,6 +39,16 @@ export const ZOOM_CONFIG = {
   maxSingleEntityZoom: 1000000,
 };
 
+
+export const SHORTCUT_CONFIG = {
+  openFileKey: 'o',
+  fitViewKeys: ['f', '0'],
+  clearSelectionKey: 'Escape',
+  middleButton: 1,
+  middleDoubleClickDelayMs: 320,
+  middleDoubleClickDistancePixels: 8,
+};
+
 export const TEXT_DECODER_CONFIG = {
   primaryEncoding: 'utf-8',
   fallbackEncoding: 'gb18030',
@@ -46,13 +57,21 @@ export const TEXT_DECODER_CONFIG = {
 export const CANVAS_THEME_COLORS: Record<CanvasTheme, string> = {
   black: '#212121',
   white: '#FFFFFF',
-  gray: '#808080',
+};
+
+export const MONOCHROME_ENTITY_COLORS: Record<CanvasTheme, string> = {
+  black: '#FFFFFF',
+  white: '#000000',
 };
 
 
 export const SELECTION_CONFIG = {
   color: '#0078d4',
-  textThresholdMultiplier: 2.5,
+  textThresholdMultiplier: 2.0,
+  clickMovementTolerancePixels: 4,
+  geometryHitTolerancePixels: 10,
+  minimumHitToleranceWorld: 1e-12,
+  maximumHitToleranceViewportFactor: 0.012,
   gripSize: 2.5,
   leaderHookLength: 2.5,
   windowSelectionFill: 'rgba(0, 120, 212, 0.1)',
@@ -90,15 +109,26 @@ export const TEXT_RENDER_CONFIG = {
   mtextBackgroundPaddingFactor: 0.1,
   trueTypeFontHeightFactor: 1.33,
   shxFontHeightFactor: 1.4,
-  trueTypeRenderWidthFactor: 0.96,
-  shxRenderWidthFactor: 0.84,
-  cjkRenderWidthFactor: 0.92,
+  trueTypeRenderWidthFactor: 1.0,
+  shxRenderWidthFactor: 0.88,
+  cjkRenderWidthFactor: 0.96,
+  engineeringShxRenderWidthFactor: 0.82,
+  latinTrueTypeRenderWidthFactor: 1.0,
+  latinShxRenderWidthFactor: 0.86,
   extentsTrueTypeWidthCompensation: 1.0,
-  extentsShxWidthCompensation: 0.92,
+  extentsShxWidthCompensation: 0.94,
+  extentsEngineeringShxWidthCompensation: 0.9,
   minimumMeasuredTextWidth: 0.001,
+  underlineTopBaselineFactor: 0.9,
+  underlineMiddleBaselineFactor: 0.36,
+  underlineAlphabeticBaselineFactor: 0.12,
+  underlineLineWidthFactor: 0.045,
+  mtextLineWidthMeasurePaddingFactor: 1.0,
   tableTextHeightFactor: 0.5,
   tableTextHorizontalPaddingFactor: 0.1,
   minimumTableCellSize: 0.1,
+  placeholderAttributeCoordinateTolerance: 1e-9,
+  placeholderAttributeHeightThreshold: 100,
 };
 
 
@@ -131,6 +161,10 @@ export const EXTENTS_CONFIG = {
   minDrawableEntityExtent: 1e-8,
   annotationNearGeometryFactor: 3,
   annotationNearGeometryMinimumPadding: 100,
+  outlierFilterMinEntityCount: 6,
+  outlierCenterMadMultiplier: 8,
+  outlierSizeMedianMultiplier: 80,
+  outlierAspectRatioLimit: 25,
 };
 
 export const LINE_RENDER_CONFIG = {
@@ -155,4 +189,5 @@ export const LEADER_RENDER_CONFIG = {
   defaultMLeaderTextWidth: 80,
   defaultMLeaderDoglegLength: 4,
   mleaderTextGapFactor: 0.8,
+  leaderAnnotationTextGapFactor: 0.5,
 };

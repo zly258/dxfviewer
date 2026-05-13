@@ -1,5 +1,5 @@
 import { CAD_BY_LAYER_COLOR, CAD_DEFAULT_LAYER_COLOR, CAD_DEFAULT_LAYER_NAME, CAD_DEFAULT_TEXT_HEIGHT, CAD_DEFAULT_TEXT_STYLE } from '../../../shared/constants/cadConstants';
-import { DEFAULT_TEXT_STYLE, EXTENTS_CONFIG, TABLE_EXTENTS_CONFIG, LEADER_RENDER_CONFIG } from '../../../shared/config/viewerConfig';
+import { DEFAULT_TEXT_STYLE, EXTENTS_CONFIG, TABLE_EXTENTS_CONFIG, LEADER_RENDER_CONFIG, TEXT_RENDER_CONFIG } from '../../../shared/config/viewerConfig';
 import { AnyEntity, DxfData, EntityType, DxfLayer, DxfBlock, Point2D, Point3D, DxfHatch, HatchLoop, HatchEdge, DxfStyle, DxfPolyline, DxfInsert, DxfHeader, DxfSpline, DxfText, DxfLeader, DxfTable, DxfLineType, DxfMLeader, DxfMLine } from '../../../types';
 export { cleanMText };
 import { cleanMText, getCadTextExtents, pointsToExtents } from '../utils/textUtils';
@@ -832,7 +832,7 @@ const parseText = (state: DxfParserState, common: any, type: EntityType): DxfTex
         applyCommonGroup(entity, g.code, g.value);
         switch (g.code) {
             case 1: valueParts.push(g.value); break;
-            case 3: valueParts.unshift(g.value); break;
+            case 3: valueParts.push(g.value); break;
             case 10: entity.position.x = parseFloat(g.value); break;
             case 20: entity.position.y = parseFloat(g.value); break;
             case 30: z = parseFloat(g.value); break;
@@ -842,8 +842,14 @@ const parseText = (state: DxfParserState, common: any, type: EntityType): DxfTex
                 if (type === EntityType.MTEXT) entity.width = parseFloat(g.value);
                 else entity.widthFactor = parseFloat(g.value);
                 break;
-            case 72: entity.hAlign = parseInt(g.value); break;
-            case 73: entity.vAlign = parseInt(g.value); break;
+            case 72:
+                if (type === EntityType.MTEXT) entity.drawingDirection = parseInt(g.value);
+                else entity.hAlign = parseInt(g.value);
+                break;
+            case 73:
+                if (type === EntityType.MTEXT) entity.lineSpacingStyle = parseInt(g.value);
+                else entity.vAlign = parseInt(g.value);
+                break;
             case 11:
                 if (type === EntityType.MTEXT) {
                     if (!direction) direction = { x: 0, y: 0 };
@@ -863,10 +869,14 @@ const parseText = (state: DxfParserState, common: any, type: EntityType): DxfTex
                 }
                 break;
             case 31: z2 = parseFloat(g.value); break;
-            case 71: entity.attachmentPoint = parseInt(g.value); break;
+            case 71:
+                if (type === EntityType.MTEXT) entity.attachmentPoint = parseInt(g.value);
+                else entity.textGenerationFlags = parseInt(g.value);
+                break;
+            case 42: if (type === EntityType.MTEXT) entity.actualWidth = parseFloat(g.value); break;
             case 43: entity.boxHeight = parseFloat(g.value); break;
             case 44: if (type === EntityType.MTEXT) entity.lineSpacingFactor = parseFloat(g.value); break;
-            case 2: if (type === EntityType.ATTDEF) entity.tag = g.value; break;
+            case 2: if (type === EntityType.ATTDEF || type === EntityType.ATTRIB) entity.tag = g.value; break;
             case 70: if (type === EntityType.ATTDEF) entity.flags = parseInt(g.value); break;
             case 63: if (type === EntityType.MTEXT) entity.bgColor = parseInt(g.value); break;
             case 90:
@@ -891,10 +901,19 @@ const parseText = (state: DxfParserState, common: any, type: EntityType): DxfTex
 
     const ocs = getOcsToWcsMatrix(entity.extrusion.x, entity.extrusion.y, entity.extrusion.z);
     if (type === EntityType.MTEXT) {
+        entity.position = applyOcs(entity.position, ocs, z);
         if (direction && (Math.abs(direction.x) > 1e-6 || Math.abs(direction.y) > 1e-6)) {
-            entity.rotation = Math.atan2(direction.y, direction.x) * 180 / Math.PI;
+            if (ocs) {
+                const wcsDirection = {
+                    x: direction.x * ocs.Ax.x + direction.y * ocs.Ay.x,
+                    y: direction.x * ocs.Ax.y + direction.y * ocs.Ay.y,
+                };
+                entity.rotation = Math.atan2(wcsDirection.y, wcsDirection.x) * 180 / Math.PI;
+            } else {
+                entity.rotation = Math.atan2(direction.y, direction.x) * 180 / Math.PI;
+            }
         } else {
-            entity.rotation = entity.rotation * 180 / Math.PI;
+            entity.rotation = getWcsRotation(entity.rotation, ocs);
         }
     } else {
         entity.position = applyOcs(entity.position, ocs, z);
@@ -1246,26 +1265,44 @@ const parseLeader = (state: DxfParserState, common: any): DxfLeader => {
 }
 
 
-const getMLeaderTerminalPoint = (entity: Pick<DxfMLeader, 'leaderLines' | 'textPosition' | 'doglegLength' | 'enableDogleg'>): Point2D | null => {
+const normalizeVector = (vector: Point2D | undefined, fallbackSign: number): Point2D => {
+    if (vector && Number.isFinite(vector.x) && Number.isFinite(vector.y)) {
+        const length = Math.hypot(vector.x, vector.y);
+        if (length > 1e-9) return { x: vector.x / length, y: vector.y / length };
+    }
+    return { x: fallbackSign >= 0 ? 1 : -1, y: 0 };
+};
+
+const getMLeaderTerminalPoint = (entity: DxfMLeader): Point2D | null => {
     const firstLine = entity.leaderLines.find(line => line.length > 0);
     if (!firstLine) return entity.textPosition || null;
     const last = firstLine[firstLine.length - 1];
     if (!entity.enableDogleg) return last;
     const prev = firstLine.length > 1 ? firstLine[firstLine.length - 2] : null;
-    const sign = entity.textPosition
+    const fallbackSign = entity.textPosition
         ? (entity.textPosition.x >= last.x ? 1 : -1)
         : (prev && last.x < prev.x ? -1 : 1);
-    return { x: last.x + sign * Math.max(0, entity.doglegLength || LEADER_RENDER_CONFIG.defaultMLeaderDoglegLength), y: last.y };
+    const direction = normalizeVector(entity.doglegVector, fallbackSign);
+    const length = Math.max(0, entity.doglegLength || LEADER_RENDER_CONFIG.defaultMLeaderDoglegLength);
+    return { x: last.x + direction.x * length, y: last.y + direction.y * length };
 };
 
-const getMLeaderTextPosition = (entity: Pick<DxfMLeader, 'leaderLines' | 'textPosition' | 'doglegLength' | 'enableDogleg'>): Point2D | null => {
+const getMLeaderTextPosition = (entity: DxfMLeader): Point2D | null => {
     if (entity.textPosition) return entity.textPosition;
     const terminal = getMLeaderTerminalPoint(entity);
     if (!terminal) return null;
-    const firstLine = entity.leaderLines.find(line => line.length > 0);
-    const last = firstLine ? firstLine[firstLine.length - 1] : terminal;
-    const sign = terminal.x >= last.x ? 1 : -1;
-    return { x: terminal.x + sign * LEADER_RENDER_CONFIG.mleaderTextGapFactor, y: terminal.y };
+    const direction = normalizeVector(entity.doglegVector, 1);
+    return {
+        x: terminal.x + direction.x * LEADER_RENDER_CONFIG.mleaderTextGapFactor,
+        y: terminal.y + direction.y * LEADER_RENDER_CONFIG.mleaderTextGapFactor,
+    };
+};
+
+const getMLeaderTextAttachment = (entity: DxfMLeader, textPosition: Point2D): number => {
+    if (entity.textAttachment && entity.textAttachment >= 1 && entity.textAttachment <= 9) return entity.textAttachment;
+    const terminal = getMLeaderTerminalPoint(entity);
+    if (!terminal) return 4;
+    return textPosition.x >= terminal.x ? 4 : 6;
 };
 
 const parseMLeader = (state: DxfParserState, common: any): DxfMLeader => {
@@ -1285,6 +1322,7 @@ const parseMLeader = (state: DxfParserState, common: any): DxfMLeader => {
 
     let activeLine: Point2D[] | null = null;
     let pendingX: number | null = null;
+    let pendingDoglegX: number | null = null;
     const fallbackPoints: Point2D[] = [];
     let outsidePointIndex = 0;
 
@@ -1299,12 +1337,14 @@ const parseMLeader = (state: DxfParserState, common: any): DxfMLeader => {
             activeLine = [];
             entity.leaderLines.push(activeLine);
             pendingX = null;
+            pendingDoglegX = null;
             continue;
         }
         if (g.code === 303 && activeLine) {
             if (activeLine.length === 0) entity.leaderLines.pop();
             activeLine = null;
             pendingX = null;
+            pendingDoglegX = null;
             continue;
         }
 
@@ -1323,6 +1363,27 @@ const parseMLeader = (state: DxfParserState, common: any): DxfMLeader => {
                     }
                     pendingX = null;
                 }
+                break;
+            case 11:
+                pendingDoglegX = parseFloat(g.value);
+                break;
+            case 21:
+                if (pendingDoglegX !== null) {
+                    entity.doglegVector = { x: pendingDoglegX, y: parseFloat(g.value) };
+                    pendingDoglegX = null;
+                }
+                break;
+            case 173:
+                entity.textLeftAttachment = parseInt(g.value, 10);
+                break;
+            case 95:
+                entity.textRightAttachment = parseInt(g.value, 10);
+                break;
+            case 175:
+                entity.textAlignment = parseInt(g.value, 10);
+                break;
+            case 179:
+                entity.textAttachment = parseInt(g.value, 10);
                 break;
             case 304:
             case 305:
@@ -1898,9 +1959,18 @@ const getTableFallbackExtents = (table: DxfTable): { min: Point2D; max: Point2D 
 };
 
 
+const isPlaceholderAttributeText = (entity: AnyEntity): boolean => {
+    if (entity.type !== EntityType.ATTRIB && entity.type !== EntityType.ATTDEF) return false;
+    const ent = entity as DxfText;
+    const tolerance = TEXT_RENDER_CONFIG.placeholderAttributeCoordinateTolerance;
+    const isAtDefaultOrigin = Math.abs(ent.position?.x || 0) <= tolerance && Math.abs(ent.position?.y || 0) <= tolerance;
+    const hasSuspiciousHeight = (ent.height || 0) >= TEXT_RENDER_CONFIG.placeholderAttributeHeightThreshold;
+    return isAtDefaultOrigin && hasSuspiciousHeight;
+};
+
 const isDrawableBlockEntity = (entity: AnyEntity): boolean => {
     if (entity.visible === false) return false;
-    if (entity.type === EntityType.ATTDEF || entity.type === EntityType.ATTRIB) return false;
+    if (isTextLikeEntity(entity)) return false;
     if (entity.type === EntityType.POINT || isGuideEntity(entity)) return false;
     if (entity.type === EntityType.ACAD_TABLE) return false;
     return true;
@@ -1942,7 +2012,7 @@ const getEntityExtents = (
     blocks: Record<string, DxfBlock>,
     styles?: Record<string, DxfStyle>,
 ): { min: Point2D, max: Point2D } | null => {
-    if (ent.visible === false || ent.type === EntityType.ATTDEF) return null;
+    if (ent.visible === false || ent.type === EntityType.ATTDEF || isPlaceholderAttributeText(ent)) return null;
 
     const bounds = createBoundsUpdater();
 
@@ -2058,25 +2128,35 @@ const getEntityExtents = (
             break;
         case EntityType.INSERT: {
             const block = blocks[ent.blockName];
+            const insertExtents: { min: Point2D; max: Point2D }[] = [];
             if (!block?.extents) {
                 bounds.update(ent.position.x, ent.position.y);
-                break;
-            }
-
-            const rowCount = Math.max(1, ent.rowCount || 1);
-            const colCount = Math.max(1, ent.colCount || 1);
-            for (let row = 0; row < rowCount; row++) {
-                for (let col = 0; col < colCount; col++) {
-                    const position = {
-                        x: ent.position.x + col * (ent.colSpacing || 0),
-                        y: ent.position.y + row * (ent.rowSpacing || 0),
-                    };
-                    bounds.updateExtents(transformExtentsCorners(block.extents, block.basePoint, position, ent.scale || { x: 1, y: 1, z: 1 }, ent.rotation || 0));
+            } else {
+                const rowCount = Math.max(1, ent.rowCount || 1);
+                const colCount = Math.max(1, ent.colCount || 1);
+                for (let row = 0; row < rowCount; row++) {
+                    for (let col = 0; col < colCount; col++) {
+                        const position = {
+                            x: ent.position.x + col * (ent.colSpacing || 0),
+                            y: ent.position.y + row * (ent.rowSpacing || 0),
+                        };
+                        const transformedExtents = transformExtentsCorners(block.extents, block.basePoint, position, ent.scale || { x: 1, y: 1, z: 1 }, ent.rotation || 0);
+                        if (transformedExtents) {
+                            insertExtents.push(transformedExtents);
+                            bounds.updateExtents(transformedExtents);
+                        }
+                    }
                 }
             }
             ent.attributes?.forEach(attribute => {
-                const text = cleanMText(String((attribute as any).text || '')).trim();
-                if (text.length > 0) bounds.updateExtents(getCadTextExtents(attribute, styles));
+                if (isPlaceholderAttributeText(attribute)) return;
+                const text = cleanMText(String((attribute as any).value || '')).trim();
+                if (text.length === 0) return;
+                const attrExtents = getCadTextExtents(attribute, styles);
+                if (!attrExtents) return;
+                if (insertExtents.length === 0 || insertExtents.some(insertExtentsItem => isAnnotationExtentsNearGeometry(attrExtents, insertExtentsItem))) {
+                    bounds.updateExtents(attrExtents);
+                }
             });
             break;
         }
@@ -2118,7 +2198,7 @@ const getEntityExtents = (
                         value: ent.text,
                         height: ent.textHeight || LEADER_RENDER_CONFIG.defaultMLeaderTextHeight,
                         width: ent.textWidth || LEADER_RENDER_CONFIG.defaultMLeaderTextWidth,
-                        attachmentPoint: ent.textAttachment || 4,
+                        attachmentPoint: getMLeaderTextAttachment(ent, textPosition),
                         styleName: ent.textStyleName,
                     } as DxfText, styles));
                 }
@@ -2260,18 +2340,66 @@ const mergeExtentsList = (items: { min: Point2D; max: Point2D }[]): { center: Po
     };
 };
 
-const isExtentsNearBase = (ext: { min: Point2D; max: Point2D }, base: { min: Point2D; max: Point2D }): boolean => {
-    const baseWidth = Math.abs(base.max.x - base.min.x);
-    const baseHeight = Math.abs(base.max.y - base.min.y);
-    const pad = Math.max(
+const isAnnotationExtentsNearGeometry = (annotationExtents: { min: Point2D; max: Point2D }, geometryExtents: { min: Point2D; max: Point2D }): boolean => {
+    const geometryWidth = Math.abs(geometryExtents.max.x - geometryExtents.min.x);
+    const geometryHeight = Math.abs(geometryExtents.max.y - geometryExtents.min.y);
+    const padding = Math.max(
         EXTENTS_CONFIG.annotationNearGeometryMinimumPadding,
-        baseWidth * EXTENTS_CONFIG.annotationNearGeometryFactor,
-        baseHeight * EXTENTS_CONFIG.annotationNearGeometryFactor,
+        geometryWidth * EXTENTS_CONFIG.annotationNearGeometryFactor,
+        geometryHeight * EXTENTS_CONFIG.annotationNearGeometryFactor,
     );
-    return ext.max.x >= base.min.x - pad
-        && ext.min.x <= base.max.x + pad
-        && ext.max.y >= base.min.y - pad
-        && ext.min.y <= base.max.y + pad;
+    return annotationExtents.max.x >= geometryExtents.min.x - padding
+        && annotationExtents.min.x <= geometryExtents.max.x + padding
+        && annotationExtents.max.y >= geometryExtents.min.y - padding
+        && annotationExtents.min.y <= geometryExtents.max.y + padding;
+};
+
+const isExtentsNearBase = isAnnotationExtentsNearGeometry;
+
+
+const getMedian = (values: number[]): number => {
+    if (values.length === 0) return 0;
+    const sorted = values.filter(Number.isFinite).sort((a, b) => a - b);
+    if (sorted.length === 0) return 0;
+    const middle = Math.floor(sorted.length / 2);
+    return sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle];
+};
+
+const getExtentsMetrics = (ext: { min: Point2D; max: Point2D }) => {
+    const width = Math.abs(ext.max.x - ext.min.x);
+    const height = Math.abs(ext.max.y - ext.min.y);
+    return {
+        width,
+        height,
+        diagonal: Math.hypot(width, height),
+        aspectRatio: width > 0 && height > 0 ? Math.max(width / height, height / width) : 1,
+        center: { x: (ext.min.x + ext.max.x) / 2, y: (ext.min.y + ext.max.y) / 2 },
+    };
+};
+
+const filterOutlierExtents = (items: { min: Point2D; max: Point2D }[]): { min: Point2D; max: Point2D }[] => {
+    if (items.length < EXTENTS_CONFIG.outlierFilterMinEntityCount) return items;
+    const metrics = items.map(getExtentsMetrics);
+    const medianX = getMedian(metrics.map(item => item.center.x));
+    const medianY = getMedian(metrics.map(item => item.center.y));
+    const distances = metrics.map(item => Math.hypot(item.center.x - medianX, item.center.y - medianY));
+    const medianDistance = getMedian(distances);
+    const distanceMad = getMedian(distances.map(distance => Math.abs(distance - medianDistance)));
+    const medianDiagonal = Math.max(getMedian(metrics.map(item => item.diagonal)), EXTENTS_CONFIG.minDrawableEntityExtent);
+    const distanceLimit = Math.max(
+        medianDistance + distanceMad * EXTENTS_CONFIG.outlierCenterMadMultiplier,
+        medianDiagonal * EXTENTS_CONFIG.outlierSizeMedianMultiplier,
+    );
+
+    const filtered = items.filter((item, index) => {
+        const metric = metrics[index];
+        const distance = distances[index];
+        const isFarAway = distance > distanceLimit;
+        const isHugeSkinnyBox = metric.aspectRatio > EXTENTS_CONFIG.outlierAspectRatioLimit
+            && metric.diagonal > medianDiagonal * EXTENTS_CONFIG.outlierSizeMedianMultiplier;
+        return !isFarAway && !isHugeSkinnyBox;
+    });
+    return filtered.length > 0 ? filtered : items;
 };
 
 export const calculateExtents = (entities: AnyEntity[], blocks: Record<string, DxfBlock>, styles?: Record<string, DxfStyle>): { center: Point2D, width: number, height: number, min: Point2D, max: Point2D } => {
@@ -2292,12 +2420,14 @@ export const calculateExtents = (entities: AnyEntity[], blocks: Record<string, D
     });
 
     if (primaryExtents.length === 0) {
-        return mergeExtentsList([...fallbackExtents, ...annotationExtents]);
+        return mergeExtentsList(filterOutlierExtents([...fallbackExtents, ...annotationExtents]));
     }
 
-    const primaryBounds = mergeExtentsList(primaryExtents);
+    const stablePrimaryExtents = filterOutlierExtents(primaryExtents);
+    const primaryBounds = mergeExtentsList(stablePrimaryExtents);
     const nearbyAnnotations = annotationExtents.filter(ext => isExtentsNearBase(ext, primaryBounds));
-    return mergeExtentsList([...primaryExtents, ...fallbackExtents, ...nearbyAnnotations]);
+    const nearbyFallback = fallbackExtents.filter(ext => isExtentsNearBase(ext, primaryBounds));
+    return mergeExtentsList(filterOutlierExtents([...stablePrimaryExtents, ...nearbyFallback, ...nearbyAnnotations]));
 };
 
 /**

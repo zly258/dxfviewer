@@ -1,5 +1,6 @@
 import { AnyEntity, DxfLayer } from '../../../types';
-import { DEFAULT_ENTITY_COLOR } from '../../../shared/config/viewerConfig';
+import { CanvasTheme, DrawingColorMode } from '../../../shared/types/ui';
+import { DEFAULT_ENTITY_COLOR, MONOCHROME_ENTITY_COLORS } from '../../../shared/config/viewerConfig';
 import { CAD_BY_BLOCK_COLOR, CAD_BY_LAYER_COLOR } from '../../../shared/constants/cadConstants';
 import { getAutoCadColor, trueColorToHex } from './colorUtils';
 
@@ -7,7 +8,11 @@ export const resolveEntityColor = (
   entity: AnyEntity,
   layer: DxfLayer | undefined,
   parentColor: string | undefined,
+  drawingColorMode: DrawingColorMode = 'original',
+  canvasTheme: CanvasTheme = 'black',
 ): string => {
+  if (drawingColorMode === 'monochrome') return MONOCHROME_ENTITY_COLORS[canvasTheme];
+
   if (entity.trueColor !== undefined) return trueColorToHex(entity.trueColor);
 
   const entityColor = entity.color;

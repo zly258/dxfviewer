@@ -1,33 +1,34 @@
 import { AnyEntity, EntityType, DxfLayer, DxfBlock, DxfStyle, Point2D, DxfInsert, HatchLoop, DxfText, DxfLineType, ViewPort } from '../../../types';
 import { CANVAS_THEME_COLORS, SELECTION_CONFIG, TEXT_RENDER_CONFIG, LEADER_RENDER_CONFIG, TABLE_EXTENTS_CONFIG, LINE_RENDER_CONFIG } from '../../../shared/config/viewerConfig';
 import { CAD_BY_BLOCK_COLOR, CAD_BY_LAYER_COLOR, CAD_DEFAULT_TEXT_HEIGHT, CAD_DEFAULT_TEXT_STYLE } from '../../../shared/constants/cadConstants';
-import { CanvasTheme } from '../../../shared/types/ui';
+import { CanvasTheme, DrawingColorMode } from '../../../shared/types/ui';
 import { getAutoCadColor, AUTO_CAD_COLORS } from '../utils/colorUtils';
 import { resolveEntityColor } from '../utils/entityColor';
 import { getBSplinePoints } from './dxfService';
-import { getStyleFontFamily, FONT_STACKS, mapCadFontToWebFont } from './fontService';
-import { cleanCadText, cleanMText, estimateCadTextLayout, getCadTextAnchorPosition, getEffectiveTextHeight, getEffectiveTextWidthFactor, getCadFontWidthCompensation, splitCadFormattedText } from '../utils/textUtils';
+import { getStyleFontFamily, FONT_STACKS, mapCadFontToWebFont, resolveCadTextFontProfile } from './fontService';
+import { cleanCadText, cleanMText, estimateCadTextLayout, getCadTextAnchorPosition, getEffectiveTextHeight, getEffectiveTextWidthFactor, getCadFontWidthCompensation, splitCadFormattedText, splitCadFormattedLines, getMTextCanvasAlign, getMTextCanvasAlignFromEntity, getMTextLocalTopOffset, getTextGenerationScale, getTextHorizontalCanvasAlign, getTextVerticalCanvasBaseline } from '../utils/textUtils';
 
 const SELECTION_COLOR = SELECTION_CONFIG.color;
 
 const getTextHeightCorrectionFactor = (ent: DxfText, styles: Record<string, DxfStyle> | undefined): number => {
-    const styleName = ent.styleName || CAD_DEFAULT_TEXT_STYLE;
-    const style = styles?.[styleName] || styles?.[styleName.toUpperCase()];
-    const styleFontLower = (style?.fontFileName || '').toLowerCase();
-    const hasInlineFont = ent.type === EntityType.MTEXT && /\\[fF][^;|]+/.test(ent.value || '');
-    const isTrueType = hasInlineFont
-        || styleFontLower.endsWith('.ttf')
-        || styleFontLower.endsWith('.otf')
-        || styleFontLower.includes('simsun')
-        || styleFontLower.includes('simhei')
-        || styleFontLower.includes('arial')
-        || styleFontLower.includes('msyh');
-    return isTrueType ? TEXT_RENDER_CONFIG.trueTypeFontHeightFactor : TEXT_RENDER_CONFIG.shxFontHeightFactor;
+    const profile = resolveCadTextFontProfile(ent.styleName, styles, ent.value);
+    return profile === 'trueType' || profile === 'cjk'
+        ? TEXT_RENDER_CONFIG.trueTypeFontHeightFactor
+        : TEXT_RENDER_CONFIG.shxFontHeightFactor;
 };
 
 const getHorizontalTextScale = (ent: DxfText, styles: Record<string, DxfStyle> | undefined, widthFactor: number): number => {
     return widthFactor * getCadFontWidthCompensation(ent, styles);
 };
+
+const isPlaceholderAttributeText = (ent: DxfText): boolean => {
+    if (ent.type !== EntityType.ATTRIB && ent.type !== EntityType.ATTDEF) return false;
+    const tolerance = TEXT_RENDER_CONFIG.placeholderAttributeCoordinateTolerance;
+    const isAtDefaultOrigin = Math.abs(ent.position?.x || 0) <= tolerance && Math.abs(ent.position?.y || 0) <= tolerance;
+    const hasSuspiciousHeight = (ent.height || 0) >= TEXT_RENDER_CONFIG.placeholderAttributeHeightThreshold;
+    return isAtDefaultOrigin && hasSuspiciousHeight;
+};
+
 
 
 /**
@@ -50,13 +51,8 @@ const getCanvasFont = (ent: AnyEntity, styles: Record<string, DxfStyle> | undefi
     let fontWeight = 'normal';
     let fontStyle = 'normal';
     
-    // 更好的 TrueType 字体检测：
-    // 1. 样式字体名称以 .ttf/.otf 结尾
-    // 2. 它是标准网页字体之一
-    const styleFontLower = (style?.fontFileName || "").toLowerCase();
-    let isTrueType = styleFontLower.endsWith('.ttf') || styleFontLower.endsWith('.otf') || 
-                     styleFontLower.includes('simsun') || styleFontLower.includes('simhei') || 
-                     styleFontLower.includes('arial') || styleFontLower.includes('msyh');
+    const profile = resolveCadTextFontProfile(textEnt?.styleName, styles, textEnt?.value);
+    let isTrueType = profile === 'trueType' || profile === 'cjk';
 
     // 检查 MTEXT 内联高度覆盖 \H...;
     if (ent.type === EntityType.MTEXT) {
@@ -105,7 +101,7 @@ const getCanvasFont = (ent: AnyEntity, styles: Record<string, DxfStyle> | undefi
                 if (inlineFontLower.includes('仿宋') || inlineFontLower.includes('fangsong') || inlineFontLower === 'fs') {
                     fontFamily = FONT_STACKS.FANGSONG;
                 } else if (inlineFontLower.includes('宋体') || inlineFontLower.includes('simsun') || inlineFontLower.includes('song')) {
-                    fontFamily = FONT_STACKS.FANGSONG; // 即使在 \f 覆盖中也将 SimSun 映射到 FangSong
+                    fontFamily = FONT_STACKS.SONG
                 } else if (inlineFontLower.includes('黑体') || inlineFontLower.includes('simhei') || inlineFontLower.includes('hei')) {
                     fontFamily = FONT_STACKS.HEI;
                 } else if (inlineFontLower.includes('楷体') || inlineFontLower.includes('simkai') || inlineFontLower.includes('kai')) {
@@ -336,6 +332,7 @@ export const renderEntitiesToCanvas = (
     width: number,
     height: number,
     theme: CanvasTheme,
+    drawingColorMode: DrawingColorMode = 'original',
     overlayExtents?: { min: Point2D, max: Point2D } | null
 ) => {
     // 使用背景颜色清除画布
@@ -372,25 +369,42 @@ export const renderEntitiesToCanvas = (
     });
 
 
+    const normalizeMLeaderVector = (vector: Point2D | undefined, fallbackSign: number): Point2D => {
+        if (vector && Number.isFinite(vector.x) && Number.isFinite(vector.y)) {
+            const length = Math.hypot(vector.x, vector.y);
+            if (length > 1e-9) return { x: vector.x / length, y: vector.y / length };
+        }
+        return { x: fallbackSign >= 0 ? 1 : -1, y: 0 };
+    };
+
     const getMLeaderTerminalPoint = (ent: any): Point2D | null => {
         const line = (ent.leaderLines || []).find((items: Point2D[]) => items.length > 0);
         if (!line) return ent.textPosition || null;
         const last = line[line.length - 1];
         if (!ent.enableDogleg) return last;
         const prev = line.length > 1 ? line[line.length - 2] : null;
-        const sign = ent.textPosition ? (ent.textPosition.x >= last.x ? 1 : -1) : (prev && last.x < prev.x ? -1 : 1);
+        const fallbackSign = ent.textPosition ? (ent.textPosition.x >= last.x ? 1 : -1) : (prev && last.x < prev.x ? -1 : 1);
+        const direction = normalizeMLeaderVector(ent.doglegVector, fallbackSign);
         const length = Math.max(0, ent.doglegLength || LEADER_RENDER_CONFIG.defaultMLeaderDoglegLength);
-        return { x: last.x + sign * length, y: last.y };
+        return { x: last.x + direction.x * length, y: last.y + direction.y * length };
     };
 
     const getMLeaderTextPosition = (ent: any): Point2D | null => {
         if (ent.textPosition) return ent.textPosition;
         const terminal = getMLeaderTerminalPoint(ent);
         if (!terminal) return null;
-        const line = (ent.leaderLines || []).find((items: Point2D[]) => items.length > 0);
-        const last = line ? line[line.length - 1] : terminal;
-        const sign = terminal.x >= last.x ? 1 : -1;
-        return { x: terminal.x + sign * LEADER_RENDER_CONFIG.mleaderTextGapFactor, y: terminal.y };
+        const direction = normalizeMLeaderVector(ent.doglegVector, 1);
+        return {
+            x: terminal.x + direction.x * LEADER_RENDER_CONFIG.mleaderTextGapFactor,
+            y: terminal.y + direction.y * LEADER_RENDER_CONFIG.mleaderTextGapFactor,
+        };
+    };
+
+    const getMLeaderTextAttachment = (ent: any, textPosition: Point2D): number => {
+        if (ent.textAttachment && ent.textAttachment >= 1 && ent.textAttachment <= 9) return ent.textAttachment;
+        const terminal = getMLeaderTerminalPoint(ent);
+        if (!terminal) return 4;
+        return textPosition.x >= terminal.x ? 4 : 6;
     };
 
     const drawArrowHead = (tip: Point2D, next: Point2D, sizeWorld?: number) => {
@@ -408,22 +422,46 @@ export const renderEntitiesToCanvas = (
         ctx.fill();
     };
 
-    const drawFormattedTextLine = (rawText: string, fallbackText: string, y: number, align: CanvasTextAlign, baseline: CanvasTextBaseline, textHeightPixels: number) => {
-        const segments = splitCadFormattedText(rawText);
-        const plainText = segments.map(segment => segment.text).join('') || fallbackText;
-        const totalWidth = ctx.measureText(plainText).width;
+    const getUnderlineOffset = (baseline: CanvasTextBaseline, textHeightPixels: number) => {
+        if (baseline === 'top' || baseline === 'hanging') {
+            return textHeightPixels * TEXT_RENDER_CONFIG.underlineTopBaselineFactor;
+        }
+        if (baseline === 'middle') {
+            return textHeightPixels * TEXT_RENDER_CONFIG.underlineMiddleBaselineFactor;
+        }
+        return textHeightPixels * TEXT_RENDER_CONFIG.underlineAlphabeticBaselineFactor;
+    };
+
+    const measureTextWidth = (value: string) => {
+        if (!value) return 0;
+        const metrics = ctx.measureText(value);
+        const bboxWidth = Math.abs((metrics.actualBoundingBoxRight || 0) - (metrics.actualBoundingBoxLeft || 0));
+        return Math.max(metrics.width, bboxWidth);
+    };
+
+    const drawFormattedSegmentsLine = (segments: ReturnType<typeof splitCadFormattedText>, fallbackText: string, y: number, align: CanvasTextAlign, baseline: CanvasTextBaseline, textHeightPixels: number) => {
+        const fallbackSegments = fallbackText ? [{ text: fallbackText, underline: false }] : [];
+        const drawSegments = (segments.length > 0 ? segments : fallbackSegments).filter(segment => segment.text.length > 0);
+        if (drawSegments.length === 0) return;
+
+        const segmentWidths = drawSegments.map(segment => measureTextWidth(segment.text));
+        const totalWidth = segmentWidths.reduce((sum, width) => sum + width, 0);
         let x = 0;
         if (align === 'center') x = -totalWidth / 2;
         else if (align === 'right' || align === 'end') x = -totalWidth;
 
+        const previousLineWidth = ctx.lineWidth;
+        const previousAlign = ctx.textAlign;
+        const previousBaseline = ctx.textBaseline;
         ctx.textAlign = 'left';
         ctx.textBaseline = baseline;
-        segments.forEach(segment => {
-            if (!segment.text) return;
+        ctx.lineWidth = Math.max(previousLineWidth, textHeightPixels * TEXT_RENDER_CONFIG.underlineLineWidthFactor);
+
+        drawSegments.forEach((segment, index) => {
+            const segmentWidth = segmentWidths[index];
             ctx.fillText(segment.text, x, y);
-            const segmentWidth = ctx.measureText(segment.text).width;
             if (segment.underline) {
-                const underlineY = y + textHeightPixels * (baseline === 'top' ? 0.92 : baseline === 'middle' ? 0.42 : 0.12);
+                const underlineY = y + getUnderlineOffset(baseline, textHeightPixels);
                 ctx.beginPath();
                 ctx.moveTo(x, underlineY);
                 ctx.lineTo(x + segmentWidth, underlineY);
@@ -431,6 +469,14 @@ export const renderEntitiesToCanvas = (
             }
             x += segmentWidth;
         });
+
+        ctx.textAlign = previousAlign;
+        ctx.textBaseline = previousBaseline;
+        ctx.lineWidth = previousLineWidth;
+    };
+
+    const drawFormattedTextLine = (rawText: string, fallbackText: string, y: number, align: CanvasTextAlign, baseline: CanvasTextBaseline, textHeightPixels: number) => {
+        drawFormattedSegmentsLine(splitCadFormattedText(rawText), fallbackText, y, align, baseline, textHeightPixels);
     };
 
     const drawEntity = (ent: AnyEntity, transform: RenderTransform, parentLayerName?: string, parentColor?: string, parentSelected: boolean = false, depth: number = 0, noMTextWrap: boolean = false) => {
@@ -450,7 +496,7 @@ export const renderEntitiesToCanvas = (
         if (layer && layer.isVisible === false) return;
 
         const isSelected = selectedIds.has(ent.id) || parentSelected;
-        const color = isSelected ? SELECTION_COLOR : resolveEntityColor(ent, layer, parentColor);
+        const color = isSelected ? SELECTION_COLOR : resolveEntityColor(ent, layer, parentColor, drawingColorMode, theme);
         
         ctx.strokeStyle = color;
         ctx.fillStyle = color;
@@ -630,7 +676,7 @@ export const renderEntitiesToCanvas = (
                 const text = ent.type === EntityType.MTEXT 
                     ? cleanMText(ent.value)
                     : cleanCadText(ent.value);
-                if (!text) break;
+                if (!text || isPlaceholderAttributeText(ent)) break;
                 
                 const style = styles[ent.styleName || 'STANDARD'] || styles[(ent.styleName || 'STANDARD').toUpperCase()];
                 const isMText = ent.type === EntityType.MTEXT;
@@ -656,13 +702,15 @@ export const renderEntitiesToCanvas = (
                 
                 // 将文本高度缩放到像素
                 const textHeightPixels = effectiveHeight * transform.scale;
+                const visualTextHeightPixels = textHeightPixels * getTextHeightCorrectionFactor(ent, styles);
                 const horizontalTextScale = getHorizontalTextScale(ent, styles, widthFactor);
+                const generationScale = getTextGenerationScale(ent);
                 
                 // 极小文字以占位块绘制，避免大量不可读文字拖慢视图缩放。
-                if (textHeightPixels < TEXT_RENDER_CONFIG.tinyTextPixelHeight && !isSelected) {
+                if (visualTextHeightPixels < TEXT_RENDER_CONFIG.tinyTextPixelHeight && !isSelected) {
                     const layout = estimateCadTextLayout(ent, styles);
-                    const approxWidth = Math.max(layout.blockWidth * transform.scale, textHeightPixels);
-                    const blockH = Math.max(layout.blockHeight * transform.scale, textHeightPixels);
+                    const approxWidth = Math.max(layout.blockWidth * transform.scale * Math.abs(horizontalTextScale), visualTextHeightPixels);
+                    const blockH = Math.max(layout.blockHeight * transform.scale * getTextHeightCorrectionFactor(ent, styles), visualTextHeightPixels);
                     let rx = 0;
                     let ry = 0;
 
@@ -670,10 +718,10 @@ export const renderEntitiesToCanvas = (
                         if (hAlign === 1 || hAlign === 4) rx = -approxWidth / 2;
                         else if (hAlign === 2) rx = -approxWidth;
 
-                        if (vAlign === 1) ry = -textHeightPixels;
-                        else if (vAlign === 2 || hAlign === 4) ry = -textHeightPixels / 2;
+                        if (vAlign === 1) ry = -visualTextHeightPixels;
+                        else if (vAlign === 2 || hAlign === 4) ry = -visualTextHeightPixels / 2;
                         else if (vAlign === 3) ry = 0;
-                        else ry = -textHeightPixels * TEXT_RENDER_CONFIG.alphabeticBaselineOffsetFactor;
+                        else ry = -visualTextHeightPixels * TEXT_RENDER_CONFIG.alphabeticBaselineOffsetFactor;
                     } else {
                         const ap = ent.attachmentPoint || 1;
                         if ([2, 5, 8].includes(ap)) rx = -approxWidth / 2;
@@ -699,31 +747,25 @@ export const renderEntitiesToCanvas = (
                 let dy = 0;
 
                 if (isMText) {
-                    ctx.scale(horizontalTextScale, 1.0);
+                    ctx.scale(horizontalTextScale * generationScale.x, generationScale.y);
                     
                     // MTEXT 宽度约束 (如果是0表示不自动换行)
                     const mtextMaxWidth = (ent.width && ent.width > 0) ? (ent.width * transform.scale / Math.max(TEXT_RENDER_CONFIG.minimumWidthFactor, Math.abs(horizontalTextScale))) : 0;
-                    const lines = noMTextWrap ? text.split('\n') : wrapText(ctx, text, mtextMaxWidth);
+                    const formattedLines = splitCadFormattedLines(ent.value || '');
+                    const lines = noMTextWrap || mtextMaxWidth <= 0
+                        ? (formattedLines.length > 0 ? formattedLines.map(line => line.plainText) : text.split('\n'))
+                        : wrapText(ctx, text, mtextMaxWidth);
+                    const formattedLineMap = (noMTextWrap || mtextMaxWidth <= 0) ? formattedLines : [];
                     
-                    // 根据 AutoCAD DXF 规范：
-                    // MTEXT 默认行距 (3-on-5) 是字体实际高度的 1.666 倍。
-                    // 并且组码 44 乘数决定了这个标准间距的比例系数。
+                    // MTEXT 行距使用 DXF 标准行距因子，并叠加对象自身的行距倍率。
                     const lineSpacingRaw = (ent as any).lineSpacingFactor;
                     const lineSpacingFactor = (lineSpacingRaw !== undefined && !isNaN(lineSpacingRaw)) ? lineSpacingRaw : 1;
-                    const lineHeight = textHeightPixels * TEXT_RENDER_CONFIG.mtextDefaultLineSpacingFactor * lineSpacingFactor; 
+                    const lineHeight = visualTextHeightPixels * TEXT_RENDER_CONFIG.mtextDefaultLineSpacingFactor * lineSpacingFactor; 
                     
-                    // 多行文本块几何学上的真实净高度是指：
-                    // （行数 - 1）* 它们之间的行间距间隙 + 最后一行的文字本身净高
-                    const blockHeight = (lines.length > 0) ? ((lines.length - 1) * lineHeight + textHeightPixels) : 0;
+                    const blockHeight = (lines.length > 0) ? ((lines.length - 1) * lineHeight + visualTextHeightPixels) : 0;
                     const ap = ent.attachmentPoint || 1;
-                    
-                    if ([2, 5, 8].includes(ap)) align = 'center';
-                    else if ([3, 6, 9].includes(ap)) align = 'right';
-                    
-                    if ([1, 2, 3].includes(ap)) dy = 0; 
-                    if ([4, 5, 6].includes(ap)) dy = -blockHeight / 2; 
-                    if ([7, 8, 9].includes(ap)) dy = -blockHeight; 
-                    
+                    align = getMTextCanvasAlignFromEntity(ent);
+                    dy = getMTextLocalTopOffset(ap, blockHeight);
                     baseline = 'top'; 
                     ctx.textAlign = align;
                     ctx.textBaseline = baseline;
@@ -740,12 +782,12 @@ export const renderEntitiesToCanvas = (
                         
                         let maxLineWidth = 0;
                         lines.forEach(line => {
-                            const w = ctx.measureText(line).width;
+                            const w = measureTextWidth(line);
                             if (w > maxLineWidth) maxLineWidth = w;
                         });
                         
                         const actualBlockWidth = (mtextMaxWidth > 0 && maxLineWidth > mtextMaxWidth) ? mtextMaxWidth : maxLineWidth;
-                        const bgPadding = textHeightPixels * TEXT_RENDER_CONFIG.mtextBackgroundPaddingFactor;
+                        const bgPadding = visualTextHeightPixels * TEXT_RENDER_CONFIG.mtextBackgroundPaddingFactor;
                         
                         let bgX = 0;
                         if (align === 'center') bgX = -actualBlockWidth / 2;
@@ -756,7 +798,12 @@ export const renderEntitiesToCanvas = (
                     }
                     
                     lines.forEach((line, i) => {
-                        drawFormattedTextLine(line, line, dy + i * lineHeight, align, baseline, textHeightPixels);
+                        const formattedLine = formattedLineMap[i];
+                        if (formattedLine) {
+                            drawFormattedSegmentsLine(formattedLine.segments, formattedLine.plainText, dy + i * lineHeight, align, baseline, visualTextHeightPixels);
+                        } else {
+                            drawFormattedTextLine(line, line, dy + i * lineHeight, align, baseline, visualTextHeightPixels);
+                        }
                     });
                 } else {
                     // 普通文本对齐逻辑优化
@@ -770,7 +817,7 @@ export const renderEntitiesToCanvas = (
                             
                             // 测量文本在当前字体下的原始宽度 (不应用 widthFactor)
                             const metrics = ctx.measureText(text);
-                            const textWidth = metrics.width;
+                            const textWidth = Math.max(metrics.width, Math.abs((metrics.actualBoundingBoxRight || 0) - (metrics.actualBoundingBoxLeft || 0)));
                             
                             if (textWidth > TEXT_RENDER_CONFIG.minimumMeasuredTextWidth) {
                                 if (hAlign === 5) {
@@ -787,29 +834,20 @@ export const renderEntitiesToCanvas = (
                             }
                         }
                         align = 'left'; 
-                        baseline = (vAlign === 0) ? 'alphabetic' : (vAlign === 1 ? 'bottom' : (vAlign === 2 ? 'middle' : 'top'));
+                        baseline = getTextVerticalCanvasBaseline(vAlign, hAlign);
                     } else {
                         // 常规对齐应用默认 widthFactor
-                        ctx.scale(horizontalTextScale, 1.0);
+                        ctx.scale(horizontalTextScale * generationScale.x, generationScale.y);
 
-                        if (hAlign === 0) align = 'left';
-                        else if (hAlign === 1) align = 'center';
-                        else if (hAlign === 2) align = 'right';
-                        else if (hAlign === 4) align = 'center'; // 中间对齐 (Middle)
-                        else align = 'left';
-
-                        if (vAlign === 0) baseline = 'alphabetic';
-                        else if (vAlign === 1) baseline = 'bottom';
-                        else if (vAlign === 2) baseline = 'middle'; 
-                        else if (vAlign === 3) baseline = 'top';
-                        else baseline = 'alphabetic';
-
-                        if (hAlign === 4 && vAlign === 0) {
-                            baseline = 'middle';
+                        align = getTextHorizontalCanvasAlign(hAlign);
+                        if (generationScale.x < 0) {
+                            if (align === 'left') align = 'right';
+                            else if (align === 'right') align = 'left';
                         }
+                        baseline = getTextVerticalCanvasBaseline(vAlign, hAlign);
                     }
 
-                    drawFormattedTextLine(ent.value || text, text, 0, align, baseline, textHeightPixels);
+                    drawFormattedTextLine(ent.value || text, text, 0, align, baseline, visualTextHeightPixels);
                 }
                 ctx.restore();
                 break;
@@ -1146,7 +1184,7 @@ export const renderEntitiesToCanvas = (
                         value: ent.text,
                         height: ent.textHeight || LEADER_RENDER_CONFIG.defaultMLeaderTextHeight,
                         width: ent.textWidth || LEADER_RENDER_CONFIG.defaultMLeaderTextWidth,
-                        attachmentPoint: ent.textAttachment || 4,
+                        attachmentPoint: getMLeaderTextAttachment(ent, textPosition),
                         styleName: ent.textStyleName,
                     };
                     drawEntity(textEntity, transform, layerName, color, isSelected, depth + 1, true);
@@ -1170,15 +1208,16 @@ export const renderEntitiesToCanvas = (
                      const prev = pts[pts.length-2];
                      const dx = last.x - prev.x;
                      let hookLen = LEADER_RENDER_CONFIG.defaultHookLength;
+                     let dir = dx >= 0 ? 1 : -1;
                      const annotation = ent.annotationHandle ? entityByHandle.get(ent.annotationHandle) : undefined;
                      if (annotation?.extents) {
                          const annotationCenterX = (annotation.extents.min.x + annotation.extents.max.x) / 2;
-                         const targetX = annotationCenterX >= last.x ? annotation.extents.min.x : annotation.extents.max.x;
+                         dir = annotationCenterX >= last.x ? 1 : -1;
+                         const targetX = dir > 0 ? annotation.extents.min.x : annotation.extents.max.x;
                          const gap = Math.abs(targetX - last.x);
-                         hookLen = Math.max(0, gap - TEXT_RENDER_CONFIG.minimumTableCellSize * LEADER_RENDER_CONFIG.annotationGapFactor);
+                         hookLen = Math.max(0, gap - LEADER_RENDER_CONFIG.leaderAnnotationTextGapFactor);
                      }
                      
-                     const dir = dx >= 0 ? 1 : -1;
                      const sp = transform.project({ x: last.x + dir * hookLen, y: last.y });
                      ctx.lineTo(sp.x, sp.y);
                 }

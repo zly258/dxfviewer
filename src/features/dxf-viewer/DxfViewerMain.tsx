@@ -6,10 +6,10 @@ import PropertiesPanel from './components/PropertiesPanel';
 import ToolBar from './components/ToolBar';
 import { parseDxf, calculateExtents } from './services/dxfService';
 import { AnyEntity, ViewPort, DxfLayer, DxfBlock, EntityType, DxfStyle, DxfLineType, Point2D } from '../../types';
-import { DEFAULT_LAYER, DEFAULT_VIEWPORT, LAYOUT_CONFIG, VIEWER_DEFAULTS, ZOOM_CONFIG } from '../../shared/config/viewerConfig';
+import { DEFAULT_LAYER, DEFAULT_VIEWPORT, LAYOUT_CONFIG, SHORTCUT_CONFIG, VIEWER_DEFAULTS, ZOOM_CONFIG } from '../../shared/config/viewerConfig';
 import { Language } from '../../constants/i18n';
 import { decodeDxfBuffer } from '../../shared/utils/textDecoder';
-import { CanvasTheme, UiTheme } from '../../shared/types/ui';
+import { CanvasTheme, DrawingColorMode, UiTheme } from '../../shared/types/ui';
 
 /**
  * DXF 查看器主容器组件
@@ -61,6 +61,7 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
   const [viewPort, setViewPort] = useState<ViewPort>(DEFAULT_VIEWPORT);
   const [uiTheme, setUiTheme] = useState<UiTheme>(VIEWER_DEFAULTS.uiTheme);
   const [canvasTheme, setCanvasTheme] = useState<CanvasTheme>(VIEWER_DEFAULTS.canvasTheme);
+  const [drawingColorMode, setDrawingColorMode] = useState<DrawingColorMode>(VIEWER_DEFAULTS.drawingColorMode);
   const [internalLang, setInternalLang] = useState<Language>(defaultLanguage);
   const [mouseCoords, setMouseCoords] = useState<{x: number, y: number}>({x: 0, y: 0});
   const containerRef = useRef<HTMLDivElement>(null);
@@ -68,6 +69,7 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
   
   const [parseErrorMessage, setParseErrorMessage] = useState<string | null>(null);
   const [renderErrorMessage, setRenderErrorMessage] = useState<string | null>(null);
+  const [isNoticeDismissed, setIsNoticeDismissed] = useState(false);
   const [toastMessage, setToastMessage] = useState<{msg: string, isError: boolean} | null>(null);
 
   const showToast = (msg: string, isError: boolean = true) => {
@@ -311,13 +313,41 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
       }
   };
 
-  const handleFitView = () => {
+  const handleFitView = useCallback(() => {
       fitView(entities, blocks);
-  };
+  }, [entities, blocks, fitView]);
+
+  useEffect(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      if (!containerRef.current) return;
+      if (getComputedStyle(containerRef.current).visibility === 'hidden') return;
+      const target = event.target as HTMLElement | null;
+      const tagName = target?.tagName?.toLowerCase();
+      if (tagName === 'input' || tagName === 'textarea' || tagName === 'select' || target?.isContentEditable) return;
+
+      const key = event.key.toLowerCase();
+      if (!event.ctrlKey && !event.metaKey && SHORTCUT_CONFIG.fitViewKeys.includes(key)) {
+        event.preventDefault();
+        handleFitView();
+        return;
+      }
+
+      if (event.key === SHORTCUT_CONFIG.clearSelectionKey) {
+        setSelectedEntityIds(new Set());
+        setParseErrorMessage(null);
+        setRenderErrorMessage(null);
+        setIsNoticeDismissed(true);
+      }
+    };
+
+    window.addEventListener('keydown', handleShortcut);
+    return () => window.removeEventListener('keydown', handleShortcut);
+  }, [handleFitView]);
 
   const handleClear = () => {
       setParseErrorMessage(null);
       setRenderErrorMessage(null);
+      setIsNoticeDismissed(false);
       setEntities([]);
       setLayers({ [DEFAULT_LAYER.name]: DEFAULT_LAYER });
       setBlocks({});
@@ -346,7 +376,7 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
   const selectedEntities = entities.filter(e => selectedEntityIds.has(e.id));
   const visibleEntityCount = useMemo(() => entities.filter(e => e.visible !== false && e.type !== EntityType.ATTDEF && e.type !== EntityType.ATTRIB).length, [entities]);
   const viewerNoticeMessage = useMemo(() => {
-    if (parseErrorMessage || isLoading) return null;
+    if (parseErrorMessage || isLoading || isNoticeDismissed) return null;
     if (renderErrorMessage) {
       return lang === 'zh' ? `DXF 渲染失败：${renderErrorMessage}` : `DXF render failed: ${renderErrorMessage}`;
     }
@@ -357,7 +387,7 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
       return lang === 'zh' ? 'DXF 已解析，但当前没有可显示实体。请检查图层显示状态或对象是否全部位于布局空间。' : 'DXF parsed, but there are no visible entities. Check layer visibility or paper-space objects.';
     }
     return null;
-  }, [parseErrorMessage, isLoading, renderErrorMessage, initFile, entities.length, visibleEntityCount, lang]);
+  }, [parseErrorMessage, isLoading, isNoticeDismissed, renderErrorMessage, initFile, entities.length, visibleEntityCount, lang]);
 
   return (
     <div ref={containerRef} className={`app-container ${uiTheme === 'dark' ? 'theme-dark' : ''}`} style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -366,21 +396,6 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
           <div className={`toast ${toastMessage.isError ? 'error' : 'success'}`}>
             <span className="toast-message">{toastMessage.msg}</span>
             <span className="toast-close" onClick={() => setToastMessage(null)}>×</span>
-          </div>
-        </div>
-      )}
-
-      {isLoading && (
-        <div className="loading-overlay">
-          <div className="loading-box">
-            <div className="loading-text">{lang === 'zh' ? '正在加载：' : 'Loading: '}{loadingFileName || (lang === 'zh' ? 'DXF 文件' : 'DXF file')}</div>
-            <div className="progress-bar-container">
-              <div 
-                className="progress-bar"
-                style={{ width: `${loadingProgress}%` }}
-              ></div>
-            </div>
-            <div className="progress-text">{loadingProgress}%</div>
           </div>
         </div>
       )}
@@ -400,6 +415,8 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
         onSetUiTheme={setUiTheme}
         canvasTheme={canvasTheme}
         onSetCanvasTheme={setCanvasTheme}
+        drawingColorMode={drawingColorMode}
+        onSetDrawingColorMode={setDrawingColorMode}
         lang={lang}
         onSetLang={handleSetLang}
       />
@@ -430,7 +447,7 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
                   {lang === 'zh' ? '充满视图' : 'Fit View'}
                 </button>
               )}
-              <button type="button" className="viewer-error-button" onClick={() => { setParseErrorMessage(null); setRenderErrorMessage(null); }}>
+              <button type="button" className="viewer-error-button" onClick={() => { setParseErrorMessage(null); setRenderErrorMessage(null); setIsNoticeDismissed(true); }}>
                 {lang === 'zh' ? '关闭提示' : 'Dismiss'}
               </button>
             </div>
@@ -450,6 +467,7 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
             worldOffset={worldOffset}
             overlayExtents={showDrawingExtents && drawingExtents ? { min: drawingExtents.min, max: drawingExtents.max } : null}
             theme={canvasTheme}
+            drawingColorMode={drawingColorMode}
             lang={lang}
             onMouseMoveWorld={(x, y) => setMouseCoords({x, y})}
             onRenderError={setRenderErrorMessage}
@@ -468,7 +486,6 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
         )}
       </div>
 
-      {/* 状态栏 */}
       <div className="status-bar">
         <div className="status-left">
           <div className="status-coords">
@@ -478,28 +495,27 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
         </div>
 
         <div className="status-center">
-          {selectedEntityIds.size === 0 ? (
+          {isLoading ? (
+            <div className="status-loading" title={loadingFileName}>
+              <span className="status-loading-label">{lang === 'zh' ? '正在加载' : 'Loading'}</span>
+              <span className="status-loading-file">{loadingFileName || (lang === 'zh' ? 'DXF 文件' : 'DXF file')}</span>
+              <div className="status-loading-track">
+                <div className="status-loading-bar" style={{ width: `${loadingProgress}%` }} />
+              </div>
+              <span className="status-loading-percent">{loadingProgress}%</span>
+            </div>
+          ) : selectedEntityIds.size === 0 ? (
             <span>{lang === 'zh' ? '未选择对象' : 'No objects selected'}</span>
           ) : (
-            <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
-              <span>{lang === 'zh' ? `已选择 ${selectedEntityIds.size} 个对象` : `Selected ${selectedEntityIds.size} objects`}</span>
-              {selectedEntityIds.size === 1 && (
-                <span style={{ opacity: 0.8, fontSize: '10px' }}>
-                  {lang === 'zh' ? '选择单个对象以查看详细属性' : 'Select a single object to view detailed properties'}
-                </span>
-              )}
+            <div className="status-selection">
+              <span>{lang === 'zh' ? `已选 ${selectedEntityIds.size}` : `Selected ${selectedEntityIds.size}`}</span>
             </div>
           )}
         </div>
 
         <div className="status-right">
-          <div style={{ display: 'flex', gap: '20px' }}>
-            <div>
-              {lang === 'zh' ? '实体数' : 'Entities'}: <span className="status-value">{entities.length}</span>
-            </div>
-            <div style={{ opacity: 0.8 }}>
-              {lang === 'zh' ? '就绪' : 'Ready'}
-            </div>
+          <div className="status-summary">
+            <span>{lang === 'zh' ? '实体' : 'Entities'}: <span className="status-value">{entities.length}</span></span>
           </div>
         </div>
       </div>

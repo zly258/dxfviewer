@@ -13,6 +13,39 @@ export const FONT_STACKS = {
     MONOSPACE: '"Cascadia Code", "Consolas", "Courier New", monospace',
 };
 
+export type CadTextFontProfile = 'trueType' | 'shx' | 'engineeringShx' | 'cjk';
+
+const normalizeFontToken = (value?: string): string => (value || '').toLowerCase();
+
+export const resolveCadTextFontProfile = (
+    styleName: string | undefined,
+    styles: Record<string, DxfStyle> | undefined,
+    rawText?: string,
+): CadTextFontProfile => {
+    const effectiveStyleName = styleName || CAD_DEFAULT_TEXT_STYLE;
+    const style = styles?.[effectiveStyleName] || styles?.[effectiveStyleName.toUpperCase()];
+    const fontName = normalizeFontToken(style?.fontFileName);
+    const bigFontName = normalizeFontToken(style?.bigFontFileName);
+    const styleNameLower = normalizeFontToken(style?.name || effectiveStyleName);
+    const inlineFont = normalizeFontToken(rawText?.match(/\\[fF]([^;|]+)/)?.[1]);
+    const combined = `${fontName}|${bigFontName}|${styleNameLower}|${inlineFont}`;
+    const hasCjkContent = /[\u2e80-\u9fff\uf900-\ufaff]/.test(rawText || '');
+
+    if (combined.includes('.ttf') || combined.includes('.otf') || combined.includes('arial') || combined.includes('simsun') || combined.includes('simhei') || combined.includes('yahei') || combined.includes('微软雅黑')) {
+        return hasCjkContent ? 'cjk' : 'trueType';
+    }
+
+    if (combined.includes('hztxt') || combined.includes('tssd') || combined.includes('gbcbig') || combined.includes('hz') || combined.includes('wcad') || combined.includes('fs') || combined.includes('fang') || combined.includes('仿宋')) {
+        return hasCjkContent ? 'cjk' : 'engineeringShx';
+    }
+
+    if (combined.includes('.shx') || combined.includes('txt') || combined.includes('simplex') || combined.includes('romans') || combined.includes('iso')) {
+        return 'shx';
+    }
+
+    return hasCjkContent ? 'cjk' : 'trueType';
+};
+
 /** 将 CAD 字体文件名映射为浏览器可用字体。 */
 export const mapCadFontToWebFont = (fontFileName: string | undefined, bigFontFileName?: string | undefined): string => {
     const f = (fontFileName || "").toLowerCase();

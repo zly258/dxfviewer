@@ -1,9 +1,9 @@
 import React, { useRef, useState, WheelEvent, MouseEvent, useEffect, useLayoutEffect, useCallback } from 'react';
 import { AnyEntity, ViewPort, DxfLayer, DxfBlock, DxfStyle, DxfLineType, EntityType, Point2D } from '../../../types';
 import { renderEntitiesToCanvas, hitTest, hitTestBox } from '../services/canvasRenderService';
-import { Language, UI_TRANSLATIONS } from '../../../constants/i18n';
-import { SELECTION_CONFIG, VIEWER_DEFAULTS, ZOOM_CONFIG } from '../../../shared/config/viewerConfig';
-import { CanvasTheme } from '../../../shared/types/ui';
+import { Language } from '../../../constants/i18n';
+import { SELECTION_CONFIG, SHORTCUT_CONFIG, VIEWER_DEFAULTS } from '../../../shared/config/viewerConfig';
+import { CanvasTheme, DrawingColorMode } from '../../../shared/types/ui';
 
 /**
  * DXF 渲染核心组件
@@ -24,6 +24,7 @@ interface DxfViewerProps {
   overlayExtents?: { min: Point2D, max: Point2D } | null;
   ltScale?: number; // 全局线型比例
   theme: CanvasTheme; // 画布背景主题
+  drawingColorMode: DrawingColorMode;
   lang: Language; // 当前语言
   onMouseMoveWorld?: (x: number, y: number) => void; // 鼠标移动时的世界坐标回调
   onRenderError?: (message: string | null) => void; // 渲染异常回调
@@ -39,10 +40,12 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
     onViewPortChange, 
     selectedEntityIds, 
     onSelectIds, 
+    onFitView,
     worldOffset, 
     overlayExtents,
     ltScale = VIEWER_DEFAULTS.defaultLineTypeScale, 
-    theme, 
+    theme,
+    drawingColorMode,
     lang,
     onMouseMoveWorld,
     onRenderError
@@ -50,14 +53,13 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const viewPortRef = useRef(viewPort);
+  const lastMiddleClickRef = useRef<{ time: number; x: number; y: number } | null>(null);
   viewPortRef.current = viewPort;
-  
-  const t = UI_TRANSLATIONS[lang];
   
   const [isPanning, setIsPanning] = useState(false);
   const [isBoxSelecting, setIsBoxSelecting] = useState(false);
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 }); // 屏幕坐标
-  const [currentMousePos, setCurrentMousePos] = useState({ x: 0, y: 0 }); // 屏幕坐标
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [currentMousePos, setCurrentMousePos] = useState({ x: 0, y: 0 });
 
   // 从屏幕坐标计算世界坐标（以中心为原点）
   const screenToWorld = (sx: number, sy: number) => {
@@ -65,12 +67,11 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
      if (!canvas) return { x: 0, y: 0 };
      const rect = containerRef.current?.getBoundingClientRect() || { width: canvas.width, height: canvas.height };
      
-     const safeZoom = Math.max(Math.abs(viewPort.zoom), Number.MIN_VALUE);
+     const currentViewPort = viewPortRef.current;
+     const safeZoom = Math.max(Math.abs(currentViewPort.zoom), Number.MIN_VALUE);
      
-     // 世界坐标 X = (屏幕 X - 宽度 / 2) / 缩放比例 + 目标 X
-     const wx = (sx - rect.width / 2) / safeZoom + viewPort.targetX;
-     // 世界坐标 Y = 目标 Y - (屏幕 Y - 高度 / 2) / 缩放比例
-     const wy = viewPort.targetY - (sy - rect.height / 2) / safeZoom;
+     const wx = (sx - rect.width / 2) / safeZoom + currentViewPort.targetX;
+     const wy = currentViewPort.targetY - (sy - rect.height / 2) / safeZoom;
      
      return {
          x: safeClamp(wx, -Number.MAX_VALUE, Number.MAX_VALUE),
@@ -89,13 +90,11 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
     return entities.filter(e => e.visible !== false).length;
   }, [entities]);
 
-  // 限制数值范围以防止 Infinity/NaN 问题
   const safeClamp = (value: number, min: number, max: number): number => {
     if (!isFinite(value)) return 0;
     return Math.max(Math.min(value, max), min);
   };
 
-  // 画布渲染循环，使用 requestAnimationFrame 保证平滑度
   const renderRef = useRef<number>();
   
   useLayoutEffect(() => {
@@ -123,7 +122,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
         ctx.scale(dpr, dpr);
 
         try {
-            renderEntitiesToCanvas(ctx, entities, layers, blocks, styles, lineTypes, ltScale, viewPort, selectedEntityIds, rect.width, rect.height, theme, overlayExtents);
+            renderEntitiesToCanvas(ctx, entities, layers, blocks, styles, lineTypes, ltScale, viewPort, selectedEntityIds, rect.width, rect.height, theme, drawingColorMode, overlayExtents);
             onRenderError?.(null);
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
@@ -139,7 +138,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
      return () => {
         if (renderRef.current) cancelAnimationFrame(renderRef.current);
      };
-  }, [entities, layers, blocks, styles, lineTypes, ltScale, viewPort, selectedEntityIds, worldOffset, theme, overlayExtents, onRenderError]);
+  }, [entities, layers, blocks, styles, lineTypes, ltScale, viewPort, selectedEntityIds, worldOffset, theme, drawingColorMode, overlayExtents, onRenderError]);
 
   // 处理滚轮事件，使用 passive: false 以允许 preventDefault
   useEffect(() => {
@@ -186,7 +185,21 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
 
-    if (e.button === 1 || (e.button === 0 && e.altKey)) {
+    if (e.button === SHORTCUT_CONFIG.middleButton) {
+      e.preventDefault();
+      const now = Date.now();
+      const lastClick = lastMiddleClickRef.current;
+      const moved = lastClick ? Math.hypot(e.clientX - lastClick.x, e.clientY - lastClick.y) : Infinity;
+      if (lastClick && now - lastClick.time <= SHORTCUT_CONFIG.middleDoubleClickDelayMs && moved <= SHORTCUT_CONFIG.middleDoubleClickDistancePixels) {
+        lastMiddleClickRef.current = null;
+        setIsPanning(false);
+        onFitView();
+        return;
+      }
+      lastMiddleClickRef.current = { time: now, x: e.clientX, y: e.clientY };
+      setIsPanning(true);
+      setDragStart({ x: e.clientX, y: e.clientY });
+    } else if (e.button === 0 && e.altKey) {
       e.preventDefault();
       setIsPanning(true);
       setDragStart({ x: e.clientX, y: e.clientY }); 
@@ -212,13 +225,15 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
       const dy = e.clientY - dragStart.y;
       
       // 新目标 X = 旧目标 X - dx / 缩放比例
-      const newTargetX = viewPort.targetX - dx / viewPort.zoom;
-      const newTargetY = viewPort.targetY + dy / viewPort.zoom;
+      const currentViewPort = viewPortRef.current;
+      const safeZoom = Math.max(Math.abs(currentViewPort.zoom), Number.MIN_VALUE);
+      const newTargetX = currentViewPort.targetX - dx / safeZoom;
+      const newTargetY = currentViewPort.targetY + dy / safeZoom;
 
       onViewPortChange({
         targetX: safeClamp(newTargetX, -Number.MAX_VALUE, Number.MAX_VALUE),
         targetY: safeClamp(newTargetY, -Number.MAX_VALUE, Number.MAX_VALUE),
-        zoom: viewPort.zoom
+        zoom: currentViewPort.zoom
       });
       setDragStart({ x: e.clientX, y: e.clientY });
     } else if (isBoxSelecting) {
@@ -240,12 +255,16 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
       
       const wPos = screenToWorld(mouseX, mouseY);
 
-      if (dist < 5) {
-         const safeZoom = Math.max(Math.abs(viewPort.zoom), Number.MIN_VALUE);
+      if (dist < SELECTION_CONFIG.clickMovementTolerancePixels) {
+         const currentViewPort = viewPortRef.current;
+         const safeZoom = Math.max(Math.abs(currentViewPort.zoom), Number.MIN_VALUE);
          const worldPerPixel = 1 / safeZoom;
          const viewWorldSpan = Math.max(rect.width, rect.height) * worldPerPixel;
-         const thresholdCap = Math.max(viewWorldSpan * 0.02, 1e-9);
-         const threshold = Math.min(Math.max(20 * worldPerPixel, 1e-12), thresholdCap);
+         const thresholdCap = Math.max(viewWorldSpan * SELECTION_CONFIG.maximumHitToleranceViewportFactor, SELECTION_CONFIG.minimumHitToleranceWorld);
+         const threshold = Math.min(
+             Math.max(SELECTION_CONFIG.geometryHitTolerancePixels * worldPerPixel, SELECTION_CONFIG.minimumHitToleranceWorld),
+             thresholdCap
+         );
          const hitId = hitTest(wPos.x, wPos.y, threshold, entities, blocks, layers, styles);
          
          if (hitId) {

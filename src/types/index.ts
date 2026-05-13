@@ -114,8 +114,12 @@ export interface DxfText extends DxfEntity {
   hAlign?: number; // 水平对齐 (组码 72)
   vAlign?: number; // 垂直对齐 (组码 73)
   widthFactor?: number;
-  attachmentPoint?: number; // 多行文字附着点 (组码 71)
-  width?: number; // 多行文字宽度
+  attachmentPoint?: number; // MTEXT 附着点 (组码 71)
+  textGenerationFlags?: number; // TEXT 生成标志 (组码 71)
+  drawingDirection?: number; // MTEXT 绘制方向 (组码 72)
+  lineSpacingStyle?: number; // MTEXT 行距样式 (组码 73)
+  width?: number; // 多行文字列宽
+  actualWidth?: number; // DXF 记录的实际内容宽度
   boxHeight?: number; // 多行文字高度
   bgFill?: boolean;
   bgColor?: number;
@@ -201,6 +205,10 @@ export interface DxfMLeader extends DxfEntity {
   textWidth?: number;
   textStyleName?: string;
   textAttachment?: number;
+  textLeftAttachment?: number;
+  textRightAttachment?: number;
+  textAlignment?: number;
+  doglegVector?: Point2D;
   arrowSize?: number;
   doglegLength?: number;
   enableLanding?: boolean;

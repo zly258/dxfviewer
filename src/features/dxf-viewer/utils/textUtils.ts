@@ -1,6 +1,7 @@
 import { TEXT_RENDER_CONFIG } from '../../../shared/config/viewerConfig';
 import { CAD_DEFAULT_TEXT_HEIGHT, CAD_DEFAULT_TEXT_STYLE } from '../../../shared/constants/cadConstants';
 import { DxfStyle, DxfText, EntityType, Point2D } from '../../../types';
+import { resolveCadTextFontProfile } from '../services/fontService';
 
 const TEMP_BACKSLASH = '\x01';
 const TEMP_LEFT_BRACE = '\x02';
@@ -40,7 +41,7 @@ export function cleanMText(text: string): string {
   result = result.replace(new RegExp(TEMP_LEFT_BRACE, 'g'), '{');
   result = result.replace(new RegExp(TEMP_RIGHT_BRACE, 'g'), '}');
 
-  return result.replace(/\r\n?/g, '\n').trim();
+  return result.replace(/\r\n?/g, '\n');
 }
 
 export function cleanCadText(text: string): string {
@@ -93,40 +94,32 @@ export function getEffectiveTextWidthFactor(ent: DxfText, styles?: Record<string
 
 
 export function getCadFontWidthCompensation(ent: DxfText, styles?: Record<string, DxfStyle>): number {
-  const style = getStyleForText(ent, styles);
-  const fontName = (style?.fontFileName || '').toLowerCase();
-  const hasInlineFont = ent.type === EntityType.MTEXT && /\\[fF][^;|]+/.test(ent.value || '');
-  const isTrueType = hasInlineFont
-    || fontName.endsWith('.ttf')
-    || fontName.endsWith('.otf')
-    || fontName.includes('simsun')
-    || fontName.includes('simhei')
-    || fontName.includes('arial')
-    || fontName.includes('msyh')
-    || fontName.includes('yahei');
-  const text = ent.value || '';
-  const hasCjkText = /[\u2e80-\u9fff\uf900-\ufaff]/.test(text);
-  if (hasCjkText) return TEXT_RENDER_CONFIG.cjkRenderWidthFactor;
-  return isTrueType
-    ? TEXT_RENDER_CONFIG.trueTypeRenderWidthFactor
-    : TEXT_RENDER_CONFIG.shxRenderWidthFactor;
+  const profile = resolveCadTextFontProfile(ent.styleName, styles, ent.value);
+  switch (profile) {
+    case 'cjk':
+      return TEXT_RENDER_CONFIG.cjkRenderWidthFactor;
+    case 'engineeringShx':
+      return TEXT_RENDER_CONFIG.engineeringShxRenderWidthFactor;
+    case 'shx':
+      return TEXT_RENDER_CONFIG.shxRenderWidthFactor;
+    case 'trueType':
+    default:
+      return TEXT_RENDER_CONFIG.trueTypeRenderWidthFactor;
+  }
 }
 
 export function getCadTextExtentsWidthCompensation(ent: DxfText, styles?: Record<string, DxfStyle>): number {
-  const style = getStyleForText(ent, styles);
-  const fontName = (style?.fontFileName || '').toLowerCase();
-  const hasInlineFont = ent.type === EntityType.MTEXT && /\\[fF][^;|]+/.test(ent.value || '');
-  const isTrueType = hasInlineFont
-    || fontName.endsWith('.ttf')
-    || fontName.endsWith('.otf')
-    || fontName.includes('simsun')
-    || fontName.includes('simhei')
-    || fontName.includes('arial')
-    || fontName.includes('msyh')
-    || fontName.includes('yahei');
-  return isTrueType
-    ? TEXT_RENDER_CONFIG.extentsTrueTypeWidthCompensation
-    : TEXT_RENDER_CONFIG.extentsShxWidthCompensation;
+  const profile = resolveCadTextFontProfile(ent.styleName, styles, ent.value);
+  switch (profile) {
+    case 'engineeringShx':
+      return TEXT_RENDER_CONFIG.extentsEngineeringShxWidthCompensation;
+    case 'shx':
+      return TEXT_RENDER_CONFIG.extentsShxWidthCompensation;
+    case 'cjk':
+    case 'trueType':
+    default:
+      return TEXT_RENDER_CONFIG.extentsTrueTypeWidthCompensation;
+  }
 }
 
 export function estimateCadLineWidth(line: string, textHeight: number, widthFactor: number): number {
@@ -141,6 +134,72 @@ export function estimateCadLineWidth(line: string, textHeight: number, widthFact
   }
   const padded = units * (1 + TEXT_RENDER_CONFIG.textWidthPaddingFactor);
   return Math.max(0, padded * textHeight * Math.abs(widthFactor));
+}
+
+export function getTextHorizontalCanvasAlign(hAlign?: number): CanvasTextAlign {
+  switch (hAlign || 0) {
+    case 1:
+    case 4:
+      return 'center';
+    case 2:
+      return 'right';
+    default:
+      return 'left';
+  }
+}
+
+export function getTextVerticalCanvasBaseline(vAlign?: number, hAlign?: number): CanvasTextBaseline {
+  if (hAlign === 4 && !vAlign) return 'middle';
+  switch (vAlign || 0) {
+    case 1:
+      return 'bottom';
+    case 2:
+      return 'middle';
+    case 3:
+      return 'top';
+    default:
+      return 'alphabetic';
+  }
+}
+
+export function getMTextCanvasAlign(attachmentPoint?: number): CanvasTextAlign {
+  const ap = attachmentPoint || 1;
+  if ([2, 5, 8].includes(ap)) return 'center';
+  if ([3, 6, 9].includes(ap)) return 'right';
+  return 'left';
+}
+
+
+export function getInlineMTextParagraphAlign(rawText?: string): CanvasTextAlign | null {
+  if (!rawText) return null;
+  const paragraphMatch = rawText.match(/\\[Pp][^;]*q([lcrj])/);
+  const directMatch = rawText.match(/q([lcrj])/);
+  const code = (paragraphMatch?.[1] || directMatch?.[1] || '').toLowerCase();
+  if (code === 'c') return 'center';
+  if (code === 'r') return 'right';
+  if (code === 'l' || code === 'j') return 'left';
+  return null;
+}
+
+export function getMTextCanvasAlignFromEntity(ent: DxfText): CanvasTextAlign {
+  const inlineAlign = getInlineMTextParagraphAlign(ent.value);
+  if (inlineAlign) return inlineAlign;
+  return getMTextCanvasAlign(ent.attachmentPoint);
+}
+
+export function getTextGenerationScale(ent: DxfText): { x: number; y: number } {
+  const flags = ent.textGenerationFlags || 0;
+  return {
+    x: (flags & 2) !== 0 ? -1 : 1,
+    y: (flags & 4) !== 0 ? -1 : 1,
+  };
+}
+
+export function getMTextLocalTopOffset(attachmentPoint: number | undefined, blockHeight: number): number {
+  const ap = attachmentPoint || 1;
+  if ([4, 5, 6].includes(ap)) return -blockHeight / 2;
+  if ([7, 8, 9].includes(ap)) return -blockHeight;
+  return 0;
 }
 
 
@@ -184,6 +243,96 @@ export function splitCadFormattedText(rawText: string): CadFormattedTextSegment[
 
   flush();
   return segments.length > 0 ? segments.filter(segment => segment.text.length > 0) : [{ text: cleanCadText(rawText), underline: false }];
+}
+
+
+export interface CadFormattedTextLine {
+  segments: CadFormattedTextSegment[];
+  plainText: string;
+}
+
+const flushFormattedBuffer = (lines: CadFormattedTextLine[], segments: CadFormattedTextSegment[], bufferState: { value: string }, underline: boolean) => {
+  if (!bufferState.value) return;
+  const text = cleanCadText(bufferState.value);
+  if (text) segments.push({ text, underline });
+  bufferState.value = '';
+};
+
+const pushFormattedLine = (lines: CadFormattedTextLine[], segments: CadFormattedTextSegment[]) => {
+  const filtered = segments.filter(segment => segment.text.length > 0);
+  const plainText = filtered.map(segment => segment.text).join('');
+  lines.push({ segments: filtered, plainText });
+};
+
+export function splitCadFormattedLines(rawText: string): CadFormattedTextLine[] {
+  if (!rawText) return [];
+
+  const lines: CadFormattedTextLine[] = [];
+  let segments: CadFormattedTextSegment[] = [];
+  const buffer = { value: '' };
+  let underline = false;
+
+  const flush = () => flushFormattedBuffer(lines, segments, buffer, underline);
+  const newLine = () => {
+    flush();
+    pushFormattedLine(lines, segments);
+    segments = [];
+  };
+
+  for (let index = 0; index < rawText.length; index++) {
+    const char = rawText[index];
+    if (char !== '\\') {
+      buffer.value += char;
+      continue;
+    }
+
+    const next = rawText[index + 1];
+    if (next === 'L' || next === 'l') {
+      flush();
+      underline = next === 'L';
+      index++;
+      continue;
+    }
+    if (next === 'P' || next === 'p') {
+      index++;
+      newLine();
+      continue;
+    }
+    if (next === '~') {
+      buffer.value += ' ';
+      index++;
+      continue;
+    }
+    if (next === 'U' && rawText[index + 2] === '+') {
+      const hex = rawText.slice(index + 3, index + 7);
+      if (/^[0-9A-Fa-f]{4}$/.test(hex)) {
+        buffer.value += String.fromCharCode(parseInt(hex, 16));
+        index += 6;
+        continue;
+      }
+    }
+    if (next === 'S' || next === 's') {
+      const end = rawText.indexOf(';', index + 2);
+      if (end >= 0) {
+        const stacked = rawText.slice(index + 2, end).replace(/[#^/]/g, '/');
+        buffer.value += stacked;
+        index = end;
+        continue;
+      }
+    }
+    if ('FfHhWwTtQqCcAa'.includes(next || '')) {
+      const end = rawText.indexOf(';', index + 2);
+      if (end >= 0) {
+        index = end;
+        continue;
+      }
+    }
+    buffer.value += char;
+  }
+
+  flush();
+  pushFormattedLine(lines, segments);
+  return lines.filter(line => line.plainText.length > 0);
 }
 
 export interface TextLayoutEstimate {
@@ -234,7 +383,11 @@ export function estimateCadTextLayout(ent: DxfText, styles?: Record<string, DxfS
   const widthCompensation = getCadTextExtentsWidthCompensation(ent, styles);
   const lineWidths = wrappedLines.map(line => estimateCadLineWidth(line, textHeight, widthFactor) * widthCompensation);
   const measuredWidth = Math.max(...lineWidths, 0);
-  const blockWidth = isMText && ent.width && ent.width > 0 ? Math.max(ent.width, measuredWidth) : measuredWidth;
+  const actualWidth = Number((ent as any).actualWidth) || 0;
+  const declaredWidth = isMText && ent.width && ent.width > 0 ? ent.width : 0;
+  const blockWidth = declaredWidth > 0
+    ? Math.max(declaredWidth, measuredWidth)
+    : Math.max(measuredWidth, actualWidth > 0 ? actualWidth : 0);
   const blockHeight = wrappedLines.length > 0
     ? (wrappedLines.length - 1) * lineHeight + textHeight
     : textHeight;
