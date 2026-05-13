@@ -27,7 +27,8 @@ export function cleanMText(text: string): string {
   result = result.replace(/%%[cC]/g, 'Ø');
   result = result.replace(/%%[dD]/g, '°');
   result = result.replace(/%%[pP]/g, '±');
-  result = result.replace(/\\[Pp]/g, '\n');
+  result = result.replace(/\\[Pp](?:[^;]*;)?/g, '\n');
+  result = result.replace(/\\[Xx]/g, '\n');
   result = result.replace(/\\[Ss]([^;]*)[#^/]([^;]*);/g, '$1/$2');
 
   result = result.replace(/\\[Ff][^;]*;/g, '');
@@ -172,9 +173,8 @@ export function getMTextCanvasAlign(attachmentPoint?: number): CanvasTextAlign {
 
 export function getInlineMTextParagraphAlign(rawText?: string): CanvasTextAlign | null {
   if (!rawText) return null;
-  const paragraphMatch = rawText.match(/\\[Pp][^;]*q([lcrj])/);
-  const directMatch = rawText.match(/q([lcrj])/);
-  const code = (paragraphMatch?.[1] || directMatch?.[1] || '').toLowerCase();
+  const paragraphMatch = rawText.match(/\\[Pp][^;]*q([lcrj])/i);
+  const code = (paragraphMatch?.[1] || '').toLowerCase();
   if (code === 'c') return 'center';
   if (code === 'r') return 'right';
   if (code === 'l' || code === 'j') return 'left';
@@ -294,6 +294,13 @@ export function splitCadFormattedLines(rawText: string): CadFormattedTextLine[] 
       continue;
     }
     if (next === 'P' || next === 'p') {
+      const end = rawText.indexOf(';', index + 2);
+      if (end >= 0 && rawText.slice(index + 2, end).includes('q')) index = end;
+      else index++;
+      newLine();
+      continue;
+    }
+    if (next === 'X' || next === 'x') {
       index++;
       newLine();
       continue;
@@ -388,9 +395,11 @@ export function estimateCadTextLayout(ent: DxfText, styles?: Record<string, DxfS
   const blockWidth = declaredWidth > 0
     ? Math.max(declaredWidth, measuredWidth)
     : Math.max(measuredWidth, actualWidth > 0 ? actualWidth : 0);
-  const blockHeight = wrappedLines.length > 0
+  const measuredBlockHeight = wrappedLines.length > 0
     ? (wrappedLines.length - 1) * lineHeight + textHeight
     : textHeight;
+  const declaredBlockHeight = isMText && Number(ent.boxHeight) > 0 ? Number(ent.boxHeight) : 0;
+  const blockHeight = Math.max(measuredBlockHeight, declaredBlockHeight);
 
   return {
     plainText,

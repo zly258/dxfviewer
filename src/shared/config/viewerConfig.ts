@@ -124,6 +124,7 @@ export const TEXT_RENDER_CONFIG = {
   underlineAlphabeticBaselineFactor: 0.12,
   underlineLineWidthFactor: 0.045,
   mtextLineWidthMeasurePaddingFactor: 1.0,
+  mtextActualWidthTrustFactor: 2.5,
   tableTextHeightFactor: 0.5,
   tableTextHorizontalPaddingFactor: 0.1,
   minimumTableCellSize: 0.1,
@@ -178,6 +179,8 @@ export const LINE_RENDER_CONFIG = {
   selectedMaximumScreenLineWidth: 8,
   cadLineweightToPixelFactor: 25,
   minimumDashPatternPixels: 2,
+  minimumDashSegmentPixels: 1.5,
+  dotDashPixelLength: 1.5,
 };
 
 export const LEADER_RENDER_CONFIG = {

@@ -28,6 +28,38 @@ interface DxfViewerMainProps {
   onLanguageChange?: (lang: Language) => void;
 }
 
+
+interface ViewerUiSettings {
+  showSidebar?: boolean;
+  showProperties?: boolean;
+  showDrawingExtents?: boolean;
+  uiTheme?: UiTheme;
+  canvasTheme?: CanvasTheme;
+  drawingColorMode?: DrawingColorMode;
+  language?: Language;
+}
+
+const VIEWER_UI_SETTINGS_KEY = 'dxfviewer.uiSettings.v1';
+
+const readViewerUiSettings = (): ViewerUiSettings => {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = window.localStorage.getItem(VIEWER_UI_SETTINGS_KEY);
+    return raw ? JSON.parse(raw) as ViewerUiSettings : {};
+  } catch {
+    return {};
+  }
+};
+
+const writeViewerUiSettings = (settings: ViewerUiSettings) => {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(VIEWER_UI_SETTINGS_KEY, JSON.stringify(settings));
+  } catch {
+    // 浏览器隐私模式或配额限制时忽略保存失败，不影响查看器运行。
+  }
+};
+
 const DxfViewerMain: React.FC<DxfViewerMainProps> = ({ 
   initFile,
   fileName, 
@@ -40,6 +72,7 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
   lang: controlledLang,
   onLanguageChange
 }) => {
+  const savedUiSettingsRef = useRef<ViewerUiSettings>(readViewerUiSettings());
   const [entities, setEntities] = useState<AnyEntity[]>([]);
   const [layers, setLayers] = useState<Record<string, DxfLayer>>({ [DEFAULT_LAYER.name]: DEFAULT_LAYER });
   const [blocks, setBlocks] = useState<Record<string, DxfBlock>>({});
@@ -47,7 +80,7 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
   const [lineTypes, setLineTypes] = useState<Record<string, DxfLineType>>({});
   const [ltScale, setLtScale] = useState(VIEWER_DEFAULTS.defaultLineTypeScale);
   const [worldOffset, setWorldOffset] = useState<Point2D | undefined>();
-  const [showDrawingExtents, setShowDrawingExtents] = useState(false);
+  const [showDrawingExtents, setShowDrawingExtents] = useState(savedUiSettingsRef.current.showDrawingExtents ?? false);
   
   const [isLoading, setIsLoading] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState(0);
@@ -55,14 +88,14 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
 
   const [selectedEntityIds, setSelectedEntityIds] = useState<Set<string>>(new Set());
   
-  const [showSidebar, setShowSidebar] = useState(true);
-  const [showProperties, setShowProperties] = useState(true);
+  const [showSidebar, setShowSidebar] = useState(savedUiSettingsRef.current.showSidebar ?? true);
+  const [showProperties, setShowProperties] = useState(savedUiSettingsRef.current.showProperties ?? true);
 
   const [viewPort, setViewPort] = useState<ViewPort>(DEFAULT_VIEWPORT);
-  const [uiTheme, setUiTheme] = useState<UiTheme>(VIEWER_DEFAULTS.uiTheme);
-  const [canvasTheme, setCanvasTheme] = useState<CanvasTheme>(VIEWER_DEFAULTS.canvasTheme);
-  const [drawingColorMode, setDrawingColorMode] = useState<DrawingColorMode>(VIEWER_DEFAULTS.drawingColorMode);
-  const [internalLang, setInternalLang] = useState<Language>(defaultLanguage);
+  const [uiTheme, setUiTheme] = useState<UiTheme>(savedUiSettingsRef.current.uiTheme ?? VIEWER_DEFAULTS.uiTheme);
+  const [canvasTheme, setCanvasTheme] = useState<CanvasTheme>(savedUiSettingsRef.current.canvasTheme ?? VIEWER_DEFAULTS.canvasTheme);
+  const [drawingColorMode, setDrawingColorMode] = useState<DrawingColorMode>(savedUiSettingsRef.current.drawingColorMode ?? VIEWER_DEFAULTS.drawingColorMode);
+  const [internalLang, setInternalLang] = useState<Language>(savedUiSettingsRef.current.language ?? defaultLanguage);
   const [mouseCoords, setMouseCoords] = useState<{x: number, y: number}>({x: 0, y: 0});
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<HTMLDivElement>(null);
@@ -82,6 +115,18 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
     setInternalLang(newLang);
     onLanguageChange?.(newLang);
   }, [onLanguageChange]);
+
+  useEffect(() => {
+    writeViewerUiSettings({
+      showSidebar,
+      showProperties,
+      showDrawingExtents,
+      uiTheme,
+      canvasTheme,
+      drawingColorMode,
+      language: lang,
+    });
+  }, [showSidebar, showProperties, showDrawingExtents, uiTheme, canvasTheme, drawingColorMode, lang]);
 
   const fitView = useCallback((ents: AnyEntity[], blks: Record<string, DxfBlock>, currentStyles: Record<string, DxfStyle> = styles) => {
     if (ents.length === 0) return;
@@ -400,28 +445,43 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
         </div>
       )}
 
-      <ToolBar 
-        onImport={handleImport}
-        onClear={handleClear}
-        onFitView={handleFitView}
-        showDrawingExtents={showDrawingExtents}
-        onToggleDrawingExtents={() => setShowDrawingExtents(v => !v)}
-        showSidebar={showSidebar}
-        onToggleSidebar={() => setShowSidebar(!showSidebar)}
-        showProperties={showProperties}
-        onToggleProperties={() => setShowProperties(!showProperties)}
-        showOpen={showOpenMenu}
-        uiTheme={uiTheme}
-        onSetUiTheme={setUiTheme}
-        canvasTheme={canvasTheme}
-        onSetCanvasTheme={setCanvasTheme}
-        drawingColorMode={drawingColorMode}
-        onSetDrawingColorMode={setDrawingColorMode}
-        lang={lang}
-        onSetLang={handleSetLang}
-      />
-      
-      {tabStrip}
+
+      {isLoading && (
+        <div className="loading-overlay" aria-live="polite" aria-busy="true">
+          <div className="loading-inline" title={loadingFileName}>
+            <div className="loading-title">{lang === 'zh' ? '正在加载 DXF' : 'Loading DXF'}</div>
+            <div className="loading-file">{loadingFileName || (lang === 'zh' ? 'DXF 文件' : 'DXF file')}</div>
+            <div className="loading-progressbar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={loadingProgress}>
+              <div className="loading-progressbar-value" style={{ width: `${Math.max(0, Math.min(100, loadingProgress))}%` }} />
+            </div>
+            <div className="loading-progress-text">{loadingProgress}%</div>
+          </div>
+        </div>
+      )}
+
+      <div className="menu-tab-row">
+        <ToolBar 
+          onImport={handleImport}
+          onClear={handleClear}
+          onFitView={handleFitView}
+          showDrawingExtents={showDrawingExtents}
+          onToggleDrawingExtents={() => setShowDrawingExtents(v => !v)}
+          showSidebar={showSidebar}
+          onToggleSidebar={() => setShowSidebar(!showSidebar)}
+          showProperties={showProperties}
+          onToggleProperties={() => setShowProperties(!showProperties)}
+          showOpen={showOpenMenu}
+          uiTheme={uiTheme}
+          onSetUiTheme={setUiTheme}
+          canvasTheme={canvasTheme}
+          onSetCanvasTheme={setCanvasTheme}
+          drawingColorMode={drawingColorMode}
+          onSetDrawingColorMode={setDrawingColorMode}
+          lang={lang}
+          onSetLang={handleSetLang}
+        />
+        {tabStrip && <div className="menu-tab-strip">{tabStrip}</div>}
+      </div>
 
       <div className="main-content">
         {showSidebar && (
@@ -495,16 +555,7 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
         </div>
 
         <div className="status-center">
-          {isLoading ? (
-            <div className="status-loading" title={loadingFileName}>
-              <span className="status-loading-label">{lang === 'zh' ? '正在加载' : 'Loading'}</span>
-              <span className="status-loading-file">{loadingFileName || (lang === 'zh' ? 'DXF 文件' : 'DXF file')}</span>
-              <div className="status-loading-track">
-                <div className="status-loading-bar" style={{ width: `${loadingProgress}%` }} />
-              </div>
-              <span className="status-loading-percent">{loadingProgress}%</span>
-            </div>
-          ) : selectedEntityIds.size === 0 ? (
+          {selectedEntityIds.size === 0 ? (
             <span>{lang === 'zh' ? '未选择对象' : 'No objects selected'}</span>
           ) : (
             <div className="status-selection">

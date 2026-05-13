@@ -4,22 +4,15 @@ import { CAD_BY_BLOCK_COLOR, CAD_BY_LAYER_COLOR, CAD_DEFAULT_TEXT_HEIGHT, CAD_DE
 import { CanvasTheme, DrawingColorMode } from '../../../shared/types/ui';
 import { getAutoCadColor, AUTO_CAD_COLORS } from '../utils/colorUtils';
 import { resolveEntityColor } from '../utils/entityColor';
-import { getBSplinePoints } from './dxfService';
+import { sampleBulgeSegment } from '../../../core/geometry/bulge';
+import { sampleEllipsePoints, sampleHatchLoop, sampleSplinePoints } from '../../../core/geometry/curveSampling';
+import { resolveCadStrokeStyle } from '../../../core/symbology/lineStyle';
 import { getStyleFontFamily, FONT_STACKS, mapCadFontToWebFont, resolveCadTextFontProfile } from './fontService';
-import { cleanCadText, cleanMText, estimateCadTextLayout, getCadTextAnchorPosition, getEffectiveTextHeight, getEffectiveTextWidthFactor, getCadFontWidthCompensation, splitCadFormattedText, splitCadFormattedLines, getMTextCanvasAlign, getMTextCanvasAlignFromEntity, getMTextLocalTopOffset, getTextGenerationScale, getTextHorizontalCanvasAlign, getTextVerticalCanvasBaseline } from '../utils/textUtils';
+import { cleanCadText, cleanMText, estimateCadTextLayout, getCadTextAnchorPosition, getEffectiveTextHeight, splitCadFormattedText } from '../utils/textUtils';
+import { buildCadTextLayout } from '../../../core/text/TextLayoutEngine';
 
 const SELECTION_COLOR = SELECTION_CONFIG.color;
 
-const getTextHeightCorrectionFactor = (ent: DxfText, styles: Record<string, DxfStyle> | undefined): number => {
-    const profile = resolveCadTextFontProfile(ent.styleName, styles, ent.value);
-    return profile === 'trueType' || profile === 'cjk'
-        ? TEXT_RENDER_CONFIG.trueTypeFontHeightFactor
-        : TEXT_RENDER_CONFIG.shxFontHeightFactor;
-};
-
-const getHorizontalTextScale = (ent: DxfText, styles: Record<string, DxfStyle> | undefined, widthFactor: number): number => {
-    return widthFactor * getCadFontWidthCompensation(ent, styles);
-};
 
 const isPlaceholderAttributeText = (ent: DxfText): boolean => {
     if (ent.type !== EntityType.ATTRIB && ent.type !== EntityType.ATTDEF) return false;
@@ -130,6 +123,13 @@ const getCanvasFont = (ent: AnyEntity, styles: Record<string, DxfStyle> | undefi
 /**
  * 文本换行处理（支持中英文混合）
  */
+const getMeasuredTextWidth = (ctx: CanvasRenderingContext2D, value: string): number => {
+    if (!value) return 0;
+    const metrics = ctx.measureText(value);
+    const bboxWidth = Math.abs((metrics.actualBoundingBoxRight || 0) - (metrics.actualBoundingBoxLeft || 0));
+    return Math.max(metrics.width, bboxWidth);
+};
+
 const wrapText = (ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] => {
     if (!maxWidth || maxWidth <= 0) return text.split('\n');
     const paragraphs = text.split('\n');
@@ -147,7 +147,7 @@ const wrapText = (ctx: CanvasRenderingContext2D, text: string, maxWidth: number)
         for (let i = 0; i < paragraph.length; i++) {
             const char = paragraph[i];
             const testLine = currentLine + char;
-            const width = ctx.measureText(testLine).width;
+            const width = getMeasuredTextWidth(ctx, testLine);
             
             if (width > maxWidth && currentLine.length > 0) {
                 lines.push(currentLine);
@@ -188,91 +188,16 @@ interface RenderTransform {
  * 绘制填充环
  */
 const drawHatchLoop = (ctx: CanvasRenderingContext2D, loop: HatchLoop, transform: RenderTransform) => {
-    const { project, scale } = transform;
-    if (loop.isPolyline && loop.points && loop.points.length > 0) {
-        const points = loop.points;
-        const bulges = loop.bulges || [];
-        const start = project(points[0]);
-        ctx.moveTo(start.x, start.y);
-        for (let i = 0; i < points.length; i++) {
-            const p1 = points[i];
-            const p2 = points[(i + 1) % points.length];
-            const bulge = bulges[i] || 0;
-            const sP2 = project(p2);
-            if (Math.abs(bulge) < 1e-6) {
-                ctx.lineTo(sP2.x, sP2.y);
-            } else {
-                const theta = 4 * Math.atan(bulge);
-                const dist = Math.sqrt((p2.x - p1.x)**2 + (p2.y - p1.y)**2);
-                if (dist > 1e-9) {
-                    const radius = Math.abs(dist / (2 * Math.sin(theta / 2)));
-                    const a = (p2.x - p1.x) / 2;
-                    const b = (p2.y - p1.y) / 2;
-                    const h = (dist / 2) * (1 / bulge - bulge) / 2;
-                    const cx = p1.x + a - h * (p2.y - p1.y) / dist;
-                    const cy = p1.y + b + h * (p2.x - p1.x) / dist;
-                    
-                    const startAngle = Math.atan2(p1.y - cy, p1.x - cx);
-                    const endAngle = Math.atan2(p2.y - cy, p2.x - cx);
-                    
-                    const sCenter = project({ x: cx, y: cy });
-                    const sRadius = radius * scale;
-                    
-                    // 注意：在屏幕空间中，我们使用 project，它已经处理了 Y 轴翻转
-                    // 但 arc() 仍然需要一个方向。
-                    // 如果 CAD 是逆时针 (CCW)，且 Y 轴翻转，则在屏幕上变为顺时针 (CW)。
-                    const ccw = bulge < 0; // 因为 Y 轴翻转而反转
-                    ctx.arc(sCenter.x, sCenter.y, sRadius, -startAngle, -endAngle, ccw); 
-                } else {
-                    ctx.lineTo(sP2.x, sP2.y);
-                }
-            }
-        }
-    } else if (loop.edges && loop.edges.length > 0) {
-        loop.edges.forEach((edge, i) => {
-            if (i === 0 && edge.start) {
-                const start = project(edge.start);
-                ctx.moveTo(start.x, start.y);
-            } else if (edge.start) {
-                const start = project(edge.start);
-                ctx.lineTo(start.x, start.y); 
-            }
-
-            if (edge.type === 'LINE' && edge.end) {
-                const end = project(edge.end);
-                ctx.lineTo(end.x, end.y);
-            } else if (edge.type === 'ARC' && edge.center && edge.radius) {
-                const start = (edge.startAngle || 0) * Math.PI / 180;
-                const end = (edge.endAngle || 0) * Math.PI / 180;
-                const sCenter = project(edge.center);
-                const sRadius = edge.radius * scale;
-                // 注意：isCcw 标志似乎与我们期望的方向相反
-                // 当 ccw=false 时，在 CAD 中实际上是顺时针，但我们翻转了 Y 轴
-                // 所以我们可能需要根据翻转情况取反
-                const isCcw = edge.ccw === undefined ? true : edge.ccw; 
-                ctx.arc(sCenter.x, sCenter.y, sRadius, -start, -end, !isCcw); 
-            } else if (edge.type === 'ELLIPSE' && edge.center && edge.majorAxis) {
-                const majX = edge.majorAxis.x;
-const majY = edge.majorAxis.y;
-                const rX = Math.sqrt(majX*majX + majY*majY);
-                const rY = rX * (edge.ratio || 1);
-                const rotation = Math.atan2(majY, majX);
-                const start = edge.startAngle || 0;
-                const end = edge.endAngle || 2*Math.PI;
-                const sCenter = project(edge.center);
-                const isCcw = edge.ccw === undefined ? true : edge.ccw;
-                ctx.ellipse(sCenter.x, sCenter.y, rX * scale, rY * scale, -rotation, start, end, !isCcw);
-            } else if (edge.type === 'SPLINE' && (edge.calculatedPoints || edge.controlPoints)) {
-                 const points = edge.calculatedPoints || getBSplinePoints(edge.controlPoints!, edge.degree || 3, edge.knots, edge.weights, 20);
-                 points.forEach(p => {
-                     const sp = project(p);
-                     ctx.lineTo(sp.x, sp.y);
-                 });
-            }
-        });
+    const points = sampleHatchLoop(loop);
+    if (points.length === 0) return;
+    const start = transform.project(points[0]);
+    ctx.moveTo(start.x, start.y);
+    for (let index = 1; index < points.length; index++) {
+        const point = transform.project(points[index]);
+        ctx.lineTo(point.x, point.y);
     }
     ctx.closePath();
-}
+};
 
 /**
  * 绘制多段线
@@ -291,25 +216,10 @@ const drawPolyline = (ctx: CanvasRenderingContext2D, points: Point2D[], bulges: 
         if (Math.abs(bulge) < 1e-6) {
             ctx.lineTo(sP2.x, sP2.y);
         } else {
-            const theta = 4 * Math.atan(bulge);
-            const dist = Math.sqrt((p2.x - p1.x)**2 + (p2.y - p1.y)**2);
-            if (dist > 1e-9) {
-                const radius = Math.abs(dist / (2 * Math.sin(theta / 2)));
-                const a = (p2.x - p1.x) / 2;
-                const b = (p2.y - p1.y) / 2;
-                const h = (dist / 2) * (1 / bulge - bulge) / 2;
-                const cx = p1.x + a - h * (p2.y - p1.y) / dist;
-                const cy = p1.y + b + h * (p2.x - p1.x) / dist;
-                
-                const startAngle = Math.atan2(p1.y - cy, p1.x - cx);
-                const endAngle = Math.atan2(p2.y - cy, p2.x - cx);
-                
-                const sCenter = project({ x: cx, y: cy });
-                const sRadius = radius * scale;
-                const ccw = bulge < 0; // 因为 Y 轴翻转而反转
-                ctx.arc(sCenter.x, sCenter.y, sRadius, -startAngle, -endAngle, ccw);
-            } else {
-                ctx.lineTo(sP2.x, sP2.y);
+            const arcPoints = sampleBulgeSegment(p1, p2, bulge);
+            for (let index = 1; index < arcPoints.length; index++) {
+                const point = project(arcPoints[index]);
+                ctx.lineTo(point.x, point.y);
             }
         }
     }
@@ -432,23 +342,18 @@ export const renderEntitiesToCanvas = (
         return textHeightPixels * TEXT_RENDER_CONFIG.underlineAlphabeticBaselineFactor;
     };
 
-    const measureTextWidth = (value: string) => {
-        if (!value) return 0;
-        const metrics = ctx.measureText(value);
-        const bboxWidth = Math.abs((metrics.actualBoundingBoxRight || 0) - (metrics.actualBoundingBoxLeft || 0));
-        return Math.max(metrics.width, bboxWidth);
-    };
+    const measureTextWidth = (value: string) => getMeasuredTextWidth(ctx, value);
 
-    const drawFormattedSegmentsLine = (segments: ReturnType<typeof splitCadFormattedText>, fallbackText: string, y: number, align: CanvasTextAlign, baseline: CanvasTextBaseline, textHeightPixels: number) => {
+    const drawFormattedSegmentsLine = (segments: ReturnType<typeof splitCadFormattedText>, fallbackText: string, xOffset: number, y: number, align: CanvasTextAlign, baseline: CanvasTextBaseline, textHeightPixels: number) => {
         const fallbackSegments = fallbackText ? [{ text: fallbackText, underline: false }] : [];
         const drawSegments = (segments.length > 0 ? segments : fallbackSegments).filter(segment => segment.text.length > 0);
         if (drawSegments.length === 0) return;
 
         const segmentWidths = drawSegments.map(segment => measureTextWidth(segment.text));
         const totalWidth = segmentWidths.reduce((sum, width) => sum + width, 0);
-        let x = 0;
-        if (align === 'center') x = -totalWidth / 2;
-        else if (align === 'right' || align === 'end') x = -totalWidth;
+        let x = xOffset;
+        if (align === 'center') x -= totalWidth / 2;
+        else if (align === 'right' || align === 'end') x -= totalWidth;
 
         const previousLineWidth = ctx.lineWidth;
         const previousAlign = ctx.textAlign;
@@ -475,8 +380,8 @@ export const renderEntitiesToCanvas = (
         ctx.lineWidth = previousLineWidth;
     };
 
-    const drawFormattedTextLine = (rawText: string, fallbackText: string, y: number, align: CanvasTextAlign, baseline: CanvasTextBaseline, textHeightPixels: number) => {
-        drawFormattedSegmentsLine(splitCadFormattedText(rawText), fallbackText, y, align, baseline, textHeightPixels);
+    const drawFormattedTextLine = (rawText: string, fallbackText: string, xOffset: number, y: number, align: CanvasTextAlign, baseline: CanvasTextBaseline, textHeightPixels: number) => {
+        drawFormattedSegmentsLine(splitCadFormattedText(rawText), fallbackText, xOffset, y, align, baseline, textHeightPixels);
     };
 
     const drawEntity = (ent: AnyEntity, transform: RenderTransform, parentLayerName?: string, parentColor?: string, parentSelected: boolean = false, depth: number = 0, noMTextWrap: boolean = false) => {
@@ -501,53 +406,32 @@ export const renderEntitiesToCanvas = (
         ctx.strokeStyle = color;
         ctx.fillStyle = color;
 
-        let lw = ent.lineweight;
-        if (lw === undefined || lw === LINE_RENDER_CONFIG.byLayerLineweight) {
-            lw = layer?.lineweight !== undefined ? layer.lineweight : LINE_RENDER_CONFIG.defaultLineweightCode;
-        }
-        if (lw === LINE_RENDER_CONFIG.defaultLineweightCode || lw === LINE_RENDER_CONFIG.byBlockLineweight) {
-            lw = LINE_RENDER_CONFIG.defaultLineweight;
-        }
+        let strokeStyle = resolveCadStrokeStyle({
+            entity: ent,
+            layer,
+            parentLineType: undefined,
+            parentLineweight: undefined,
+            lineTypes,
+            globalLineTypeScale: ltScale,
+            viewScale: Math.abs(transform.scale),
+            isSelected,
+        });
 
-        let baseLw = lw > 0
-            ? lw / LINE_RENDER_CONFIG.cadLineweightToPixelFactor
-            : LINE_RENDER_CONFIG.minimumScreenLineWidth;
-        baseLw = Math.max(LINE_RENDER_CONFIG.minimumScreenLineWidth, Math.min(LINE_RENDER_CONFIG.maximumScreenLineWidth, baseLw));
-
-        let lineWidth = isSelected ? baseLw + LINE_RENDER_CONFIG.selectedLineWidthBoost : baseLw;
         if ((ent as any).constantWidth !== undefined && (ent as any).constantWidth > 0) {
-            lineWidth = (ent as any).constantWidth * Math.abs(transform.scale);
+            const maxScreenPixels = isSelected ? LINE_RENDER_CONFIG.selectedMaximumScreenLineWidth : LINE_RENDER_CONFIG.maximumScreenLineWidth;
+            strokeStyle = {
+                ...strokeStyle,
+                lineWidth: Math.max(
+                    LINE_RENDER_CONFIG.minimumScreenLineWidth,
+                    Math.min((ent as any).constantWidth * Math.abs(transform.scale), maxScreenPixels),
+                ),
+            };
         }
 
-        const maxScreenPixels = isSelected ? LINE_RENDER_CONFIG.selectedMaximumScreenLineWidth : LINE_RENDER_CONFIG.maximumScreenLineWidth;
-        ctx.lineWidth = Math.max(LINE_RENDER_CONFIG.minimumScreenLineWidth, Math.min(lineWidth, maxScreenPixels));
-
+        ctx.lineWidth = strokeStyle.lineWidth;
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
-
-        // 应用线型 (Linetype) 虚线图案
-        const lineTypeName = (ent.lineType === 'ByLayer' && layer) ? layer.lineType : ent.lineType;
-        if (lineTypeName && lineTypeName.toUpperCase() !== 'CONTINUOUS' && lineTypeName.toUpperCase() !== 'BYLAYER' && lineTypeName.toUpperCase() !== 'BYBLOCK') {
-            const ltype = lineTypes[lineTypeName] || lineTypes[lineTypeName.toUpperCase()];
-            if (ltype && ltype.pattern && ltype.pattern.length > 0) {
-                const entityScale = ent.lineTypeScale || 1.0;
-                // 虚线图案缩放：全局 LTSCALE * 实体比例 * 当前变换比例
-                let patternScale = ltScale * entityScale * Math.abs(transform.scale);
-
-                // 优化：如果缩放后的图案太小以至于无法辨认，则不使用虚线，直接画实线
-                const totalPatternPixels = ltype.totalLength * patternScale;
-                if (totalPatternPixels < LINE_RENDER_CONFIG.minimumDashPatternPixels) {
-                    ctx.setLineDash([]);
-                } else {
-                    const dashPattern = ltype.pattern.map(p => Math.abs(p) * patternScale);
-                    ctx.setLineDash(dashPattern);
-                }
-            } else {
-                ctx.setLineDash([]);
-            }
-        } else {
-            ctx.setLineDash([]);
-        }
+        ctx.setLineDash(strokeStyle.dashPattern);
 
         switch (ent.type) {
             case EntityType.LINE: {
@@ -622,16 +506,24 @@ export const renderEntitiesToCanvas = (
                 break;
             }
             case EntityType.ELLIPSE: {
-                const c = transform.project(ent.center);
-                const rx = Math.sqrt(ent.majorAxis.x ** 2 + ent.majorAxis.y ** 2) * transform.scale;
-                const ry = rx * ent.ratio;
-                const rotation = Math.atan2(ent.majorAxis.y, ent.majorAxis.x);
-                const isFlipped = (ent.extrusion?.z || 1) < 0;
-                
-                ctx.beginPath();
-                // 屏幕空间 Y 轴翻转，取反旋转并翻转参数方向
-                ctx.ellipse(c.x, c.y, rx, ry, -rotation, ent.startParam || 0, ent.endParam || (Math.PI * 2), !isFlipped);
-                ctx.stroke();
+                const ellipsePoints = sampleEllipsePoints(
+                    ent.center,
+                    ent.majorAxis,
+                    ent.ratio,
+                    ent.startParam,
+                    ent.endParam,
+                    (ent.extrusion?.z || 1) >= 0,
+                );
+                if (ellipsePoints.length > 1) {
+                    ctx.beginPath();
+                    const start = transform.project(ellipsePoints[0]);
+                    ctx.moveTo(start.x, start.y);
+                    for (let index = 1; index < ellipsePoints.length; index++) {
+                        const point = transform.project(ellipsePoints[index]);
+                        ctx.lineTo(point.x, point.y);
+                    }
+                    ctx.stroke();
+                }
                 break;
             }
             case EntityType.LWPOLYLINE:
@@ -655,14 +547,18 @@ export const renderEntitiesToCanvas = (
                 }
                 break;
             case EntityType.SPLINE: {
-                const splinePoints = ent.calculatedPoints || getBSplinePoints(ent.controlPoints, ent.degree, ent.knots, ent.weights);
+                const splinePoints = ent.calculatedPoints && ent.calculatedPoints.length > 0
+                    ? ent.calculatedPoints
+                    : ent.fitPoints && ent.fitPoints.length > 1
+                        ? ent.fitPoints
+                        : sampleSplinePoints(ent.controlPoints || [], ent.degree || 3, ent.knots, ent.weights);
                 if (splinePoints.length > 1) {
                     ctx.beginPath();
                     const start = transform.project(splinePoints[0]);
                     ctx.moveTo(start.x, start.y);
-                    for(let i=1; i<splinePoints.length; i++) {
-                        const p = transform.project(splinePoints[i]);
-                        ctx.lineTo(p.x, p.y);
+                    for (let i = 1; i < splinePoints.length; i++) {
+                        const point = transform.project(splinePoints[i]);
+                        ctx.lineTo(point.x, point.y);
                     }
                     ctx.stroke();
                 }
@@ -672,183 +568,99 @@ export const renderEntitiesToCanvas = (
             case EntityType.MTEXT:
             case EntityType.ATTRIB:
             case EntityType.ATTDEF: {
-                // TEXT 与 MTEXT 的格式控制码不同，分别清理后再绘制。
-                const text = ent.type === EntityType.MTEXT 
-                    ? cleanMText(ent.value)
-                    : cleanCadText(ent.value);
-                if (!text || isPlaceholderAttributeText(ent)) break;
-                
-                const style = styles[ent.styleName || 'STANDARD'] || styles[(ent.styleName || 'STANDARD').toUpperCase()];
-                const isMText = ent.type === EntityType.MTEXT;
-                const widthFactor = getEffectiveTextWidthFactor(ent, styles);
+                if (isPlaceholderAttributeText(ent)) break;
 
                 ctx.save();
-                
+                const isMText = ent.type === EntityType.MTEXT;
+                const position = getCadTextAnchorPosition(ent);
+                const screenPosition = transform.project(position);
+                ctx.translate(screenPosition.x, screenPosition.y);
+
                 const hAlign = ent.hAlign || 0;
-                const vAlign = ent.vAlign || 0;
+                const alignedTextAngle = (!isMText && (hAlign === 3 || hAlign === 5) && ent.secondPosition)
+                    ? Math.atan2(ent.secondPosition.y - ent.position.y, ent.secondPosition.x - ent.position.x)
+                    : ((ent.rotation || 0) * Math.PI / 180);
+                const totalRotation = alignedTextAngle + transform.rotation;
+                if (totalRotation !== 0) ctx.rotate(-totalRotation);
 
-                const pos = getCadTextAnchorPosition(ent);
-                
-                const sPos = transform.project(pos);
-                ctx.translate(sPos.x, sPos.y);
-                
-                const totalRotation = ((ent.rotation || 0) * Math.PI / 180) + transform.rotation;
-                if (totalRotation !== 0) {
-                    // Y轴翻转意味着旋转方向取反
-                    ctx.rotate(-totalRotation);
-                }
-                
-                const effectiveHeight = getEffectiveTextHeight(ent, styles);
-                
-                // 将文本高度缩放到像素
-                const textHeightPixels = effectiveHeight * transform.scale;
-                const visualTextHeightPixels = textHeightPixels * getTextHeightCorrectionFactor(ent, styles);
-                const horizontalTextScale = getHorizontalTextScale(ent, styles, widthFactor);
-                const generationScale = getTextGenerationScale(ent);
-                
-                // 极小文字以占位块绘制，避免大量不可读文字拖慢视图缩放。
-                if (visualTextHeightPixels < TEXT_RENDER_CONFIG.tinyTextPixelHeight && !isSelected) {
-                    const layout = estimateCadTextLayout(ent, styles);
-                    const approxWidth = Math.max(layout.blockWidth * transform.scale * Math.abs(horizontalTextScale), visualTextHeightPixels);
-                    const blockH = Math.max(layout.blockHeight * transform.scale * getTextHeightCorrectionFactor(ent, styles), visualTextHeightPixels);
-                    let rx = 0;
-                    let ry = 0;
+                const originalHeight = ent.height;
+                ent.height = getEffectiveTextHeight(ent, styles) * transform.scale;
+                ctx.font = getCanvasFont(ent, styles);
+                ent.height = originalHeight;
 
-                    if (!isMText) {
-                        if (hAlign === 1 || hAlign === 4) rx = -approxWidth / 2;
-                        else if (hAlign === 2) rx = -approxWidth;
-
-                        if (vAlign === 1) ry = -visualTextHeightPixels;
-                        else if (vAlign === 2 || hAlign === 4) ry = -visualTextHeightPixels / 2;
-                        else if (vAlign === 3) ry = 0;
-                        else ry = -visualTextHeightPixels * TEXT_RENDER_CONFIG.alphabeticBaselineOffsetFactor;
-                    } else {
-                        const ap = ent.attachmentPoint || 1;
-                        if ([2, 5, 8].includes(ap)) rx = -approxWidth / 2;
-                        else if ([3, 6, 9].includes(ap)) rx = -approxWidth;
-
-                        if ([1, 2, 3].includes(ap)) ry = 0;
-                        if ([4, 5, 6].includes(ap)) ry = -blockH / 2;
-                        if ([7, 8, 9].includes(ap)) ry = -blockH;
-                    }
-
-                    ctx.fillRect(rx, ry, approxWidth, blockH);
+                const layout = buildCadTextLayout({
+                    entity: ent,
+                    styles,
+                    context: ctx,
+                    worldToScreenScale: transform.scale,
+                    noWrap: noMTextWrap,
+                });
+                if (!layout) {
                     ctx.restore();
                     break;
                 }
-                // 为画布字体更新字体高度
-                const originalHeight = ent.height;
-                ent.height = textHeightPixels;
-                ctx.font = getCanvasFont(ent, styles);
-                ent.height = originalHeight; // 恢复以供下次使用
-                
-                let align: CanvasTextAlign = 'left';
-                let baseline: CanvasTextBaseline = 'alphabetic';
-                let dy = 0;
 
-                if (isMText) {
-                    ctx.scale(horizontalTextScale * generationScale.x, generationScale.y);
-                    
-                    // MTEXT 宽度约束 (如果是0表示不自动换行)
-                    const mtextMaxWidth = (ent.width && ent.width > 0) ? (ent.width * transform.scale / Math.max(TEXT_RENDER_CONFIG.minimumWidthFactor, Math.abs(horizontalTextScale))) : 0;
-                    const formattedLines = splitCadFormattedLines(ent.value || '');
-                    const lines = noMTextWrap || mtextMaxWidth <= 0
-                        ? (formattedLines.length > 0 ? formattedLines.map(line => line.plainText) : text.split('\n'))
-                        : wrapText(ctx, text, mtextMaxWidth);
-                    const formattedLineMap = (noMTextWrap || mtextMaxWidth <= 0) ? formattedLines : [];
-                    
-                    // MTEXT 行距使用 DXF 标准行距因子，并叠加对象自身的行距倍率。
-                    const lineSpacingRaw = (ent as any).lineSpacingFactor;
-                    const lineSpacingFactor = (lineSpacingRaw !== undefined && !isNaN(lineSpacingRaw)) ? lineSpacingRaw : 1;
-                    const lineHeight = visualTextHeightPixels * TEXT_RENDER_CONFIG.mtextDefaultLineSpacingFactor * lineSpacingFactor; 
-                    
-                    const blockHeight = (lines.length > 0) ? ((lines.length - 1) * lineHeight + visualTextHeightPixels) : 0;
-                    const ap = ent.attachmentPoint || 1;
-                    align = getMTextCanvasAlignFromEntity(ent);
-                    dy = getMTextLocalTopOffset(ap, blockHeight);
-                    baseline = 'top'; 
-                    ctx.textAlign = align;
-                    ctx.textBaseline = baseline;
-                    
-                    // MTEXT 规范：背景掩码 (Background Mask) 绘制
+                if (layout.visualScreenHeight < TEXT_RENDER_CONFIG.tinyTextPixelHeight && !isSelected) {
+                    ctx.scale(layout.horizontalScale * layout.generationScale.x, layout.generationScale.y);
+                    if (layout.isMText) {
+                        ctx.fillRect(layout.boxLeft, layout.boxTop, Math.max(layout.blockWidth, layout.visualScreenHeight), Math.max(layout.blockHeight, layout.visualScreenHeight));
+                    } else {
+                        const width = Math.max(layout.blockWidth, layout.visualScreenHeight);
+                        let x = 0;
+                        if (layout.align === 'center') x = -width / 2;
+                        else if (layout.align === 'right') x = -width;
+                        let y = -layout.visualScreenHeight * TEXT_RENDER_CONFIG.alphabeticBaselineOffsetFactor;
+                        if (layout.baseline === 'top') y = 0;
+                        else if (layout.baseline === 'middle') y = -layout.visualScreenHeight / 2;
+                        else if (layout.baseline === 'bottom') y = -layout.visualScreenHeight;
+                        ctx.fillRect(x, y, width, layout.visualScreenHeight);
+                    }
+                    ctx.restore();
+                    break;
+                }
+
+                if (layout.isMText) {
+                    ctx.scale(layout.horizontalScale * layout.generationScale.x, layout.generationScale.y);
+                    ctx.textAlign = layout.align;
+                    ctx.textBaseline = layout.baseline;
+
                     if ((ent as any).bgFill) {
                         ctx.save();
-                        // 背景颜色
-                        if ((ent as any).bgColor !== undefined && (ent as any).bgColor !== CAD_BY_LAYER_COLOR) {
-                            ctx.fillStyle = getAutoCadColor((ent as any).bgColor);
-                        } else {
-                            ctx.fillStyle = CANVAS_THEME_COLORS[theme];
-                        }
-                        
-                        let maxLineWidth = 0;
-                        lines.forEach(line => {
-                            const w = measureTextWidth(line);
-                            if (w > maxLineWidth) maxLineWidth = w;
-                        });
-                        
-                        const actualBlockWidth = (mtextMaxWidth > 0 && maxLineWidth > mtextMaxWidth) ? mtextMaxWidth : maxLineWidth;
-                        const bgPadding = visualTextHeightPixels * TEXT_RENDER_CONFIG.mtextBackgroundPaddingFactor;
-                        
-                        let bgX = 0;
-                        if (align === 'center') bgX = -actualBlockWidth / 2;
-                        else if (align === 'right') bgX = -actualBlockWidth;
-                        
-                        ctx.fillRect(bgX - bgPadding, dy - bgPadding, actualBlockWidth + bgPadding * 2, blockHeight + bgPadding * 2);
+                        ctx.fillStyle = ((ent as any).bgColor !== undefined && (ent as any).bgColor !== CAD_BY_LAYER_COLOR)
+                            ? getAutoCadColor((ent as any).bgColor)
+                            : CANVAS_THEME_COLORS[theme];
+                        const bgPadding = layout.visualScreenHeight * TEXT_RENDER_CONFIG.mtextBackgroundPaddingFactor;
+                        ctx.fillRect(layout.boxLeft - bgPadding, layout.boxTop - bgPadding, layout.blockWidth + bgPadding * 2, layout.blockHeight + bgPadding * 2);
                         ctx.restore();
                     }
-                    
-                    lines.forEach((line, i) => {
-                        const formattedLine = formattedLineMap[i];
-                        if (formattedLine) {
-                            drawFormattedSegmentsLine(formattedLine.segments, formattedLine.plainText, dy + i * lineHeight, align, baseline, visualTextHeightPixels);
+
+                    layout.lines.forEach(line => {
+                        if (line.formatted) {
+                            drawFormattedSegmentsLine(line.formatted.segments, line.formatted.plainText, line.x, line.y, layout.align, layout.baseline, layout.visualScreenHeight);
                         } else {
-                            drawFormattedTextLine(line, line, dy + i * lineHeight, align, baseline, visualTextHeightPixels);
+                            drawFormattedTextLine(line.text, line.text, line.x, line.y, layout.align, layout.baseline, layout.visualScreenHeight);
                         }
                     });
-                } else {
-                    // 普通文本对齐逻辑优化
-                    // 处理 Aligned (3) 和 Fit (5) 的特殊缩放
-                    if (hAlign === 3 || hAlign === 5) {
-                        if (ent.secondPosition) {
-                            // 计算 position 和 secondPosition 之间的空间距离
-                            const dx = ent.secondPosition.x - ent.position.x;
-                            const dy_ = ent.secondPosition.y - ent.position.y;
-                            const dist = Math.sqrt(dx * dx + dy_ * dy_);
-                            
-                            // 测量文本在当前字体下的原始宽度 (不应用 widthFactor)
-                            const metrics = ctx.measureText(text);
-                            const textWidth = Math.max(metrics.width, Math.abs((metrics.actualBoundingBoxRight || 0) - (metrics.actualBoundingBoxLeft || 0)));
-                            
-                            if (textWidth > TEXT_RENDER_CONFIG.minimumMeasuredTextWidth) {
-                                if (hAlign === 5) {
-                                    // Fit (5): 横向拉伸填满 dist。
-                                    const targetWidth = dist * transform.scale;
-                                    const effectiveWidthFactor = targetWidth / textWidth;
-                                    ctx.scale(effectiveWidthFactor, 1.0);
-                                } else if (hAlign === 3) {
-                                    // Aligned (3): 长宽比填满 dist。
-                                    const targetWidth = dist * transform.scale;
-                                    const fontScale = targetWidth / textWidth;
-                                    ctx.scale(fontScale, fontScale);
-                                }
-                            }
-                        }
-                        align = 'left'; 
-                        baseline = getTextVerticalCanvasBaseline(vAlign, hAlign);
-                    } else {
-                        // 常规对齐应用默认 widthFactor
-                        ctx.scale(horizontalTextScale * generationScale.x, generationScale.y);
-
-                        align = getTextHorizontalCanvasAlign(hAlign);
-                        if (generationScale.x < 0) {
-                            if (align === 'left') align = 'right';
-                            else if (align === 'right') align = 'left';
-                        }
-                        baseline = getTextVerticalCanvasBaseline(vAlign, hAlign);
+                } else if ((hAlign === 3 || hAlign === 5) && ent.secondPosition) {
+                    const dx = ent.secondPosition.x - ent.position.x;
+                    const dy = ent.secondPosition.y - ent.position.y;
+                    const targetWidth = Math.hypot(dx, dy) * transform.scale;
+                    const measuredWidth = Math.max(layout.blockWidth, TEXT_RENDER_CONFIG.minimumMeasuredTextWidth);
+                    if (targetWidth > 0 && measuredWidth > 0) {
+                        const scale = targetWidth / measuredWidth;
+                        ctx.scale(scale, hAlign === 3 ? scale : 1);
                     }
-
-                    drawFormattedTextLine(ent.value || text, text, 0, align, baseline, visualTextHeightPixels);
+                    drawFormattedTextLine(ent.value || layout.plainText, layout.plainText, 0, 0, 'left', layout.baseline, layout.visualScreenHeight);
+                } else {
+                    let align = layout.align;
+                    if (layout.generationScale.x < 0) {
+                        if (align === 'left') align = 'right';
+                        else if (align === 'right') align = 'left';
+                    }
+                    ctx.scale(layout.horizontalScale * layout.generationScale.x, layout.generationScale.y);
+                    drawFormattedTextLine(ent.value || layout.plainText, layout.plainText, 0, 0, align, layout.baseline, layout.visualScreenHeight);
                 }
+
                 ctx.restore();
                 break;
             }
@@ -1455,7 +1267,7 @@ export const hitTest = (x: number, y: number, threshold: number, entities: AnyEn
                 }
             }
         } else if (ent.type === EntityType.SPLINE) {
-             const points = getBSplinePoints(ent.controlPoints, ent.degree, ent.knots, ent.weights, 20);
+             const points = sampleSplinePoints(ent.controlPoints || [], ent.degree || 3, ent.knots, ent.weights, 20);
              for (let j = 0; j < points.length - 1; j++) {
                 const p1 = p(points[j]), p2 = p(points[j+1]);
                 if (distanceToLine(x, y, p1.x, p1.y, p2.x, p2.y) < effectiveThreshold) return true;

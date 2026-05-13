@@ -105,6 +105,28 @@ textarea {
   color: var(--text-primary);
 }
 
+.menu-tab-row {
+  display: flex;
+  align-items: stretch;
+  flex-shrink: 0;
+  height: var(--toolbar-height);
+  background-color: var(--bg-secondary);
+  box-sizing: border-box;
+  position: relative;
+  z-index: 500;
+}
+
+.menu-tab-row .toolbar {
+  border-bottom: 0;
+}
+
+.menu-tab-strip {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
 .toolbar {
   height: var(--toolbar-height);
   display: flex;
@@ -112,11 +134,10 @@ textarea {
   flex-shrink: 0;
   gap: 2px;
   padding: 0 8px;
-  border-bottom: 1px solid var(--border-color);
   background-color: var(--bg-secondary);
   box-sizing: border-box;
   user-select: none;
-  z-index: 500;
+  z-index: 501;
 }
 
 .menu-item {
@@ -482,46 +503,67 @@ textarea {
 }
 
 
-.status-loading {
-  width: min(720px, 100%);
+.loading-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2100;
   display: flex;
   align-items: center;
-  gap: 8px;
-  min-width: 0;
-  color: var(--text-secondary);
+  justify-content: center;
+  pointer-events: none;
+  background-color: rgba(247, 248, 250, 0.72);
+  backdrop-filter: blur(2px);
 }
 
-.status-loading-label,
-.status-loading-percent {
-  flex-shrink: 0;
-  color: var(--accent-blue);
-  font-size: 12px;
+.theme-dark .loading-overlay {
+  background-color: rgba(16, 18, 22, 0.72);
+}
+
+.loading-inline {
+  width: min(680px, calc(100vw - 80px));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-primary);
+  text-align: center;
+}
+
+.loading-title {
+  font-size: 17px;
   font-weight: 600;
+  color: var(--text-bright);
 }
 
-.status-loading-file {
-  min-width: 120px;
-  max-width: 360px;
+.loading-file {
+  width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--text-primary);
+  font-size: 14px;
+  color: var(--text-secondary);
 }
 
-.status-loading-track {
-  flex: 1;
-  min-width: 120px;
-  height: 5px;
+.loading-progressbar {
+  width: min(560px, 100%);
+  height: 7px;
   overflow: hidden;
   border-radius: 999px;
   background-color: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
 }
 
-.status-loading-bar {
+.loading-progressbar-value {
   height: 100%;
   border-radius: inherit;
   background-color: var(--accent-blue);
-  transition: width 0.18s ease-out;
+  transition: width 0.16s ease-out;
+}
+
+.loading-progress-text {
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 13px;
+  color: var(--text-secondary);
 }
 
 .toast-container {

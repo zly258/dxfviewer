@@ -214,3 +214,26 @@
   background: var(--bg-hover, #37373d);
   color: var(--text-bright, #ffffff);
 }
+
+.menu-tab-strip .tabs-container {
+  height: 100%;
+  min-height: 0;
+  border-bottom: 0;
+  background-color: transparent;
+}
+
+.menu-tab-strip .tabs-scroll-viewport {
+  height: 100%;
+}
+
+.menu-tab-strip .tab-item {
+  height: 100%;
+}
+
+.menu-tab-strip .tab-scroll-button {
+  height: 100%;
+}
+
+.menu-tab-strip .tab-context-menu {
+  height: auto;
+}

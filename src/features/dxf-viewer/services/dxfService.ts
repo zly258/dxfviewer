@@ -3,6 +3,8 @@ import { DEFAULT_TEXT_STYLE, EXTENTS_CONFIG, TABLE_EXTENTS_CONFIG, LEADER_RENDER
 import { AnyEntity, DxfData, EntityType, DxfLayer, DxfBlock, Point2D, Point3D, DxfHatch, HatchLoop, HatchEdge, DxfStyle, DxfPolyline, DxfInsert, DxfHeader, DxfSpline, DxfText, DxfLeader, DxfTable, DxfLineType, DxfMLeader, DxfMLine } from '../../../types';
 export { cleanMText };
 import { cleanMText, getCadTextExtents, pointsToExtents } from '../utils/textUtils';
+import { sampleBulgeSegment } from '../../../core/geometry/bulge';
+import { sampleEllipsePoints, sampleHatchLoop, sampleSplinePoints } from '../../../core/geometry/curveSampling';
 
 class DxfParserState {
   private text: string;
@@ -107,6 +109,8 @@ const parseLayer = (state: DxfParserState): DxfLayer => {
                     layer.trueColor = parseInt(val.startsWith('0x') ? val : val, val.startsWith('0x') ? 16 : 10); 
                     break;
             case 6: layer.lineType = g.value; break;
+            case 370: layer.lineweight = parseInt(g.value, 10); break;
+            case 440: layer.transparency = parseInt(g.value, 10); break;
             case 70: layer.isVisible = (parseInt(g.value) & 1) !== 1; break; 
         }
     }
@@ -236,70 +240,7 @@ const parseBlock = (state: DxfParserState, blockHandleMap?: Record<string, strin
 };
 
 export const getBSplinePoints = (controlPoints: Point2D[], degree: number = 3, knots?: number[], weights?: number[], segments?: number): Point2D[] => {
-    if (!controlPoints || controlPoints.length === 0) return [];
-    if (controlPoints.length < degree + 1) return controlPoints;
-
-    const n = controlPoints.length - 1;
-    const p = degree;
-    
-    const segs = segments && segments > 0 ? segments : Math.max(100, controlPoints.length * 10);
-
-    let U = knots;
-    if (!U || U.length === 0) {
-        U = [];
-        for (let i = 0; i <= p; i++) U.push(0);
-        for (let i = 1; i < n - p + 1; i++) U.push(i / (n - p + 1));
-        for (let i = 0; i <= p; i++) U.push(1);
-    }
-
-    if (U.length < n + p + 2) return controlPoints; 
-
-    const domainStart = U[p];
-    const domainEnd = U[U.length - 1 - p];
-    const result: Point2D[] = [];
-
-    for (let tStep = 0; tStep <= segs; tStep++) {
-        let t = domainStart + (domainEnd - domainStart) * (tStep / segs);
-        if (tStep === segs) t = domainEnd - 0.000001; 
-
-        let k = -1;
-        for (let i = p; i < U.length - 1 - p; i++) {
-            if (t >= U[i] && t < U[i+1]) {
-                k = i;
-                break;
-            }
-        }
-        if (k === -1) k = U.length - p - 2; 
-
-        const d: {x:number, y:number, w:number}[] = [];
-        for(let j=0; j<=p; j++) {
-            const idx = k - p + j;
-            const w = weights && weights[idx] !== undefined ? weights[idx] : 1;
-            d.push({
-                x: controlPoints[idx].x * w,
-                y: controlPoints[idx].y * w,
-                w: w
-            });
-        }
-
-        for(let r=1; r<=p; r++) {
-            for(let j=p; j>=r; j--) {
-                const denominator = U[k + 1 + j - r] - U[k - p + j];
-                const alpha = denominator === 0 ? 0 : (t - U[k - p + j]) / denominator;
-                const p1 = d[j];
-                const p2 = d[j-1];
-                d[j] = {
-                    x: (1 - alpha) * p2.x + alpha * p1.x,
-                    y: (1 - alpha) * p2.y + alpha * p1.y,
-                    w: (1 - alpha) * p2.w + alpha * p1.w
-                };
-            }
-        }
-        
-        const wVal = d[p].w !== 0 ? d[p].w : 1;
-        result.push({ x: d[p].x / wVal, y: d[p].y / wVal });
-    }
-    return result;
+    return sampleSplinePoints(controlPoints, degree, knots, weights, segments);
 };
 
 const getOcsToWcsMatrix = (Nx: number, Ny: number, Nz: number) => {
@@ -399,7 +340,7 @@ export const parseDxf = async (dxfString: string, onProgress?: (percent: number)
       currentSection = '';
     } else {
       if (currentSection === 'HEADER') {
-         if (!header) header = { extMin: {x:0, y:0}, extMax: {x:0, y:0}, insUnits: 0, ltScale: 1.0 };
+         if (!header) header = { extMin: {x:0, y:0}, extMax: {x:0, y:0}, insUnits: 0, ltScale: 1.0, celtscale: 1.0 };
          if (group.code === 9) {
              const v = group.value;
              if (v === '$EXTMIN') header.extMin = parsePoint(state);
@@ -410,6 +351,9 @@ export const parseDxf = async (dxfString: string, onProgress?: (percent: number)
              } else if (v === '$LTSCALE') {
                  const n = state.next();
                  if (n && n.code === 40) header.ltScale = parseFloat(n.value);
+             } else if (v === '$CELTSCALE') {
+                 const n = state.next();
+                 if (n && n.code === 40) header.celtscale = parseFloat(n.value);
              }
          }
       } else if (currentSection === 'TABLES') {
@@ -615,6 +559,8 @@ const applyCommonGroup = (common: any, code: number, value: string) => {
                 break;
         case 6: common.lineType = value; break;
         case 48: common.lineTypeScale = parseFloat(value); break;
+        case 370: common.lineweight = parseInt(value, 10); break;
+        case 440: common.transparency = parseInt(value, 10); break;
         case 60: common.visible = parseInt(value, 10) === 0; break;
         case 67: common.inPaperSpace = parseInt(value, 10) === 1; break;
         case 210: common.extrusion.x = parseFloat(value); break;
@@ -1821,47 +1767,8 @@ const updateArcExtrema = (update: (x: number, y: number) => void, cx: number, cy
 };
 
 const updateBulgeSegmentExtents = (update: (x: number, y: number) => void, p1: Point2D, p2: Point2D, bulge: number, isFlipped: boolean) => {
-    if (Math.abs(bulge) < 1e-9) {
-        update(p1.x, p1.y);
-        update(p2.x, p2.y);
-        return;
-    }
-
-    const dx = p2.x - p1.x;
-    const dy = p2.y - p1.y;
-    const chord = Math.hypot(dx, dy);
-    if (!isFinite(chord) || chord < 1e-12) {
-        update(p1.x, p1.y);
-        return;
-    }
-
-    const theta = 4 * Math.atan(bulge);
-    const absTheta = Math.abs(theta);
-    const sinHalf = Math.sin(absTheta / 2);
-    if (Math.abs(sinHalf) < 1e-12) {
-        update(p1.x, p1.y);
-        update(p2.x, p2.y);
-        return;
-    }
-
-    const r = chord / (2 * sinHalf);
-    const midX = (p1.x + p2.x) / 2;
-    const midY = (p1.y + p2.y) / 2;
-    const ux = -dy / chord;
-    const uy = dx / chord;
-    let sign = bulge > 0 ? 1 : -1;
-    if (isFlipped) sign = -sign;
-    const h = Math.sqrt(Math.max(0, r * r - (chord * chord) / 4));
-    const cx = midX + ux * h * sign;
-    const cy = midY + uy * h * sign;
-
-    const a1 = Math.atan2(p1.y - cy, p1.x - cx);
-    const a2 = Math.atan2(p2.y - cy, p2.x - cx);
-    const ccw = sign > 0;
-
-    update(p1.x, p1.y);
-    update(p2.x, p2.y);
-    updateArcExtrema(update, cx, cy, r, a1, a2, ccw);
+    const effectiveBulge = isFlipped ? -bulge : bulge;
+    sampleBulgeSegment(p1, p2, effectiveBulge).forEach(point => update(point.x, point.y));
 };
 
 const createBoundsUpdater = () => {
@@ -2082,29 +1989,24 @@ const getEntityExtents = (
             bounds.updateExtents(getCadTextExtents(ent, styles));
             break;
         case EntityType.ELLIPSE: {
-            const mx = ent.majorAxis.x;
-            const my = ent.majorAxis.y;
-            const ratio = ent.ratio || 0;
-            const major = Math.hypot(mx, my);
-            if (!Number.isFinite(major) || major <= 0 || !Number.isFinite(ratio) || ratio <= 0) {
-                bounds.update(ent.center.x, ent.center.y);
-                break;
-            }
-            const minor = { x: -my * ratio, y: mx * ratio };
-            let startParam = ent.startParam ?? 0;
-            let endParam = ent.endParam ?? Math.PI * 2;
-            if (!Number.isFinite(startParam)) startParam = 0;
-            if (!Number.isFinite(endParam)) endParam = Math.PI * 2;
-            const span = Math.abs(endParam - startParam);
-            const steps = Math.max(24, Math.min(144, Math.ceil((span / (Math.PI * 2)) * 96)));
-            for (let i = 0; i <= steps; i++) {
-                const t = startParam + (endParam - startParam) * (i / steps);
-                bounds.update(ent.center.x + mx * Math.cos(t) + minor.x * Math.sin(t), ent.center.y + my * Math.cos(t) + minor.y * Math.sin(t));
-            }
+            const points = sampleEllipsePoints(
+                ent.center,
+                ent.majorAxis,
+                ent.ratio,
+                ent.startParam,
+                ent.endParam,
+                true,
+            );
+            if (points.length === 0) bounds.update(ent.center.x, ent.center.y);
+            points.forEach(point => bounds.update(point.x, point.y));
             break;
         }
         case EntityType.SPLINE: {
-            const points = ent.calculatedPoints || ent.fitPoints || ent.controlPoints || [];
+            const points = ent.calculatedPoints && ent.calculatedPoints.length > 0
+                ? ent.calculatedPoints
+                : ent.fitPoints && ent.fitPoints.length > 1
+                    ? ent.fitPoints
+                    : sampleSplinePoints(ent.controlPoints || [], ent.degree || 3, ent.knots, ent.weights);
             points.forEach(point => bounds.update(point.x, point.y));
             break;
         }
@@ -2113,18 +2015,7 @@ const getEntityExtents = (
             ent.points.forEach(point => bounds.update(point.x, point.y));
             break;
         case EntityType.HATCH:
-            ent.loops.forEach(loop => {
-                loop.points?.forEach(point => bounds.update(point.x, point.y));
-                loop.edges.forEach(edge => {
-                    edge.calculatedPoints?.forEach(point => bounds.update(point.x, point.y));
-                    if (edge.start) bounds.update(edge.start.x, edge.start.y);
-                    if (edge.end) bounds.update(edge.end.x, edge.end.y);
-                    if (edge.center && edge.radius) {
-                        bounds.update(edge.center.x - edge.radius, edge.center.y - edge.radius);
-                        bounds.update(edge.center.x + edge.radius, edge.center.y + edge.radius);
-                    }
-                });
-            });
+            ent.loops.forEach(loop => sampleHatchLoop(loop).forEach(point => bounds.update(point.x, point.y)));
             break;
         case EntityType.INSERT: {
             const block = blocks[ent.blockName];

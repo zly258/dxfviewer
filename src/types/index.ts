@@ -52,6 +52,7 @@ export interface DxfEntity {
   lineType?: string;
   lineTypeScale?: number;
   lineweight?: number;
+  transparency?: number;
   visible?: boolean;
   inPaperSpace?: boolean;
   extrusion?: Point3D;
@@ -293,6 +294,7 @@ export interface DxfLayer {
   trueColor?: number;
   lineType?: string;
   lineweight?: number;
+  transparency?: number;
   isVisible?: boolean;
 }
 
@@ -316,6 +318,7 @@ export interface DxfHeader {
     extMax: Point2D;
     insUnits: number;
     ltScale?: number;
+    celtscale?: number;
 }
 
 export interface DxfData {

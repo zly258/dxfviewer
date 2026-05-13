@@ -140,14 +140,6 @@ const ToolBar: React.FC<ToolBarProps> = ({
               <span>{isZh ? '深色' : 'Dark'}</span>
             </button>
             <div className="divider" />
-            <div className="dropdown-header">{isZh ? '背景' : 'Background'}</div>
-            <button type="button" onClick={() => closeMenuAndRun(() => onSetCanvasTheme('black'))} className={`dropdown-item ${canvasTheme === 'black' ? 'checked' : ''}`}>
-              <span>{isZh ? '黑色背景' : 'Black Background'}</span>
-            </button>
-            <button type="button" onClick={() => closeMenuAndRun(() => onSetCanvasTheme('white'))} className={`dropdown-item ${canvasTheme === 'white' ? 'checked' : ''}`}>
-              <span>{isZh ? '白色背景' : 'White Background'}</span>
-            </button>
-            <div className="divider" />
             <button type="button" onClick={() => closeMenuAndRun(() => onSetLang(lang === 'zh' ? 'en' : 'zh'))} className="dropdown-item">
               <span>{t.language}: {lang === 'zh' ? 'English' : '简体中文'}</span>
             </button>
@@ -169,6 +161,14 @@ const ToolBar: React.FC<ToolBarProps> = ({
             </button>
             <button type="button" onClick={() => closeMenuAndRun(onToggleDrawingExtents)} className={`dropdown-item ${showDrawingExtents ? 'checked' : ''}`}>
               <span>{t.showDrawingExtents}</span>
+            </button>
+            <div className="divider" />
+            <div className="dropdown-header">{isZh ? '背景' : 'Background'}</div>
+            <button type="button" onClick={() => closeMenuAndRun(() => onSetCanvasTheme('black'))} className={`dropdown-item ${canvasTheme === 'black' ? 'checked' : ''}`}>
+              <span>{isZh ? '黑色背景' : 'Black Background'}</span>
+            </button>
+            <button type="button" onClick={() => closeMenuAndRun(() => onSetCanvasTheme('white'))} className={`dropdown-item ${canvasTheme === 'white' ? 'checked' : ''}`}>
+              <span>{isZh ? '白色背景' : 'White Background'}</span>
             </button>
             <div className="divider" />
             <button
