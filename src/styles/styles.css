@@ -111,6 +111,7 @@ textarea {
   flex-shrink: 0;
   height: var(--toolbar-height);
   background-color: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
   box-sizing: border-box;
   position: relative;
   z-index: 500;
@@ -522,7 +523,7 @@ textarea {
 }
 
 .loading-inline {
-  width: min(680px, calc(100vw - 80px));
+  width: min(360px, calc(100vw - 80px));
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -547,8 +548,8 @@ textarea {
 }
 
 .loading-progressbar {
-  width: min(560px, 100%);
-  height: 7px;
+  width: min(320px, 100%);
+  height: 6px;
   overflow: hidden;
   border-radius: 999px;
   background-color: var(--bg-tertiary);
@@ -570,8 +571,9 @@ textarea {
 
 .toast-container {
   position: absolute;
-  top: 14px;
-  right: 14px;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 2200;
   display: flex;
   flex-direction: column;

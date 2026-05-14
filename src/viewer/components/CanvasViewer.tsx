@@ -1,9 +1,10 @@
-import React, { useRef, useState, WheelEvent, MouseEvent, useEffect, useLayoutEffect, useCallback } from 'react';
-import { AnyEntity, ViewPort, DxfLayer, DxfBlock, DxfStyle, DxfLineType, EntityType, Point2D } from '../../types';
+import React, { useRef, useState, WheelEvent, MouseEvent, useEffect, useLayoutEffect } from 'react';
+import { AnyEntity, ViewPort, DxfLayer, DxfBlock, DxfStyle, DxfLineType, Point2D } from '../../types';
 import { renderEntitiesToCanvas, hitTest, hitTestBox } from '../services/canvasRenderService';
 import { Language } from '../../constants/i18n';
 import { SELECTION_CONFIG, SHORTCUT_CONFIG, VIEWER_DEFAULTS } from '../../shared/config/viewerConfig';
 import { CanvasTheme, DrawingColorMode } from '../../shared/types/ui';
+import { subscribeShxFontChanged } from '../services/shxFontService';
 
 /**
  * Canvas 渲染核心组件
@@ -46,7 +47,6 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
     ltScale = VIEWER_DEFAULTS.defaultLineTypeScale, 
     theme,
     drawingColorMode,
-    lang,
     onMouseMoveWorld,
     onRenderError
 }) => {
@@ -60,6 +60,7 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
   const [isBoxSelecting, setIsBoxSelecting] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [currentMousePos, setCurrentMousePos] = useState({ x: 0, y: 0 });
+  const [fontVersion, setFontVersion] = useState(0);
 
   // 从屏幕坐标计算世界坐标（以中心为原点）
   const screenToWorld = (sx: number, sy: number) => {
@@ -79,24 +80,19 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
      };
   };
 
-  const [mouseWorldPos, setMouseWorldPos] = useState({ x: 0, y: 0 });
-
-  // 显示坐标（原始坐标）
-  const displayX = mouseWorldPos.x + (worldOffset?.x || 0);
-  const displayY = mouseWorldPos.y + (worldOffset?.y || 0);
-
-  // 缓存可见实体数量以优化性能
-  const visibleCount = React.useMemo(() => {
-    return entities.filter(e => e.visible !== false).length;
-  }, [entities]);
-
   const safeClamp = (value: number, min: number, max: number): number => {
     if (!isFinite(value)) return 0;
     return Math.max(Math.min(value, max), min);
   };
 
   const renderRef = useRef<number>();
-  
+
+
+  // SHX 字体是异步读取的，字体加载完成后需要主动重绘当前画布。
+  useEffect(() => {
+    return subscribeShxFontChanged(() => setFontVersion(version => version + 1));
+  }, []);
+
   useLayoutEffect(() => {
      const render = () => {
         const canvas = canvasRef.current;
@@ -138,7 +134,7 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
      return () => {
         if (renderRef.current) cancelAnimationFrame(renderRef.current);
      };
-  }, [entities, layers, blocks, styles, lineTypes, ltScale, viewPort, selectedEntityIds, worldOffset, theme, drawingColorMode, overlayExtents, onRenderError]);
+  }, [entities, layers, blocks, styles, lineTypes, ltScale, viewPort, selectedEntityIds, worldOffset, theme, drawingColorMode, overlayExtents, onRenderError, fontVersion]);
 
   // 处理滚轮事件，使用 passive: false 以允许 preventDefault
   useEffect(() => {
@@ -217,7 +213,6 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
     const mouseY = e.clientY - rect.top;
     
     const worldPos = screenToWorld(mouseX, mouseY);
-    setMouseWorldPos(worldPos);
     onMouseMoveWorld?.(worldPos.x + (worldOffset?.x || 0), worldPos.y + (worldOffset?.y || 0));
 
     if (isPanning) {

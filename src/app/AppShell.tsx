@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import DxfViewer from '../viewer/DxfViewer';
 import '../styles/App.css';
-import { SHORTCUT_CONFIG } from '../shared/config/viewerConfig';
+import { SHORTCUT_CONFIG, VIEWER_DEFAULTS } from '../shared/config/viewerConfig';
 import { DxfTabSource } from './tabs/tabModel';
 import { useDxfTabs } from './tabs/useDxfTabs';
 
@@ -20,6 +20,7 @@ function AppShell({ editor = true, initialFiles = [] }: AppShellProps) {
   const tabsContainerRef = useRef<HTMLDivElement>(null);
   const globalFileInputRef = useRef<HTMLInputElement>(null);
   const [tabContextMenu, setTabContextMenu] = useState<TabContextMenuState | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const {
     tabs,
     activeTabId,
@@ -31,6 +32,17 @@ function AppShell({ editor = true, initialFiles = [] }: AppShellProps) {
     closeTabsToLeft,
     closeTabsToRight,
   } = useDxfTabs(editor, initialFiles);
+
+
+  const showAppToast = (message: string) => {
+    setToastMessage(message);
+    window.setTimeout(() => setToastMessage(null), VIEWER_DEFAULTS.toastDurationMs);
+  };
+
+  const handleTabOpenFailed = (tabId: string, message: string) => {
+    closeTab(tabId);
+    showAppToast(message);
+  };
 
   const effectiveActiveTabId = useMemo(() => {
     if (tabs.some(tab => tab.id === activeTabId)) return activeTabId;
@@ -184,6 +196,14 @@ function AppShell({ editor = true, initialFiles = [] }: AppShellProps) {
 
   return (
     <div className="app-main-container">
+      {toastMessage && (
+        <div className="toast-container app-toast-container">
+          <div className="toast error">
+            <span className="toast-message">{toastMessage}</span>
+            <span className="toast-close" onClick={() => setToastMessage(null)}>×</span>
+          </div>
+        </div>
+      )}
       {editor && (
         <input
           ref={globalFileInputRef}
@@ -213,6 +233,7 @@ function AppShell({ editor = true, initialFiles = [] }: AppShellProps) {
                 showOpenMenu={editor}
                 onOpenFiles={openFiles}
                 tabStrip={tabStrip}
+                onOpenFailed={(message) => handleTabOpenFailed(tab.id, message)}
               />
             </div>
           ))

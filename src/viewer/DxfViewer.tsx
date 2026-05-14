@@ -23,6 +23,7 @@ interface DxfViewerProps {
   onError?: (err: Error) => void; // 错误回调
   onLoad?: (data: any) => void; // 加载完成回调
   onOpenFiles?: (files: File[]) => void; // 由外层容器接管文件打开时使用
+  onOpenFailed?: (message: string) => void; // 打开失败回调
   defaultLanguage?: Language; // 默认语言
   lang?: Language; // 受控语言属性
   onLanguageChange?: (lang: Language) => void;
@@ -66,6 +67,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
   onError, 
   onLoad,
   onOpenFiles,
+  onOpenFailed,
   defaultLanguage = VIEWER_DEFAULTS.language,
   lang: controlledLang,
   onLanguageChange
@@ -103,6 +105,14 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
   const showToast = (msg: string, isError: boolean = true) => {
     setToastMessage({msg, isError});
     setTimeout(() => setToastMessage(null), VIEWER_DEFAULTS.toastDurationMs);
+  };
+
+  const reportOpenFailure = (message: string) => {
+    setParseErrorMessage(null);
+    setRenderErrorMessage(null);
+    setEntities([]);
+    showToast(message);
+    onOpenFailed?.(message);
   };
 
   const lang = controlledLang || internalLang;
@@ -190,10 +200,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
         const error = err instanceof Error ? err : new Error(String(err));
         onError?.(error);
         const message = lang === 'zh' ? `DXF 解码失败：${error.message}` : `DXF decode failed: ${error.message}`;
-        setParseErrorMessage(message);
-        setRenderErrorMessage(null);
-        setEntities([]);
-        showToast(message);
+        reportOpenFailure(message);
         setIsLoading(false);
         return;
     }
@@ -221,10 +228,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
         const error = err instanceof Error ? err : new Error(String(err));
         onError?.(error);
         const message = lang === 'zh' ? `DXF 解析失败：${error.message}` : `DXF parse failed: ${error.message}`;
-        setParseErrorMessage(message);
-        setRenderErrorMessage(null);
-        setEntities([]);
-        showToast(message);
+        reportOpenFailure(message);
         console.error(err);
     } finally {
         setIsLoading(false);
@@ -244,10 +248,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
         const error = err instanceof Error ? err : new Error(String(err));
         onError?.(error);
         const message = lang === 'zh' ? `DXF 加载失败：${error.message}` : `DXF load failed: ${error.message}`;
-        setParseErrorMessage(message);
-        setRenderErrorMessage(null);
-        setEntities([]);
-        showToast(message);
+        reportOpenFailure(message);
         setIsLoading(false);
     }
   };
@@ -265,10 +266,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
         const error = new Error(lang === 'zh' ? "文件读取失败" : "File Read Error");
         onError?.(error);
         const message = lang === 'zh' ? `DXF 加载失败：${error.message}` : `DXF load failed: ${error.message}`;
-        setParseErrorMessage(message);
-        setRenderErrorMessage(null);
-        setEntities([]);
-        showToast(message);
+        reportOpenFailure(message);
         setIsLoading(false);
     };
     reader.readAsArrayBuffer(file);
@@ -283,7 +281,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
     };
     
     // 观察 viewerRef 以进行更准确的大小调整检测
-    const observer = new ResizeObserver((entries) => {
+    const observer = new ResizeObserver(() => {
       // 使用 requestAnimationFrame 以避免 "ResizeObserver loop limit exceeded" 错误
       requestAnimationFrame(() => {
         handleResize();
@@ -474,23 +472,22 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
             entities={entities} 
             selectedEntityIds={selectedEntityIds}
             onSelectIds={handleSidebarSelectIds}
-            theme={canvasTheme}
             lang={lang}
             />
         
         <main ref={viewerRef} className="viewer-container">
-          {(parseErrorMessage || viewerNoticeMessage) && (
+          {viewerNoticeMessage && (
             <div className="viewer-error-panel">
               <div className="viewer-error-title">
-                {parseErrorMessage ? (lang === 'zh' ? 'DXF 打开失败' : 'Failed to Open DXF') : (lang === 'zh' ? '没有可显示内容' : 'Nothing Visible')}
+                {lang === 'zh' ? '没有可显示内容' : 'Nothing Visible'}
               </div>
-              <div className="viewer-error-message">{parseErrorMessage || viewerNoticeMessage}</div>
-              {!parseErrorMessage && entities.length > 0 && (
+              <div className="viewer-error-message">{viewerNoticeMessage}</div>
+              {entities.length > 0 && (
                 <button type="button" className="viewer-error-button" onClick={handleFitView}>
                   {lang === 'zh' ? '充满视图' : 'Fit View'}
                 </button>
               )}
-              <button type="button" className="viewer-error-button" onClick={() => { setParseErrorMessage(null); setRenderErrorMessage(null); setIsNoticeDismissed(true); }}>
+              <button type="button" className="viewer-error-button" onClick={() => { setRenderErrorMessage(null); setIsNoticeDismissed(true); }}>
                 {lang === 'zh' ? '关闭提示' : 'Dismiss'}
               </button>
             </div>
@@ -519,10 +516,8 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
 
         <PropertiesPanel 
                 entities={selectedEntities} 
-                layers={Object.values(layers)}
                 styles={styles}
                 offset={worldOffset}
-                theme={canvasTheme}
                 lang={lang}
             />
       </div>

@@ -8,7 +8,6 @@ interface SidebarProps {
   entities: AnyEntity[];
   selectedEntityIds: Set<string>;
   onSelectIds: (ids: Set<string>) => void;
-  theme: 'black' | 'white';
   lang: Language;
 }
 
@@ -18,7 +17,7 @@ type FlatItem =
   | { type: 'layer'; name: string; layer: DxfLayer; count: number; expanded: boolean }
   | { type: 'entity'; id: string; entity: AnyEntity };
 
-const Sidebar: React.FC<SidebarProps> = ({ layers, entities, selectedEntityIds, onSelectIds, theme, lang }) => {
+const Sidebar: React.FC<SidebarProps> = ({ layers, entities, selectedEntityIds, onSelectIds, lang }) => {
   const [expandedLayers, setExpandedLayers] = useState<Set<string>>(new Set(Object.keys(layers)));
   const containerRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);

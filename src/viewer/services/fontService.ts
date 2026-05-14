@@ -31,16 +31,18 @@ export const resolveCadTextFontProfile = (
     const combined = `${fontName}|${bigFontName}|${styleNameLower}|${inlineFont}`;
     const hasCjkContent = /[\u2e80-\u9fff\uf900-\ufaff]/.test(rawText || '');
 
-    if (combined.includes('.ttf') || combined.includes('.otf') || combined.includes('arial') || combined.includes('simsun') || combined.includes('simhei') || combined.includes('yahei') || combined.includes('微软雅黑')) {
+    const hasShxFont = combined.includes('.shx') || combined.includes('tssd') || combined.includes('hztxt') || combined.includes('wcad') || combined.includes('simplex') || combined.includes('romans') || combined.includes('txt') || combined.includes('hz');
+    const hasSystemFont = combined.includes('.ttf') || combined.includes('.otf') || combined.includes('arial') || combined.includes('simsun') || combined.includes('simhei') || combined.includes('yahei') || combined.includes('微软雅黑');
+
+    // STYLE 中带 SHX 或 BigFont 时，优先按 SHX 处理；不能因为文本里有中文就提前归类为系统中文字体。
+    if (hasShxFont) {
+        return (combined.includes('hztxt') || combined.includes('tssd') || combined.includes('wcad') || combined.includes('gbcbig') || combined.includes('hz'))
+            ? 'engineeringShx'
+            : 'shx';
+    }
+
+    if (hasSystemFont || combined.includes('fang') || combined.includes('仿宋')) {
         return hasCjkContent ? 'cjk' : 'trueType';
-    }
-
-    if (combined.includes('hztxt') || combined.includes('tssd') || combined.includes('gbcbig') || combined.includes('hz') || combined.includes('wcad') || combined.includes('fs') || combined.includes('fang') || combined.includes('仿宋')) {
-        return hasCjkContent ? 'cjk' : 'engineeringShx';
-    }
-
-    if (combined.includes('.shx') || combined.includes('txt') || combined.includes('simplex') || combined.includes('romans') || combined.includes('iso')) {
-        return 'shx';
     }
 
     return hasCjkContent ? 'cjk' : 'trueType';

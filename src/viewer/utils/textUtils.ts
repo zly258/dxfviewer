@@ -20,15 +20,17 @@ export function cleanMText(text: string): string {
 
   let result = text;
   result = result.replace(/\\\\/g, TEMP_BACKSLASH);
-  result = result.replace(/\\\{/g, TEMP_LEFT_BRACE);
-  result = result.replace(/\\\}/g, TEMP_RIGHT_BRACE);
+  result = result.replace(/\\\\\{/g, TEMP_LEFT_BRACE);
+  result = result.replace(/\\\\\}/g, TEMP_RIGHT_BRACE);
 
-  result = result.replace(/\\U\+([0-9A-Fa-f]{4})/g, decodeUnicodeEscape);
+  // AutoCAD MTEXT 常用转义符。段落属性 \p...; 只移除格式，不作为换行；段落换行 \P 才转为换行。
+  result = result.replace(/\\U\\+([0-9A-Fa-f]{4})/g, decodeUnicodeEscape);
   result = result.replace(/%%[cC]/g, 'Ø');
   result = result.replace(/%%[dD]/g, '°');
   result = result.replace(/%%[pP]/g, '±');
-  result = result.replace(/\\[Pp](?:[^;]*;)?/g, '\n');
+  result = result.replace(/\\P/g, '\n');
   result = result.replace(/\\[Xx]/g, '\n');
+  result = result.replace(/\\p[^;]*;/g, '');
   result = result.replace(/\\[Ss]([^;]*)[#^/]([^;]*);/g, '$1/$2');
 
   result = result.replace(/\\[Ff][^;]*;/g, '');
@@ -38,11 +40,11 @@ export function cleanMText(text: string): string {
   result = result.replace(/\\~/g, ' ');
   result = result.replace(/[{}]/g, '');
 
-  result = result.replace(new RegExp(TEMP_BACKSLASH, 'g'), '\\');
+  result = result.replace(new RegExp(TEMP_BACKSLASH, 'g'), '\\\\');
   result = result.replace(new RegExp(TEMP_LEFT_BRACE, 'g'), '{');
   result = result.replace(new RegExp(TEMP_RIGHT_BRACE, 'g'), '}');
 
-  return result.replace(/\r\n?/g, '\n');
+  return result.replace(/\\r\\n?/g, '\n');
 }
 
 export function cleanCadText(text: string): string {
@@ -252,7 +254,7 @@ export interface CadFormattedTextLine {
   align?: CanvasTextAlign;
 }
 
-const flushFormattedBuffer = (lines: CadFormattedTextLine[], segments: CadFormattedTextSegment[], bufferState: { value: string }, underline: boolean) => {
+const flushFormattedBuffer = (segments: CadFormattedTextSegment[], bufferState: { value: string }, underline: boolean) => {
   if (!bufferState.value) return;
   const text = cleanCadText(bufferState.value);
   if (text) segments.push({ text, underline });
@@ -274,23 +276,22 @@ export function splitCadFormattedLines(rawText: string): CadFormattedTextLine[] 
   let underline = false;
   let currentAlign: CanvasTextAlign | undefined = getInlineMTextParagraphAlign(rawText) || undefined;
 
-  const flush = () => flushFormattedBuffer(lines, segments, buffer, underline);
+  const flush = () => flushFormattedBuffer(segments, buffer, underline);
   const newLine = () => {
     flush();
     pushFormattedLine(lines, segments, currentAlign);
     segments = [];
   };
-  const readParagraphAlign = (startIndex: number): { endIndex: number; align?: CanvasTextAlign } | null => {
+  const readUntilSemicolon = (startIndex: number): { content: string; endIndex: number } | null => {
     const end = rawText.indexOf(';', startIndex);
     if (end < 0) return null;
-    const content = rawText.slice(startIndex, end);
+    return { content: rawText.slice(startIndex, end), endIndex: end };
+  };
+  const applyParagraphProperty = (content: string) => {
     const match = content.match(/q([lcrj])/i);
-    if (!match) return { endIndex: end };
+    if (!match) return;
     const code = match[1].toLowerCase();
-    return {
-      endIndex: end,
-      align: code === 'c' ? 'center' : code === 'r' ? 'right' : 'left',
-    };
+    currentAlign = code === 'c' ? 'center' : code === 'r' ? 'right' : 'left';
   };
 
   for (let index = 0; index < rawText.length; index++) {
@@ -307,15 +308,23 @@ export function splitCadFormattedLines(rawText: string): CadFormattedTextLine[] 
       index++;
       continue;
     }
-    if (next === 'P' || next === 'p') {
-      const paragraph = readParagraphAlign(index + 2);
+    if (next === 'O' || next === 'o' || next === 'K' || next === 'k') {
+      index++;
+      continue;
+    }
+    if (next === 'P') {
+      index++;
+      newLine();
+      continue;
+    }
+    if (next === 'p') {
+      const paragraph = readUntilSemicolon(index + 2);
       if (paragraph) {
-        currentAlign = paragraph.align || currentAlign;
+        applyParagraphProperty(paragraph.content);
         index = paragraph.endIndex;
       } else {
         index++;
       }
-      newLine();
       continue;
     }
     if (next === 'X' || next === 'x') {
@@ -337,20 +346,26 @@ export function splitCadFormattedLines(rawText: string): CadFormattedTextLine[] 
       }
     }
     if (next === 'S' || next === 's') {
-      const end = rawText.indexOf(';', index + 2);
-      if (end >= 0) {
-        const stacked = rawText.slice(index + 2, end).replace(/[#^/]/g, '/');
-        buffer.value += stacked;
-        index = end;
+      const stacked = readUntilSemicolon(index + 2);
+      if (stacked) {
+        buffer.value += stacked.content.replace(/[#^/]/g, '/');
+        index = stacked.endIndex;
         continue;
       }
     }
     if ('FfHhWwTtQqCcAa'.includes(next || '')) {
-      const end = rawText.indexOf(';', index + 2);
-      if (end >= 0) {
-        index = end;
+      const format = readUntilSemicolon(index + 2);
+      if (format) {
+        index = format.endIndex;
         continue;
       }
+      index++;
+      continue;
+    }
+    if (next === '{' || next === '}') {
+      buffer.value += next;
+      index++;
+      continue;
     }
     buffer.value += char;
   }

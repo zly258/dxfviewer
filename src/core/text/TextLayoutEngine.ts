@@ -16,6 +16,7 @@ import {
   CadFormattedTextLine,
 } from '../../viewer/utils/textUtils';
 import { resolveCadTextFontProfile } from '../../viewer/services/fontService';
+import { getTextShxFontNames, measureShxTextRunSync } from '../../viewer/services/shxFontService';
 
 export interface CadTextLayoutInput {
   entity: DxfText;
@@ -60,25 +61,86 @@ const getTextHeightCorrectionFactor = (entity: DxfText, styles?: Record<string, 
     : TEXT_RENDER_CONFIG.shxFontHeightFactor;
 };
 
-const wrapTextByCanvasWidth = (context: CanvasRenderingContext2D, text: string, maxWidth: number): string[] => {
+const CJK_WRAP_FORBIDDEN_START = new Set('，。；：！？、）】》〉」』”’%,.;:!?)]}');
+
+const clampNumber = (value: number, min: number, max: number): number => {
+  if (!Number.isFinite(value)) return min;
+  return Math.min(max, Math.max(min, value));
+};
+
+const splitWrapUnits = (sourceLine: string): string[] => {
+  const units: string[] = [];
+  let latinBuffer = '';
+  const flushLatin = () => {
+    if (latinBuffer) {
+      units.push(latinBuffer);
+      latinBuffer = '';
+    }
+  };
+
+  for (const char of Array.from(sourceLine)) {
+    if (/^[A-Za-z0-9_+\-./]+$/.test(char)) {
+      latinBuffer += char;
+    } else if (char === ' ') {
+      latinBuffer += char;
+      flushLatin();
+    } else {
+      flushLatin();
+      units.push(char);
+    }
+  }
+  flushLatin();
+  return units;
+};
+
+const wrapLongUnit = (measureWidth: (value: string) => number, unit: string, maxWidth: number): string[] => {
+  const chars = Array.from(unit);
+  if (chars.length <= 1 || measureWidth(unit) <= maxWidth) return [unit];
+  const result: string[] = [];
+  let current = '';
+  chars.forEach(char => {
+    const test = current + char;
+    if (current && measureWidth(test) > maxWidth) {
+      result.push(current);
+      current = char;
+    } else {
+      current = test;
+    }
+  });
+  if (current) result.push(current);
+  return result;
+};
+
+const wrapTextByMeasuredWidth = (measureWidth: (value: string) => number, text: string, maxWidth: number): string[] => {
   if (!text) return [''];
+  if (maxWidth <= 0) return text.split('\n');
+
   const result: string[] = [];
   text.split('\n').forEach(sourceLine => {
     if (!sourceLine) {
       result.push('');
       return;
     }
+
     let current = '';
-    for (const char of sourceLine) {
-      const test = current + char;
-      if (current && context.measureText(test).width > maxWidth) {
-        result.push(current);
-        current = char;
-      } else {
-        current = test;
+    for (const rawUnit of splitWrapUnits(sourceLine)) {
+      const units = wrapLongUnit(measureWidth, rawUnit, maxWidth);
+      for (const unit of units) {
+        const test = current + unit;
+        if (current && measureWidth(test) > maxWidth) {
+          if (CJK_WRAP_FORBIDDEN_START.has(unit.charAt(0)) && current.length > 1) {
+            result.push(current.slice(0, -1));
+            current = current.slice(-1) + unit;
+          } else {
+            result.push(current.trimEnd());
+            current = unit.trimStart();
+          }
+        } else {
+          current = test;
+        }
       }
     }
-    result.push(current);
+    result.push(current.trimEnd());
   });
   return result;
 };
@@ -88,6 +150,17 @@ const measureCanvasText = (context: CanvasRenderingContext2D, value: string): nu
   const metrics = context.measureText(value);
   const actual = Math.abs((metrics.actualBoundingBoxRight || 0) - (metrics.actualBoundingBoxLeft || 0));
   return Math.max(metrics.width || 0, actual || 0);
+};
+
+const measureCadText = (
+  context: CanvasRenderingContext2D,
+  value: string,
+  shxFontNames: string[],
+  shxSize: number,
+): number => {
+  const fallbackWidth = (char: string) => measureCanvasText(context, char);
+  const shxMeasure = measureShxTextRunSync(value, shxFontNames, shxSize, fallbackWidth);
+  return shxMeasure?.width ?? measureCanvasText(context, value);
 };
 
 export const buildCadTextLayout = ({
@@ -107,11 +180,13 @@ export const buildCadTextLayout = ({
   const widthFactor = getEffectiveTextWidthFactor(entity, styles);
   const horizontalScale = widthFactor * getCadFontWidthCompensation(entity, styles);
   const generationScale = getTextGenerationScale(entity);
+  const shxFontNames = getTextShxFontNames(entity, styles);
+  const measureWidth = (value: string) => measureCadText(context, value, shxFontNames, visualScreenHeight);
 
   if (!isMText) {
     const align = getTextHorizontalCanvasAlign(entity.hAlign);
     const baseline = getTextVerticalCanvasBaseline(entity.vAlign, entity.hAlign);
-    const measuredWidth = measureCanvasText(context, plainText);
+    const measuredWidth = measureWidth(plainText);
     return {
       isMText,
       plainText,
@@ -133,18 +208,19 @@ export const buildCadTextLayout = ({
   }
 
   const formattedLines = splitCadFormattedLines(entity.value || '');
-  const maxWidth = entity.width && entity.width > 0
-    ? entity.width * worldToScreenScale / Math.max(TEXT_RENDER_CONFIG.minimumWidthFactor, Math.abs(horizontalScale))
+  const declaredMTextWidth = entity.width && entity.width > 0 ? entity.width * worldToScreenScale : 0;
+  const maxWidth = declaredMTextWidth > 0
+    ? declaredMTextWidth / Math.max(TEXT_RENDER_CONFIG.minimumWidthFactor, Math.abs(horizontalScale))
     : 0;
   const useFormattedLines = noWrap || maxWidth <= 0;
   const sourceLines = useFormattedLines
     ? (formattedLines.length > 0 ? formattedLines.map(line => line.plainText) : plainText.split('\n'))
-    : wrapTextByCanvasWidth(context, plainText, maxWidth);
+    : wrapTextByMeasuredWidth(measureWidth, plainText, maxWidth);
 
-  const lineSpacingRaw = (entity as any).lineSpacingFactor;
-  const lineSpacingFactor = Number.isFinite(lineSpacingRaw) ? lineSpacingRaw : 1;
+  const lineSpacingRaw = Number((entity as any).lineSpacingFactor);
+  const lineSpacingFactor = clampNumber(Number.isFinite(lineSpacingRaw) && lineSpacingRaw > 0 ? lineSpacingRaw : 1, TEXT_RENDER_CONFIG.mtextLineSpacingMinFactor, TEXT_RENDER_CONFIG.mtextLineSpacingMaxFactor);
   const lineHeight = visualScreenHeight * TEXT_RENDER_CONFIG.mtextDefaultLineSpacingFactor * lineSpacingFactor;
-  const lineWidths = sourceLines.map(line => measureCanvasText(context, line));
+  const lineWidths = sourceLines.map(line => measureWidth(line));
   const maxLineWidth = Math.max(...lineWidths, 0);
 
   const declaredWidth = maxWidth > 0 ? maxWidth : 0;
@@ -156,7 +232,10 @@ export const buildCadTextLayout = ({
 
   const estimatedLayout = estimateCadTextLayout(entity, styles);
   const estimatedWidth = estimatedLayout.blockWidth * worldToScreenScale / Math.max(TEXT_RENDER_CONFIG.minimumWidthFactor, Math.abs(horizontalScale));
-  const blockWidth = Math.max(maxLineWidth, declaredWidth, actualWidth, estimatedWidth * TEXT_RENDER_CONFIG.mtextLineWidthMeasurePaddingFactor);
+  const measuredWidthWithPadding = maxLineWidth * TEXT_RENDER_CONFIG.mtextLineWidthMeasurePaddingFactor;
+  const blockWidth = declaredWidth > 0
+    ? Math.max(declaredWidth, Math.min(Math.max(measuredWidthWithPadding, actualWidth), declaredWidth * TEXT_RENDER_CONFIG.mtextActualWidthTrustFactor))
+    : Math.max(measuredWidthWithPadding, actualWidth, estimatedWidth * TEXT_RENDER_CONFIG.mtextLineWidthMeasurePaddingFactor);
   const measuredHeight = sourceLines.length > 0 ? (sourceLines.length - 1) * lineHeight + visualScreenHeight : visualScreenHeight;
   const declaredHeight = Number((entity as any).boxHeight) > 0 ? Number((entity as any).boxHeight) * worldToScreenScale : 0;
   const blockHeight = Math.max(measuredHeight, declaredHeight);

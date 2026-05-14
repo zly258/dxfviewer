@@ -316,7 +316,6 @@ export const parseDxf = async (dxfString: string, onProgress?: (percent: number)
 
   // 进度估计的总大小：字符串长度 / 每行约 15 字节
   const estimatedTotalLines = dxfString.length / 15; 
-  let lastReportedProgress = 0;
   let currentSection = '';
   let linesProcessed = 0;
 
@@ -534,7 +533,7 @@ const parsePoint = (state: DxfParserState): Point2D => {
     return {x, y};
 }
 
-const parseCommon = (state: DxfParserState): any => {
+const parseCommon = (_state: DxfParserState): any => {
     return {
         id: crypto.randomUUID(),
         handle: '',
@@ -922,7 +921,6 @@ const parseRayXLine = (state: DxfParserState, common: any, type: string): AnyEnt
 
 const parseLine = (state: DxfParserState, common: any): AnyEntity => {
     const entity: any = { ...common, type: EntityType.LINE, start: {x:0, y:0}, end: {x:0, y:0} };
-    let z1 = 0, z2 = 0;
     while(state.hasNext) {
         const p = state.peek();
         if (!p || p.code === 0) break;
@@ -931,10 +929,10 @@ const parseLine = (state: DxfParserState, common: any): AnyEntity => {
         switch(g.code) {
             case 10: entity.start.x = parseFloat(g.value); break;
             case 20: entity.start.y = parseFloat(g.value); break;
-            case 30: z1 = parseFloat(g.value); break;
+            case 30: break;
             case 11: entity.end.x = parseFloat(g.value); break;
             case 21: entity.end.y = parseFloat(g.value); break;
-            case 31: z2 = parseFloat(g.value); break;
+            case 31: break;
         }
     }
     // 根据 DXF 规范，LINE 和 POINT 坐标已经在 WCS 中
@@ -1072,14 +1070,14 @@ const parsePolyline = (state: DxfParserState, common: any): DxfPolyline => {
             if (p.value === 'SEQEND') { state.next(); break; }
             if (p.value === 'VERTEX') {
                 state.next();
-                let x=0, y=0, z=0, b=0, valid = false;
+                let x=0, y=0, b=0, valid = false;
                 while(state.hasNext) {
                     const vp = state.peek();
                     if (!vp || vp.code === 0) break;
                     const vg = state.next()!;
                     if (vg.code === 10) { x = parseFloat(vg.value); valid = true; }
                     if (vg.code === 20) y = parseFloat(vg.value);
-                    if (vg.code === 30) z = parseFloat(vg.value);
+                    if (vg.code === 30) continue;
                     if (vg.code === 42) b = parseFloat(vg.value);
                 }
                 if (valid) {
@@ -1459,7 +1457,6 @@ const parseSolid = (state: DxfParserState, common: any, type: string): AnyEntity
 
 const parsePointEntity = (state: DxfParserState, common: any): AnyEntity => {
     const entity: any = { ...common, type: EntityType.POINT, position: {x:0, y:0} };
-    let z = 0;
     while(state.hasNext) {
         const p = state.peek();
         if (!p || p.code === 0) break;
@@ -1467,7 +1464,7 @@ const parsePointEntity = (state: DxfParserState, common: any): AnyEntity => {
         applyCommonGroup(entity, g.code, g.value);
         if (g.code === 10) entity.position.x = parseFloat(g.value);
         if (g.code === 20) entity.position.y = parseFloat(g.value);
-        if (g.code === 30) z = parseFloat(g.value);
+        if (g.code === 30) continue;
     }
     // 根据 DXF 规范，POINT 坐标已经处于 WCS 坐标系中
     return entity;
@@ -1521,7 +1518,6 @@ const parseEllipse = (state: DxfParserState, common: any): AnyEntity => {
         majorAxis: {x:0, y:0}, 
         ratio: 1, startParam: 0, endParam: Math.PI*2 
     };
-    let z = 0;
     while(state.hasNext) {
         const p = state.peek();
         if (!p || p.code === 0) break;
@@ -1530,7 +1526,7 @@ const parseEllipse = (state: DxfParserState, common: any): AnyEntity => {
         switch(g.code) {
             case 10: entity.center.x = parseFloat(g.value); break;
             case 20: entity.center.y = parseFloat(g.value); break;
-            case 30: z = parseFloat(g.value); break;
+            case 30: break;
             case 11: entity.majorAxis.x = parseFloat(g.value); break;
             case 21: entity.majorAxis.y = parseFloat(g.value); break;
             case 31: // 长轴终点的 Z 坐标 - 在 2D 显示中忽略
@@ -1688,7 +1684,7 @@ const parseHatch = (state: DxfParserState, common: any): DxfHatch => {
                          edge.type = 'SPLINE'; edge.controlPoints = []; edge.knots = []; edge.weights = [];
                          const degree = readVal(state, 94); if(degree) edge.degree = degree;
                          const rational = readVal(state, 73);
-                         const periodic = readVal(state, 74);
+                         readVal(state, 74);
                          const nKnots = readVal(state, 95);
                          const nControl = readVal(state, 96);
                          // 读取节点 (Knots)
@@ -1845,10 +1841,6 @@ const getTableFallbackGeometry = (table: DxfTable): { width: number; height: num
     const aspectRatio = Math.max(width / height, height / width);
     if (aspectRatio > TABLE_EXTENTS_CONFIG.maxFallbackAspectRatio) return null;
     return { width, height, rowCount, colCount };
-};
-
-const canUseTableFallbackGeometry = (table: DxfTable): boolean => {
-    return hasTableTextContent(table) && !!getTableFallbackGeometry(table);
 };
 
 const getTableFallbackExtents = (table: DxfTable): { min: Point2D; max: Point2D } | null => {
@@ -2282,7 +2274,7 @@ const filterOutlierExtents = (items: { min: Point2D; max: Point2D }[]): { min: P
         medianDiagonal * EXTENTS_CONFIG.outlierSizeMedianMultiplier,
     );
 
-    const filtered = items.filter((item, index) => {
+    const filtered = items.filter((_item, index) => {
         const metric = metrics[index];
         const distance = distances[index];
         const isFarAway = distance > distanceLimit;
@@ -2365,13 +2357,6 @@ export const calculateSmartExtents = (entities: AnyEntity[], blocks: Record<stri
     // 使用 X 和 Y 中心点来寻找“密集”区域
     const centersX = validExtents.map(e => e.center.x).sort((a, b) => a - b);
     const centersY = validExtents.map(e => e.center.y).sort((a, b) => a - b);
-    
-    // 获取中心点的四分位距 (IQR)
-    const q1Idx = Math.floor(centersX.length * 0.25);
-    const q3Idx = Math.floor(centersX.length * 0.75);
-    
-    const iqrX = centersX[q3Idx] - centersX[q1Idx];
-    const iqrY = centersY[q3Idx] - centersY[q1Idx];
     
     const n = centersX.length;
     const medianX = n % 2 === 0 ? (centersX[n / 2 - 1] + centersX[n / 2]) / 2 : centersX[Math.floor(n / 2)];

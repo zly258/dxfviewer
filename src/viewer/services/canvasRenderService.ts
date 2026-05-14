@@ -1,14 +1,15 @@
-import { AnyEntity, EntityType, DxfLayer, DxfBlock, DxfStyle, Point2D, DxfInsert, HatchLoop, DxfText, DxfLineType, ViewPort } from '../../types';
+import { AnyEntity, EntityType, DxfLayer, DxfBlock, DxfStyle, Point2D, HatchLoop, DxfText, DxfLineType, ViewPort } from '../../types';
 import { CANVAS_THEME_COLORS, SELECTION_CONFIG, TEXT_RENDER_CONFIG, LEADER_RENDER_CONFIG, TABLE_EXTENTS_CONFIG, LINE_RENDER_CONFIG } from '../../shared/config/viewerConfig';
-import { CAD_BY_BLOCK_COLOR, CAD_BY_LAYER_COLOR, CAD_DEFAULT_TEXT_HEIGHT, CAD_DEFAULT_TEXT_STYLE } from '../../shared/constants/cadConstants';
+import { CAD_BY_LAYER_COLOR, CAD_DEFAULT_TEXT_HEIGHT, CAD_DEFAULT_TEXT_STYLE } from '../../shared/constants/cadConstants';
 import { CanvasTheme, DrawingColorMode } from '../../shared/types/ui';
-import { getAutoCadColor, AUTO_CAD_COLORS } from '../utils/colorUtils';
+import { getAutoCadColor } from '../utils/colorUtils';
 import { resolveEntityColor } from '../utils/entityColor';
 import { sampleBulgeSegment } from '../../core/geometry/bulge';
 import { sampleEllipsePoints, sampleHatchLoop, sampleSplinePoints } from '../../core/geometry/curveSampling';
 import { resolveCadStrokeStyle } from '../../core/symbology/lineStyle';
 import { getStyleFontFamily, FONT_STACKS, mapCadFontToWebFont, resolveCadTextFontProfile } from './fontService';
-import { cleanCadText, cleanMText, estimateCadTextLayout, getCadTextAnchorPosition, getEffectiveTextHeight, splitCadFormattedText } from '../utils/textUtils';
+import { getShxGlyphProfileSync, getTextShxFontNames, measureShxTextRunSync, preloadShxFontsForStyles } from './shxFontService';
+import { cleanCadText, cleanMText, getCadTextAnchorPosition, getEffectiveTextHeight, splitCadFormattedText } from '../utils/textUtils';
 import { buildCadTextLayout } from '../../core/text/TextLayoutEngine';
 
 const SELECTION_COLOR = SELECTION_CONFIG.color;
@@ -130,37 +131,6 @@ const getMeasuredTextWidth = (ctx: CanvasRenderingContext2D, value: string): num
     return Math.max(metrics.width, bboxWidth);
 };
 
-const wrapText = (ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] => {
-    if (!maxWidth || maxWidth <= 0) return text.split('\n');
-    const paragraphs = text.split('\n');
-    const lines: string[] = [];
-    
-    paragraphs.forEach(paragraph => {
-        if (!paragraph) {
-            lines.push("");
-            return;
-        }
-
-        let currentLine = "";
-        
-        // 逐字符遍历以支持中文换行
-        for (let i = 0; i < paragraph.length; i++) {
-            const char = paragraph[i];
-            const testLine = currentLine + char;
-            const width = getMeasuredTextWidth(ctx, testLine);
-            
-            if (width > maxWidth && currentLine.length > 0) {
-                lines.push(currentLine);
-                currentLine = char;
-            } else {
-                currentLine = testLine;
-            }
-        }
-        lines.push(currentLine);
-    });
-    return lines;
-};
-
 // 为填充创建简单的对角线图案
 const createHatchPattern = (ctx: CanvasRenderingContext2D, color: string) => {
     const canvas = document.createElement('canvas');
@@ -204,7 +174,7 @@ const drawHatchLoop = (ctx: CanvasRenderingContext2D, loop: HatchLoop, transform
  */
 const drawPolyline = (ctx: CanvasRenderingContext2D, points: Point2D[], bulges: number[] | undefined, closed: boolean, transform: RenderTransform) => {
     if (points.length < 1) return;
-    const { project, scale } = transform;
+    const { project } = transform;
     const start = project(points[0]);
     ctx.moveTo(start.x, start.y);
     for (let i = 0; i < (closed ? points.length : points.length - 1); i++) {
@@ -248,6 +218,11 @@ export const renderEntitiesToCanvas = (
     // 使用背景颜色清除画布
     ctx.fillStyle = CANVAS_THEME_COLORS[theme];
     ctx.fillRect(0, 0, width, height);
+
+    preloadShxFontsForStyles(styles);
+
+    const shxDebugEnabled = typeof window !== 'undefined' && window.localStorage?.getItem('dxfviewer.shxDebug') === '1';
+    const shxDebugStats = { runs: 0, glyphs: 0, fallbacks: 0 };
 
     const safeZoom = isNaN(viewPort.zoom) || viewPort.zoom === 0 ? 1 : viewPort.zoom;
     const safeTargetX = isNaN(viewPort.targetX) ? 0 : viewPort.targetX;
@@ -342,14 +317,111 @@ export const renderEntitiesToCanvas = (
         return textHeightPixels * TEXT_RENDER_CONFIG.underlineAlphabeticBaselineFactor;
     };
 
-    const measureTextWidth = (value: string) => getMeasuredTextWidth(ctx, value);
+    const measureTextWidth = (value: string, shxFontNames: string[] = [], textHeightPixels: number = 0) => {
+        const fallbackWidth = (char: string) => getMeasuredTextWidth(ctx, char);
+        const shxMeasure = textHeightPixels > 0 ? measureShxTextRunSync(value, shxFontNames, textHeightPixels, fallbackWidth) : null;
+        return shxMeasure?.width ?? getMeasuredTextWidth(ctx, value);
+    };
 
-    const drawFormattedSegmentsLine = (segments: ReturnType<typeof splitCadFormattedText>, fallbackText: string, xOffset: number, y: number, align: CanvasTextAlign, baseline: CanvasTextBaseline, textHeightPixels: number) => {
+    const getShxRunBaselineOriginY = (
+        baseline: CanvasTextBaseline,
+        textHeightPixels: number,
+        y: number,
+        ascent: number,
+        descent: number,
+    ): number => {
+        const safeAscent = Math.max(ascent, textHeightPixels * 0.82);
+        const safeDescent = Math.max(descent, textHeightPixels * 0.12);
+        if (baseline === 'top' || baseline === 'hanging') return y + safeAscent;
+        if (baseline === 'middle') return y + (safeAscent - safeDescent) / 2;
+        if (baseline === 'bottom' || baseline === 'ideographic') return y - safeDescent;
+        return y;
+    };
+
+    const collectShxGlyphs = (text: string, textHeightPixels: number, shxFontNames: string[]) => {
+        let ascent = 0;
+        let descent = 0;
+        const glyphs = Array.from(text).map(char => {
+            if (char === '\r' || char === '\n' || char === ' ' || char === '\t') {
+                return { char, profile: null };
+            }
+            const code = char.codePointAt(0) || char.charCodeAt(0);
+            const profile = getShxGlyphProfileSync(shxFontNames, code, textHeightPixels);
+            if (profile) {
+                ascent = Math.max(ascent, profile.bbox.maxY);
+                descent = Math.max(descent, -profile.bbox.minY);
+            }
+            return { char, profile };
+        });
+
+        return { glyphs, ascent, descent };
+    };
+
+    const drawShxDebugMarker = (x: number, y: number, width: number, textHeightPixels: number, glyphCount: number, fallbackCount: number) => {
+        if (!shxDebugEnabled) return;
+        ctx.save();
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = glyphCount > 0 ? '#22c55e' : '#ef4444';
+        ctx.setLineDash([2, 2]);
+        ctx.strokeRect(x, y - textHeightPixels, Math.max(width, 2), textHeightPixels);
+        ctx.setLineDash([]);
+        ctx.font = '10px sans-serif';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'bottom';
+        ctx.fillStyle = glyphCount > 0 ? '#22c55e' : '#ef4444';
+        ctx.fillText(`SHX ${glyphCount}/${glyphCount + fallbackCount}`, x, y - textHeightPixels - 2);
+        ctx.restore();
+    };
+
+    const drawShxText = (text: string, x: number, y: number, baseline: CanvasTextBaseline, textHeightPixels: number, shxFontNames: string[]) => {
+        let cursorX = x;
+        let glyphCount = 0;
+        let fallbackCount = 0;
+        const { glyphs, ascent, descent } = collectShxGlyphs(text, textHeightPixels, shxFontNames);
+        const baseY = getShxRunBaselineOriginY(baseline, textHeightPixels, y, ascent, descent);
+        const previousLineWidth = ctx.lineWidth;
+        ctx.lineWidth = Math.max(previousLineWidth, textHeightPixels * TEXT_RENDER_CONFIG.underlineLineWidthFactor);
+
+        for (const { char, profile } of glyphs) {
+            if (char === '\r' || char === '\n') continue;
+            if (char === ' ' || char === '\t') {
+                cursorX += textHeightPixels * TEXT_RENDER_CONFIG.spaceCharacterWidthFactor;
+                continue;
+            }
+
+            if (!profile || profile.polylines.length === 0) {
+                ctx.fillText(char, cursorX, y);
+                cursorX += getMeasuredTextWidth(ctx, char);
+                fallbackCount++;
+                continue;
+            }
+
+            ctx.beginPath();
+            profile.polylines.forEach(polyline => {
+                if (polyline.length === 0) return;
+                ctx.moveTo(cursorX + polyline[0].x, baseY - polyline[0].y);
+                for (let index = 1; index < polyline.length; index++) {
+                    ctx.lineTo(cursorX + polyline[index].x, baseY - polyline[index].y);
+                }
+            });
+            ctx.stroke();
+            cursorX += profile.advanceWidth;
+            glyphCount++;
+        }
+
+        ctx.lineWidth = previousLineWidth;
+        shxDebugStats.runs += 1;
+        shxDebugStats.glyphs += glyphCount;
+        shxDebugStats.fallbacks += fallbackCount;
+        drawShxDebugMarker(x, baseY, cursorX - x, textHeightPixels, glyphCount, fallbackCount);
+    };
+
+    const drawFormattedSegmentsLine = (segments: ReturnType<typeof splitCadFormattedText>, fallbackText: string, xOffset: number, y: number, align: CanvasTextAlign, baseline: CanvasTextBaseline, textHeightPixels: number, shxFontNames: string[] = []) => {
         const fallbackSegments = fallbackText ? [{ text: fallbackText, underline: false }] : [];
         const drawSegments = (segments.length > 0 ? segments : fallbackSegments).filter(segment => segment.text.length > 0);
         if (drawSegments.length === 0) return;
 
-        const segmentWidths = drawSegments.map(segment => measureTextWidth(segment.text));
+        const segmentWidths = drawSegments.map(segment => measureTextWidth(segment.text, shxFontNames, textHeightPixels));
         const totalWidth = segmentWidths.reduce((sum, width) => sum + width, 0);
         let x = xOffset;
         if (align === 'center') x -= totalWidth / 2;
@@ -364,7 +436,11 @@ export const renderEntitiesToCanvas = (
 
         drawSegments.forEach((segment, index) => {
             const segmentWidth = segmentWidths[index];
-            ctx.fillText(segment.text, x, y);
+            if (shxFontNames.length > 0) {
+                drawShxText(segment.text, x, y, baseline, textHeightPixels, shxFontNames);
+            } else {
+                ctx.fillText(segment.text, x, y);
+            }
             if (segment.underline) {
                 const underlineY = y + getUnderlineOffset(baseline, textHeightPixels);
                 ctx.beginPath();
@@ -380,8 +456,8 @@ export const renderEntitiesToCanvas = (
         ctx.lineWidth = previousLineWidth;
     };
 
-    const drawFormattedTextLine = (rawText: string, fallbackText: string, xOffset: number, y: number, align: CanvasTextAlign, baseline: CanvasTextBaseline, textHeightPixels: number) => {
-        drawFormattedSegmentsLine(splitCadFormattedText(rawText), fallbackText, xOffset, y, align, baseline, textHeightPixels);
+    const drawFormattedTextLine = (rawText: string, fallbackText: string, xOffset: number, y: number, align: CanvasTextAlign, baseline: CanvasTextBaseline, textHeightPixels: number, shxFontNames: string[] = []) => {
+        drawFormattedSegmentsLine(splitCadFormattedText(rawText), fallbackText, xOffset, y, align, baseline, textHeightPixels, shxFontNames);
     };
 
     const drawEntity = (ent: AnyEntity, transform: RenderTransform, parentLayerName?: string, parentColor?: string, parentSelected: boolean = false, depth: number = 0, noMTextWrap: boolean = false) => {
@@ -588,6 +664,8 @@ export const renderEntitiesToCanvas = (
                 ctx.font = getCanvasFont(ent, styles);
                 ent.height = originalHeight;
 
+                const shxFontNames = getTextShxFontNames(ent, styles);
+
                 const layout = buildCadTextLayout({
                     entity: ent,
                     styles,
@@ -636,9 +714,9 @@ export const renderEntitiesToCanvas = (
 
                     layout.lines.forEach(line => {
                         if (line.formatted) {
-                            drawFormattedSegmentsLine(line.formatted.segments, line.formatted.plainText, line.x, line.y, line.align, layout.baseline, layout.visualScreenHeight);
+                            drawFormattedSegmentsLine(line.formatted.segments, line.formatted.plainText, line.x, line.y, line.align, layout.baseline, layout.visualScreenHeight, shxFontNames);
                         } else {
-                            drawFormattedTextLine(line.text, line.text, line.x, line.y, line.align, layout.baseline, layout.visualScreenHeight);
+                            drawFormattedTextLine(line.text, line.text, line.x, line.y, line.align, layout.baseline, layout.visualScreenHeight, shxFontNames);
                         }
                     });
                 } else if ((hAlign === 3 || hAlign === 5) && ent.secondPosition) {
@@ -650,7 +728,7 @@ export const renderEntitiesToCanvas = (
                         const scale = targetWidth / measuredWidth;
                         ctx.scale(scale, hAlign === 3 ? scale : 1);
                     }
-                    drawFormattedTextLine(ent.value || layout.plainText, layout.plainText, 0, 0, 'left', layout.baseline, layout.visualScreenHeight);
+                    drawFormattedTextLine(ent.value || layout.plainText, layout.plainText, 0, 0, 'left', layout.baseline, layout.visualScreenHeight, shxFontNames);
                 } else {
                     let align = layout.align;
                     if (layout.generationScale.x < 0) {
@@ -658,7 +736,7 @@ export const renderEntitiesToCanvas = (
                         else if (align === 'right') align = 'left';
                     }
                     ctx.scale(layout.horizontalScale * layout.generationScale.x, layout.generationScale.y);
-                    drawFormattedTextLine(ent.value || layout.plainText, layout.plainText, 0, 0, align, layout.baseline, layout.visualScreenHeight);
+                    drawFormattedTextLine(ent.value || layout.plainText, layout.plainText, 0, 0, align, layout.baseline, layout.visualScreenHeight, shxFontNames);
                 }
 
                 ctx.restore();
@@ -1079,6 +1157,16 @@ export const renderEntitiesToCanvas = (
         ctx.stroke();
         ctx.restore();
     }
+
+    if (shxDebugEnabled) {
+        ctx.save();
+        ctx.font = '12px sans-serif';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        ctx.fillStyle = theme === 'white' ? '#166534' : '#86efac';
+        ctx.fillText(`SHX glyph: ${shxDebugStats.glyphs}, fallback: ${shxDebugStats.fallbacks}, runs: ${shxDebugStats.runs}`, 8, 8);
+        ctx.restore();
+    }
 };
 
 const distanceToLine = (px: number, py: number, x1: number, y1: number, x2: number, y2: number) => {
@@ -1106,7 +1194,7 @@ const distanceToLine = (px: number, py: number, x1: number, y1: number, x2: numb
     return Math.sqrt(dx * dx + dy * dy);
 };
 
-export const hitTest = (x: number, y: number, threshold: number, entities: AnyEntity[], blocks: Record<string, DxfBlock>, layers: Record<string, DxfLayer>, styles: Record<string, DxfStyle>): string | null => {
+export const hitTest = (x: number, y: number, threshold: number, entities: AnyEntity[], blocks: Record<string, DxfBlock>, layers: Record<string, DxfLayer>, _styles: Record<string, DxfStyle>): string | null => {
     // 块名称到使用它们的标注实体的映射，用于优先选择标注
     const blockToDimensionMap = new Map<string, string>();
     entities.forEach(ent => {
