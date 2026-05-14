@@ -32,9 +32,18 @@ jobs:
         with:
           node-version: 20
           cache: npm
+          registry-url: https://registry.npmjs.org/
+
+      - name: 固定 npm 官方源
+        shell: bash
+        run: |
+          npm config set registry https://registry.npmjs.org/ --location=user
+          npm config delete proxy --location=user || true
+          npm config delete https-proxy --location=user || true
+          npm config get registry
 
       - name: 安装依赖
-        run: npm ci
+        run: npm ci --registry=https://registry.npmjs.org/ --prefer-offline=false --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000
 
       - name: 构建库和示例
         run: npm run build:all
