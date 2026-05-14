@@ -21,8 +21,8 @@
   ],
   "scripts": {
     "dev": "vite",
+    "typecheck": "tsc --noEmit",
     "build": "vite build",
-    "build:example": "vite build -c vite.example.config.ts",
     "preview": "vite preview"
   },
   "dependencies": {

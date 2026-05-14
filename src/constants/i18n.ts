@@ -65,14 +65,14 @@ export const UI_TRANSLATIONS: Record<Language, Record<string, string>> = {
     open: '打开...',
     clear: '清空',
     view: '视图',
-    fitView: '充满',
+    fitView: '充满视图',
     layers: '图层',
     properties: '属性',
     theme: '背景',
     black: '黑色',
     white: '白色',
     language: '语言',
-    showDrawingExtents: '显示图纸包围盒',
+    showDrawingExtents: '图纸范围',
     on: '开启',
     off: '关闭',
     layersTitle: '图层列表',
@@ -82,7 +82,7 @@ export const UI_TRANSLATIONS: Record<Language, Record<string, string>> = {
     selectedCount: '已选择 {count} 个对象',
     selectSingle: '选择单个对象以查看详细属性',
     
-    // Table Properties
+    // 表格属性
     rows: '行数',
     columns: '列数',
     rowSpacing: '行间距',

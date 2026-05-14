@@ -1,10 +1,10 @@
 import React from 'react';
-import { AnyEntity, EntityType, DxfStyle } from '../../../types';
+import { AnyEntity, EntityType, DxfStyle } from '../../types';
 import { getAutoCadColor } from '../utils/colorUtils';
-import { Language, UI_TRANSLATIONS, ENTITY_TYPE_NAMES } from '../../../constants/i18n';
+import { Language, UI_TRANSLATIONS, ENTITY_TYPE_NAMES } from '../../constants/i18n';
 import { getStyleFontFamily } from '../services/fontService';
-import { CAD_BY_BLOCK_COLOR, CAD_BY_LAYER_COLOR, CAD_DEFAULT_LAYER_COLOR, CAD_DEFAULT_TEXT_STYLE } from '../../../shared/constants/cadConstants';
-import { CanvasTheme } from '../../../shared/types/ui';
+import { CAD_BY_BLOCK_COLOR, CAD_BY_LAYER_COLOR, CAD_DEFAULT_LAYER_COLOR, CAD_DEFAULT_TEXT_STYLE } from '../../shared/constants/cadConstants';
+import { CanvasTheme } from '../../shared/types/ui';
 
 /**
  * 属性面板组件

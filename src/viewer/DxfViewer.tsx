@@ -1,21 +1,21 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import '../../styles/styles.css';
-import DxfViewer from './components/DxfViewer';
+import '../styles/styles.css';
+import CanvasViewer from './components/CanvasViewer';
 import Sidebar from './components/Sidebar';
 import PropertiesPanel from './components/PropertiesPanel';
 import ToolBar from './components/ToolBar';
 import { parseDxf, calculateExtents } from './services/dxfService';
-import { AnyEntity, ViewPort, DxfLayer, DxfBlock, EntityType, DxfStyle, DxfLineType, Point2D } from '../../types';
-import { DEFAULT_LAYER, DEFAULT_VIEWPORT, LAYOUT_CONFIG, SHORTCUT_CONFIG, VIEWER_DEFAULTS, ZOOM_CONFIG } from '../../shared/config/viewerConfig';
-import { Language } from '../../constants/i18n';
-import { decodeDxfBuffer } from '../../shared/utils/textDecoder';
-import { CanvasTheme, DrawingColorMode, UiTheme } from '../../shared/types/ui';
+import { AnyEntity, ViewPort, DxfLayer, DxfBlock, EntityType, DxfStyle, DxfLineType, Point2D } from '../types';
+import { DEFAULT_LAYER, DEFAULT_VIEWPORT, LAYOUT_CONFIG, SHORTCUT_CONFIG, VIEWER_DEFAULTS, ZOOM_CONFIG } from '../shared/config/viewerConfig';
+import { Language } from '../constants/i18n';
+import { decodeDxfBuffer } from '../shared/utils/textDecoder';
+import { CanvasTheme, DrawingColorMode, UiTheme } from '../shared/types/ui';
 
 /**
  * DXF 查看器主容器组件
  * 负责解析文件、管理全局状态、协调侧边栏与主查看器的交互
  */
-interface DxfViewerMainProps {
+interface DxfViewerProps {
   initFile?: string | File;
   fileName?: string;
   showOpenMenu?: boolean;
@@ -30,8 +30,6 @@ interface DxfViewerMainProps {
 
 
 interface ViewerUiSettings {
-  showSidebar?: boolean;
-  showProperties?: boolean;
   showDrawingExtents?: boolean;
   uiTheme?: UiTheme;
   canvasTheme?: CanvasTheme;
@@ -60,7 +58,7 @@ const writeViewerUiSettings = (settings: ViewerUiSettings) => {
   }
 };
 
-const DxfViewerMain: React.FC<DxfViewerMainProps> = ({ 
+const DxfViewer: React.FC<DxfViewerProps> = ({ 
   initFile,
   fileName, 
   showOpenMenu = true,
@@ -88,9 +86,6 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
 
   const [selectedEntityIds, setSelectedEntityIds] = useState<Set<string>>(new Set());
   
-  const [showSidebar, setShowSidebar] = useState(savedUiSettingsRef.current.showSidebar ?? true);
-  const [showProperties, setShowProperties] = useState(savedUiSettingsRef.current.showProperties ?? true);
-
   const [viewPort, setViewPort] = useState<ViewPort>(DEFAULT_VIEWPORT);
   const [uiTheme, setUiTheme] = useState<UiTheme>(savedUiSettingsRef.current.uiTheme ?? VIEWER_DEFAULTS.uiTheme);
   const [canvasTheme, setCanvasTheme] = useState<CanvasTheme>(savedUiSettingsRef.current.canvasTheme ?? VIEWER_DEFAULTS.canvasTheme);
@@ -118,15 +113,13 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
 
   useEffect(() => {
     writeViewerUiSettings({
-      showSidebar,
-      showProperties,
       showDrawingExtents,
       uiTheme,
       canvasTheme,
       drawingColorMode,
       language: lang,
     });
-  }, [showSidebar, showProperties, showDrawingExtents, uiTheme, canvasTheme, drawingColorMode, lang]);
+  }, [showDrawingExtents, uiTheme, canvasTheme, drawingColorMode, lang]);
 
   const fitView = useCallback((ents: AnyEntity[], blks: Record<string, DxfBlock>, currentStyles: Record<string, DxfStyle> = styles) => {
     if (ents.length === 0) return;
@@ -150,9 +143,7 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
     } else if (containerRef.current) {
       // 如果 viewerRef 尚未准备好，则回退到 app-container 减去估计的栏宽
       const rect = containerRef.current.getBoundingClientRect();
-      const sidebarWidth = showSidebar ? LAYOUT_CONFIG.fallbackSidebarWidth : 0;
-      const propsWidth = showProperties ? LAYOUT_CONFIG.fallbackPropertiesWidth : 0;
-      containerW = rect.width - sidebarWidth - propsWidth;
+      containerW = rect.width - LAYOUT_CONFIG.fallbackSidebarWidth - LAYOUT_CONFIG.fallbackPropertiesWidth;
       containerH = rect.height - LAYOUT_CONFIG.fallbackToolbarHeight - LAYOUT_CONFIG.fallbackStatusBarHeight;
     }
 
@@ -182,7 +173,7 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
         targetY: centerY, 
         zoom 
     });
-  }, [showSidebar, showProperties, styles]);
+  }, [styles]);
 
   const drawingExtents = useMemo(() => {
     if (entities.length === 0) return null;
@@ -335,9 +326,7 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
           if (ent) {
               const extents = calculateExtents([ent], blocks, styles);
 
-              const sidebarWidth = showSidebar ? LAYOUT_CONFIG.fallbackSidebarWidth : 0;
-              const propsWidth = showProperties ? LAYOUT_CONFIG.fallbackPropertiesWidth : 0;
-              const containerW = window.innerWidth - sidebarWidth - propsWidth;
+              const containerW = window.innerWidth - LAYOUT_CONFIG.fallbackSidebarWidth - LAYOUT_CONFIG.fallbackPropertiesWidth;
               const containerH = window.innerHeight - LAYOUT_CONFIG.fallbackToolbarHeight - LAYOUT_CONFIG.fallbackStatusBarHeight;
 
               const w = extents.width;
@@ -466,10 +455,6 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
           onFitView={handleFitView}
           showDrawingExtents={showDrawingExtents}
           onToggleDrawingExtents={() => setShowDrawingExtents(v => !v)}
-          showSidebar={showSidebar}
-          onToggleSidebar={() => setShowSidebar(!showSidebar)}
-          showProperties={showProperties}
-          onToggleProperties={() => setShowProperties(!showProperties)}
           showOpen={showOpenMenu}
           uiTheme={uiTheme}
           onSetUiTheme={setUiTheme}
@@ -484,8 +469,7 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
       </div>
 
       <div className="main-content">
-        {showSidebar && (
-            <Sidebar 
+        <Sidebar 
             layers={layers} 
             entities={entities} 
             selectedEntityIds={selectedEntityIds}
@@ -493,7 +477,6 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
             theme={canvasTheme}
             lang={lang}
             />
-        )}
         
         <main ref={viewerRef} className="viewer-container">
           {(parseErrorMessage || viewerNoticeMessage) && (
@@ -512,7 +495,7 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
               </button>
             </div>
           )}
-          <DxfViewer 
+          <CanvasViewer 
             entities={entities} 
             layers={layers}
             blocks={blocks}
@@ -534,8 +517,7 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
           />
         </main>
 
-        {showProperties && (
-            <PropertiesPanel 
+        <PropertiesPanel 
                 entities={selectedEntities} 
                 layers={Object.values(layers)}
                 styles={styles}
@@ -543,7 +525,6 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
                 theme={canvasTheme}
                 lang={lang}
             />
-        )}
       </div>
 
       <div className="status-bar">
@@ -574,4 +555,4 @@ const DxfViewerMain: React.FC<DxfViewerMainProps> = ({
   );
 }
 
-export default DxfViewerMain;
+export default DxfViewer;

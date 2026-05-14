@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import DxfViewerMain from '../features/dxf-viewer/DxfViewerMain';
+import DxfViewer from '../viewer/DxfViewer';
 import '../styles/App.css';
 import { SHORTCUT_CONFIG } from '../shared/config/viewerConfig';
 import { DxfTabSource } from './tabs/tabModel';
 import { useDxfTabs } from './tabs/useDxfTabs';
 
-interface AppProps {
+interface AppShellProps {
   editor?: boolean;
   initialFiles?: DxfTabSource[];
 }
@@ -16,7 +16,7 @@ interface TabContextMenuState {
   y: number;
 }
 
-function App({ editor = true, initialFiles = [] }: AppProps) {
+function AppShell({ editor = true, initialFiles = [] }: AppShellProps) {
   const tabsContainerRef = useRef<HTMLDivElement>(null);
   const globalFileInputRef = useRef<HTMLInputElement>(null);
   const [tabContextMenu, setTabContextMenu] = useState<TabContextMenuState | null>(null);
@@ -196,7 +196,7 @@ function App({ editor = true, initialFiles = [] }: AppProps) {
       )}
       <div className="tabs-content">
         {tabs.length === 0 ? (
-          <DxfViewerMain showOpenMenu={editor} onOpenFiles={openFiles} tabStrip={tabStrip} />
+          <DxfViewer showOpenMenu={editor} onOpenFiles={openFiles} tabStrip={tabStrip} />
         ) : (
           tabs.map(tab => (
             <div
@@ -207,7 +207,7 @@ function App({ editor = true, initialFiles = [] }: AppProps) {
                 pointerEvents: effectiveActiveTabId === tab.id ? 'auto' : 'none'
               }}
             >
-              <DxfViewerMain
+              <DxfViewer
                 initFile={tab.file || tab.url}
                 fileName={tab.name}
                 showOpenMenu={editor}
@@ -222,4 +222,4 @@ function App({ editor = true, initialFiles = [] }: AppProps) {
   );
 }
 
-export default App;
+export default AppShell;

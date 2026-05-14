@@ -1,5 +1,5 @@
-import { CAD_DEFAULT_TEXT_STYLE } from '../../../shared/constants/cadConstants';
-import { DxfStyle } from '../../../types';
+import { CAD_DEFAULT_TEXT_STYLE } from '../../shared/constants/cadConstants';
+import { DxfStyle } from '../../types';
 
 /** CAD 字体回退栈，优先保证中文工程图可读性。 */
 export const FONT_STACKS = {

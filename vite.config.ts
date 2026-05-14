@@ -10,7 +10,7 @@ export default defineConfig({
     outDir: 'dist',
     cssCodeSplit: false,
     lib: {
-      entry: path.resolve(__dirname, 'src/index.tsx'),
+      entry: path.resolve(__dirname, 'src/index.ts'),
       name: 'DxfViewer',
       fileName: format => `dxfviewer.${format}.js`,
       formats: ['es', 'umd']
@@ -37,7 +37,7 @@ export default defineConfig({
       rollupTypes: true,
       insertTypesEntry: true,
       include: ['src/**/*.ts', 'src/**/*.tsx'],
-      exclude: ['src/main.tsx', 'src/App.tsx']
+      exclude: ['src/main.tsx']
     })
   ],
   resolve: {

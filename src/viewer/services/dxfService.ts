@@ -1,10 +1,10 @@
-import { CAD_BY_LAYER_COLOR, CAD_DEFAULT_LAYER_COLOR, CAD_DEFAULT_LAYER_NAME, CAD_DEFAULT_TEXT_HEIGHT, CAD_DEFAULT_TEXT_STYLE } from '../../../shared/constants/cadConstants';
-import { DEFAULT_TEXT_STYLE, EXTENTS_CONFIG, TABLE_EXTENTS_CONFIG, LEADER_RENDER_CONFIG, TEXT_RENDER_CONFIG } from '../../../shared/config/viewerConfig';
-import { AnyEntity, DxfData, EntityType, DxfLayer, DxfBlock, Point2D, Point3D, DxfHatch, HatchLoop, HatchEdge, DxfStyle, DxfPolyline, DxfInsert, DxfHeader, DxfSpline, DxfText, DxfLeader, DxfTable, DxfLineType, DxfMLeader, DxfMLine } from '../../../types';
+import { CAD_BY_LAYER_COLOR, CAD_DEFAULT_LAYER_COLOR, CAD_DEFAULT_LAYER_NAME, CAD_DEFAULT_TEXT_HEIGHT, CAD_DEFAULT_TEXT_STYLE } from '../../shared/constants/cadConstants';
+import { DEFAULT_TEXT_STYLE, EXTENTS_CONFIG, TABLE_EXTENTS_CONFIG, LEADER_RENDER_CONFIG, TEXT_RENDER_CONFIG } from '../../shared/config/viewerConfig';
+import { AnyEntity, DxfData, EntityType, DxfLayer, DxfBlock, Point2D, Point3D, DxfHatch, HatchLoop, HatchEdge, DxfStyle, DxfPolyline, DxfInsert, DxfHeader, DxfSpline, DxfText, DxfLeader, DxfTable, DxfLineType, DxfMLeader, DxfMLine } from '../../types';
 export { cleanMText };
 import { cleanMText, getCadTextExtents, pointsToExtents } from '../utils/textUtils';
-import { sampleBulgeSegment } from '../../../core/geometry/bulge';
-import { sampleEllipsePoints, sampleHatchLoop, sampleSplinePoints } from '../../../core/geometry/curveSampling';
+import { sampleBulgeSegment } from '../../core/geometry/bulge';
+import { sampleEllipsePoints, sampleHatchLoop, sampleSplinePoints } from '../../core/geometry/curveSampling';
 
 class DxfParserState {
   private text: string;

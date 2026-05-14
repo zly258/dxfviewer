@@ -1,4 +1,4 @@
-import { DEFAULT_ENTITY_COLOR } from '../../../shared/config/viewerConfig';
+import { DEFAULT_ENTITY_COLOR } from '../../shared/config/viewerConfig';
 
 export const AUTO_CAD_COLORS: Record<number, string> = {
   1: '#FF0000',

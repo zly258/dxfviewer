@@ -1,15 +1,15 @@
 import React, { useRef, useState, WheelEvent, MouseEvent, useEffect, useLayoutEffect, useCallback } from 'react';
-import { AnyEntity, ViewPort, DxfLayer, DxfBlock, DxfStyle, DxfLineType, EntityType, Point2D } from '../../../types';
+import { AnyEntity, ViewPort, DxfLayer, DxfBlock, DxfStyle, DxfLineType, EntityType, Point2D } from '../../types';
 import { renderEntitiesToCanvas, hitTest, hitTestBox } from '../services/canvasRenderService';
-import { Language } from '../../../constants/i18n';
-import { SELECTION_CONFIG, SHORTCUT_CONFIG, VIEWER_DEFAULTS } from '../../../shared/config/viewerConfig';
-import { CanvasTheme, DrawingColorMode } from '../../../shared/types/ui';
+import { Language } from '../../constants/i18n';
+import { SELECTION_CONFIG, SHORTCUT_CONFIG, VIEWER_DEFAULTS } from '../../shared/config/viewerConfig';
+import { CanvasTheme, DrawingColorMode } from '../../shared/types/ui';
 
 /**
- * DXF 渲染核心组件
+ * Canvas 渲染核心组件
  * 负责 Canvas 渲染、坐标转换、缩放平移交互以及拾取逻辑
  */
-interface DxfViewerProps {
+interface CanvasViewerProps {
   entities: AnyEntity[]; // 要渲染的实体列表
   layers: Record<string, DxfLayer>; // 图层信息
   blocks?: Record<string, DxfBlock>; // 块定义
@@ -30,7 +30,7 @@ interface DxfViewerProps {
   onRenderError?: (message: string | null) => void; // 渲染异常回调
 }
 
-const DxfViewer: React.FC<DxfViewerProps> = ({ 
+const CanvasViewer: React.FC<CanvasViewerProps> = ({ 
     entities, 
     layers, 
     blocks = {}, 
@@ -339,4 +339,4 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
   );
 };
 
-export default DxfViewer;
+export default CanvasViewer;

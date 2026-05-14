@@ -1,15 +1,15 @@
-import { AnyEntity, EntityType, DxfLayer, DxfBlock, DxfStyle, Point2D, DxfInsert, HatchLoop, DxfText, DxfLineType, ViewPort } from '../../../types';
-import { CANVAS_THEME_COLORS, SELECTION_CONFIG, TEXT_RENDER_CONFIG, LEADER_RENDER_CONFIG, TABLE_EXTENTS_CONFIG, LINE_RENDER_CONFIG } from '../../../shared/config/viewerConfig';
-import { CAD_BY_BLOCK_COLOR, CAD_BY_LAYER_COLOR, CAD_DEFAULT_TEXT_HEIGHT, CAD_DEFAULT_TEXT_STYLE } from '../../../shared/constants/cadConstants';
-import { CanvasTheme, DrawingColorMode } from '../../../shared/types/ui';
+import { AnyEntity, EntityType, DxfLayer, DxfBlock, DxfStyle, Point2D, DxfInsert, HatchLoop, DxfText, DxfLineType, ViewPort } from '../../types';
+import { CANVAS_THEME_COLORS, SELECTION_CONFIG, TEXT_RENDER_CONFIG, LEADER_RENDER_CONFIG, TABLE_EXTENTS_CONFIG, LINE_RENDER_CONFIG } from '../../shared/config/viewerConfig';
+import { CAD_BY_BLOCK_COLOR, CAD_BY_LAYER_COLOR, CAD_DEFAULT_TEXT_HEIGHT, CAD_DEFAULT_TEXT_STYLE } from '../../shared/constants/cadConstants';
+import { CanvasTheme, DrawingColorMode } from '../../shared/types/ui';
 import { getAutoCadColor, AUTO_CAD_COLORS } from '../utils/colorUtils';
 import { resolveEntityColor } from '../utils/entityColor';
-import { sampleBulgeSegment } from '../../../core/geometry/bulge';
-import { sampleEllipsePoints, sampleHatchLoop, sampleSplinePoints } from '../../../core/geometry/curveSampling';
-import { resolveCadStrokeStyle } from '../../../core/symbology/lineStyle';
+import { sampleBulgeSegment } from '../../core/geometry/bulge';
+import { sampleEllipsePoints, sampleHatchLoop, sampleSplinePoints } from '../../core/geometry/curveSampling';
+import { resolveCadStrokeStyle } from '../../core/symbology/lineStyle';
 import { getStyleFontFamily, FONT_STACKS, mapCadFontToWebFont, resolveCadTextFontProfile } from './fontService';
 import { cleanCadText, cleanMText, estimateCadTextLayout, getCadTextAnchorPosition, getEffectiveTextHeight, splitCadFormattedText } from '../utils/textUtils';
-import { buildCadTextLayout } from '../../../core/text/TextLayoutEngine';
+import { buildCadTextLayout } from '../../core/text/TextLayoutEngine';
 
 const SELECTION_COLOR = SELECTION_CONFIG.color;
 
@@ -388,7 +388,7 @@ export const renderEntitiesToCanvas = (
         if (ent.visible === false || depth > 20) return;
 
         // 剔除 (Culling)：检查实体范围是否与视口重叠
-        // depth === 0 表示顶层实体，通常只有顶层实体具有预计算的包围盒
+        // 递归深度为 0 表示顶层实体，通常只有顶层实体具有预计算的包围盒
         if (depth === 0 && ent.extents) {
             if (ent.extents.max.x < vMinX || ent.extents.min.x > vMaxX ||
                 ent.extents.max.y < vMinY || ent.extents.min.y > vMaxY) {
@@ -636,9 +636,9 @@ export const renderEntitiesToCanvas = (
 
                     layout.lines.forEach(line => {
                         if (line.formatted) {
-                            drawFormattedSegmentsLine(line.formatted.segments, line.formatted.plainText, line.x, line.y, layout.align, layout.baseline, layout.visualScreenHeight);
+                            drawFormattedSegmentsLine(line.formatted.segments, line.formatted.plainText, line.x, line.y, line.align, layout.baseline, layout.visualScreenHeight);
                         } else {
-                            drawFormattedTextLine(line.text, line.text, line.x, line.y, layout.align, layout.baseline, layout.visualScreenHeight);
+                            drawFormattedTextLine(line.text, line.text, line.x, line.y, line.align, layout.baseline, layout.visualScreenHeight);
                         }
                     });
                 } else if ((hAlign === 3 || hAlign === 5) && ent.secondPosition) {

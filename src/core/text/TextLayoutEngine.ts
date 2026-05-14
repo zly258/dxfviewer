@@ -14,8 +14,8 @@ import {
   getTextVerticalCanvasBaseline,
   splitCadFormattedLines,
   CadFormattedTextLine,
-} from '../../features/dxf-viewer/utils/textUtils';
-import { resolveCadTextFontProfile } from '../../features/dxf-viewer/services/fontService';
+} from '../../viewer/utils/textUtils';
+import { resolveCadTextFontProfile } from '../../viewer/services/fontService';
 
 export interface CadTextLayoutInput {
   entity: DxfText;
@@ -31,6 +31,7 @@ export interface CadTextLineLayout {
   formatted?: CadFormattedTextLine;
   x: number;
   y: number;
+  align: CanvasTextAlign;
 }
 
 export interface CadTextLayoutResult {
@@ -127,7 +128,7 @@ export const buildCadTextLayout = ({
       boxLeft: 0,
       boxTop: 0,
       lineHeight: visualScreenHeight,
-      lines: [{ text: plainText, width: measuredWidth, x: 0, y: 0 }],
+      lines: [{ text: plainText, width: measuredWidth, x: 0, y: 0, align }],
     };
   }
 
@@ -164,15 +165,24 @@ export const buildCadTextLayout = ({
   const align = getMTextCanvasAlignFromEntity(entity);
   const boxLeft = [2, 5, 8].includes(attachmentPoint) ? -blockWidth / 2 : ([3, 6, 9].includes(attachmentPoint) ? -blockWidth : 0);
   const boxTop = getMTextLocalTopOffset(attachmentPoint, blockHeight);
-  const lineX = align === 'center' ? boxLeft + blockWidth / 2 : (align === 'right' ? boxLeft + blockWidth : boxLeft);
+  const getLineX = (lineAlign: CanvasTextAlign) => {
+    if (lineAlign === 'center') return boxLeft + blockWidth / 2;
+    if (lineAlign === 'right' || lineAlign === 'end') return boxLeft + blockWidth;
+    return boxLeft;
+  };
 
-  const lines: CadTextLineLayout[] = sourceLines.map((line, index) => ({
-    text: line,
-    width: lineWidths[index] || 0,
-    formatted: useFormattedLines ? formattedLines[index] : undefined,
-    x: lineX,
-    y: boxTop + index * lineHeight,
-  }));
+  const lines: CadTextLineLayout[] = sourceLines.map((line, index) => {
+    const formatted = useFormattedLines ? formattedLines[index] : undefined;
+    const lineAlign = formatted?.align || align;
+    return {
+      text: line,
+      width: lineWidths[index] || 0,
+      formatted,
+      x: getLineX(lineAlign),
+      y: boxTop + index * lineHeight,
+      align: lineAlign,
+    };
+  });
 
   return {
     isMText,

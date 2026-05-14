@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Language, UI_TRANSLATIONS } from '../../../constants/i18n';
-import { CanvasTheme, DrawingColorMode, UiTheme } from '../../../shared/types/ui';
+import { Language, UI_TRANSLATIONS } from '../../constants/i18n';
+import { CanvasTheme, DrawingColorMode, UiTheme } from '../../shared/types/ui';
 
 interface ToolBarProps {
   onImport: (files: File[]) => void;
@@ -8,10 +8,6 @@ interface ToolBarProps {
   onFitView: () => void;
   showDrawingExtents: boolean;
   onToggleDrawingExtents: () => void;
-  showSidebar: boolean;
-  onToggleSidebar: () => void;
-  showProperties: boolean;
-  onToggleProperties: () => void;
   showOpen?: boolean;
   uiTheme: UiTheme;
   onSetUiTheme: (theme: UiTheme) => void;
@@ -31,10 +27,6 @@ const ToolBar: React.FC<ToolBarProps> = ({
   onFitView,
   showDrawingExtents,
   onToggleDrawingExtents,
-  showSidebar,
-  onToggleSidebar,
-  showProperties,
-  onToggleProperties,
   showOpen = true,
   uiTheme,
   onSetUiTheme,
@@ -108,7 +100,7 @@ const ToolBar: React.FC<ToolBarProps> = ({
                 <span>{isZh ? '打开 DXF...' : 'Open DXF...'}</span>
               </button>
               <button type="button" onClick={() => closeMenuAndRun(onClear)} className="dropdown-item">
-                <span>{isZh ? '清空当前图纸' : 'Clear Current Drawing'}</span>
+                <span>{isZh ? '关闭当前图纸' : 'Close Current Drawing'}</span>
               </button>
             </div>
           )}
@@ -124,14 +116,6 @@ const ToolBar: React.FC<ToolBarProps> = ({
         <span>{isZh ? '界面' : 'Interface'}</span>
         {activeMenu === 'interface' && (
           <div className="dropdown-menu" role="menu" onClick={(event) => event.stopPropagation()}>
-            <div className="dropdown-header">{isZh ? '面板' : 'Panels'}</div>
-            <button type="button" onClick={() => closeMenuAndRun(onToggleSidebar)} className={`dropdown-item ${showSidebar ? 'checked' : ''}`}>
-              <span>{t.layers}</span>
-            </button>
-            <button type="button" onClick={() => closeMenuAndRun(onToggleProperties)} className={`dropdown-item ${showProperties ? 'checked' : ''}`}>
-              <span>{t.properties}</span>
-            </button>
-            <div className="divider" />
             <div className="dropdown-header">{isZh ? '主题' : 'Theme'}</div>
             <button type="button" onClick={() => closeMenuAndRun(() => onSetUiTheme('light'))} className={`dropdown-item ${uiTheme === 'light' ? 'checked' : ''}`}>
               <span>{isZh ? '浅色' : 'Light'}</span>

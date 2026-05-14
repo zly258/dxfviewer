@@ -1,6 +1,6 @@
-import { TEXT_RENDER_CONFIG } from '../../../shared/config/viewerConfig';
-import { CAD_DEFAULT_TEXT_HEIGHT, CAD_DEFAULT_TEXT_STYLE } from '../../../shared/constants/cadConstants';
-import { DxfStyle, DxfText, EntityType, Point2D } from '../../../types';
+import { TEXT_RENDER_CONFIG } from '../../shared/config/viewerConfig';
+import { CAD_DEFAULT_TEXT_HEIGHT, CAD_DEFAULT_TEXT_STYLE } from '../../shared/constants/cadConstants';
+import { DxfStyle, DxfText, EntityType, Point2D } from '../../types';
 import { resolveCadTextFontProfile } from '../services/fontService';
 
 const TEMP_BACKSLASH = '\x01';
@@ -249,6 +249,7 @@ export function splitCadFormattedText(rawText: string): CadFormattedTextSegment[
 export interface CadFormattedTextLine {
   segments: CadFormattedTextSegment[];
   plainText: string;
+  align?: CanvasTextAlign;
 }
 
 const flushFormattedBuffer = (lines: CadFormattedTextLine[], segments: CadFormattedTextSegment[], bufferState: { value: string }, underline: boolean) => {
@@ -258,10 +259,10 @@ const flushFormattedBuffer = (lines: CadFormattedTextLine[], segments: CadFormat
   bufferState.value = '';
 };
 
-const pushFormattedLine = (lines: CadFormattedTextLine[], segments: CadFormattedTextSegment[]) => {
+const pushFormattedLine = (lines: CadFormattedTextLine[], segments: CadFormattedTextSegment[], align?: CanvasTextAlign) => {
   const filtered = segments.filter(segment => segment.text.length > 0);
   const plainText = filtered.map(segment => segment.text).join('');
-  lines.push({ segments: filtered, plainText });
+  lines.push({ segments: filtered, plainText, align });
 };
 
 export function splitCadFormattedLines(rawText: string): CadFormattedTextLine[] {
@@ -271,12 +272,25 @@ export function splitCadFormattedLines(rawText: string): CadFormattedTextLine[] 
   let segments: CadFormattedTextSegment[] = [];
   const buffer = { value: '' };
   let underline = false;
+  let currentAlign: CanvasTextAlign | undefined = getInlineMTextParagraphAlign(rawText) || undefined;
 
   const flush = () => flushFormattedBuffer(lines, segments, buffer, underline);
   const newLine = () => {
     flush();
-    pushFormattedLine(lines, segments);
+    pushFormattedLine(lines, segments, currentAlign);
     segments = [];
+  };
+  const readParagraphAlign = (startIndex: number): { endIndex: number; align?: CanvasTextAlign } | null => {
+    const end = rawText.indexOf(';', startIndex);
+    if (end < 0) return null;
+    const content = rawText.slice(startIndex, end);
+    const match = content.match(/q([lcrj])/i);
+    if (!match) return { endIndex: end };
+    const code = match[1].toLowerCase();
+    return {
+      endIndex: end,
+      align: code === 'c' ? 'center' : code === 'r' ? 'right' : 'left',
+    };
   };
 
   for (let index = 0; index < rawText.length; index++) {
@@ -294,9 +308,13 @@ export function splitCadFormattedLines(rawText: string): CadFormattedTextLine[] 
       continue;
     }
     if (next === 'P' || next === 'p') {
-      const end = rawText.indexOf(';', index + 2);
-      if (end >= 0 && rawText.slice(index + 2, end).includes('q')) index = end;
-      else index++;
+      const paragraph = readParagraphAlign(index + 2);
+      if (paragraph) {
+        currentAlign = paragraph.align || currentAlign;
+        index = paragraph.endIndex;
+      } else {
+        index++;
+      }
       newLine();
       continue;
     }
@@ -338,7 +356,7 @@ export function splitCadFormattedLines(rawText: string): CadFormattedTextLine[] 
   }
 
   flush();
-  pushFormattedLine(lines, segments);
+  pushFormattedLine(lines, segments, currentAlign);
   return lines.filter(line => line.plainText.length > 0);
 }
 
