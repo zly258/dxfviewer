@@ -235,9 +235,14 @@ export function splitCadFormattedText(rawText: string): CadFormattedTextSegment[
       index++;
       continue;
     }
-    if (next === 'P' || next === 'p') {
+    if (next === 'P') {
       buffer += '\\P';
       index++;
+      continue;
+    }
+    if (next === 'p') {
+      const end = rawText.indexOf(';', index + 2);
+      index = end >= 0 ? end : index + 1;
       continue;
     }
     buffer += char;

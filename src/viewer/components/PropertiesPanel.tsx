@@ -2,7 +2,6 @@ import React from 'react';
 import { AnyEntity, EntityType, DxfStyle } from '../../types';
 import { getAutoCadColor } from '../utils/colorUtils';
 import { Language, UI_TRANSLATIONS, ENTITY_TYPE_NAMES } from '../../constants/i18n';
-import { getStyleFontFamily } from '../services/fontService';
 import { CAD_BY_BLOCK_COLOR, CAD_BY_LAYER_COLOR, CAD_DEFAULT_LAYER_COLOR, CAD_DEFAULT_TEXT_STYLE } from '../../shared/constants/cadConstants';
 
 /**
@@ -157,34 +156,15 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, styles = {}
               const textEnt = ent;
               const styleName = textEnt.styleName || CAD_DEFAULT_TEXT_STYLE;
               const style = styles[styleName] || styles[styleName.toUpperCase()];
-              const fontFamily = getStyleFontFamily(styleName, styles);
-              const primaryFontFile = style?.fontFileName || '';
-              const bigFontFile = style?.bigFontFileName || '';
-              const isShxFont = /\.shx$/i.test(primaryFontFile) || /\.shx$/i.test(bigFontFile);
-              
-              // 字体面板优先显示 CAD 原始字体，系统字体只作为 SHX 缺失时的回退说明。
-              let friendlyFont = isShxFont
-                  ? `SHX：${primaryFontFile || '未指定'}${bigFontFile ? ` + ${bigFontFile}` : ''}`
-                  : "Sans-Serif";
-              if (!isShxFont) {
-                  if (fontFamily.includes("FangSong") || fontFamily.includes("仿宋")) friendlyFont = "仿宋 (FangSong)";
-                  else if (fontFamily.includes("SimSun") || fontFamily.includes("宋体")) friendlyFont = "宋体 (SimSun)";
-                  else if (fontFamily.includes("SimHei") || fontFamily.includes("黑体")) friendlyFont = "黑体 (SimHei)";
-                  else if (fontFamily.includes("SimKai") || fontFamily.includes("楷体")) friendlyFont = "楷体 (SimKai)";
-                  else if (fontFamily.includes("Microsoft YaHei")) friendlyFont = "微软雅黑 (YaHei)";
-                  else if (fontFamily.includes("Arial")) friendlyFont = "Arial";
-                  else if (fontFamily.includes("Times New Roman")) friendlyFont = "Times New Roman";
-              }
+              const primaryFontFile = (style?.fontFileName || '').trim();
+              const bigFontFile = (style?.bigFontFileName || '').trim();
+              const friendlyFont = primaryFontFile || bigFontFile || style?.name || styleName;
 
               specificRows = [
                   renderPropertyRow("Content", <span className="text-xs">{ent.value.substring(0, 50)}{ent.value.length > 50 && "..."}</span>),
                   renderPropertyRow("Height", ent.height.toFixed(4)),
                   renderPropertyRow("StyleName", styleName),
-                  renderPropertyRow("Font", <div>
-                      <div className="font-semibold">{friendlyFont}</div>
-                      {style && isShxFont && <div className="text-[10px] text-gray-400">回退：{fontFamily}</div>}
-                      {style && !isShxFont && <div className="text-[10px] text-gray-400">{style.fontFileName}{style.bigFontFileName ? ` | ${style.bigFontFileName}` : ''}</div>}
-                  </div>),
+                  renderPropertyRow("Font", <span className="font-semibold">{friendlyFont}</span>),
                   renderPropertyRow("Pos X", formatCoord(ent.position.x, 'x')),
                   renderPropertyRow("Pos Y", formatCoord(ent.position.y, 'y')),
                   renderPropertyRow("Rotation", `${ent.rotation?.toFixed(1)}°`),

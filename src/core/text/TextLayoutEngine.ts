@@ -152,6 +152,18 @@ const measureCanvasText = (context: CanvasRenderingContext2D, value: string): nu
   return Math.max(metrics.width || 0, actual || 0);
 };
 
+const getMeasuredTextBoxHeight = (textHeight: number, isMText: boolean): number => {
+  return isMText
+    ? textHeight
+    : textHeight * TEXT_RENDER_CONFIG.mtextMinimumLineHeightFactor;
+};
+
+const getMTextLineHeight = (visualScreenHeight: number, lineSpacingFactor: number): number => {
+  const rawLineHeight = visualScreenHeight * TEXT_RENDER_CONFIG.mtextDefaultLineSpacingFactor * lineSpacingFactor;
+  const minLineHeight = visualScreenHeight * TEXT_RENDER_CONFIG.mtextMinimumLineHeightFactor;
+  return Math.max(rawLineHeight, minLineHeight);
+};
+
 const measureCadText = (
   context: CanvasRenderingContext2D,
   value: string,
@@ -199,10 +211,10 @@ export const buildCadTextLayout = ({
       align,
       baseline,
       blockWidth: measuredWidth,
-      blockHeight: visualScreenHeight,
+      blockHeight: getMeasuredTextBoxHeight(visualScreenHeight, false),
       boxLeft: 0,
       boxTop: 0,
-      lineHeight: visualScreenHeight,
+      lineHeight: getMeasuredTextBoxHeight(visualScreenHeight, false),
       lines: [{ text: plainText, width: measuredWidth, x: 0, y: 0, align }],
     };
   }
@@ -215,11 +227,11 @@ export const buildCadTextLayout = ({
   const useFormattedLines = noWrap || maxWidth <= 0;
   const sourceLines = useFormattedLines
     ? (formattedLines.length > 0 ? formattedLines.map(line => line.plainText) : plainText.split('\n'))
-    : wrapTextByMeasuredWidth(measureWidth, plainText, maxWidth);
+    : wrapTextByMeasuredWidth(measureWidth, plainText, maxWidth * TEXT_RENDER_CONFIG.mtextDeclaredWidthToleranceFactor);
 
   const lineSpacingRaw = Number((entity as any).lineSpacingFactor);
   const lineSpacingFactor = clampNumber(Number.isFinite(lineSpacingRaw) && lineSpacingRaw > 0 ? lineSpacingRaw : 1, TEXT_RENDER_CONFIG.mtextLineSpacingMinFactor, TEXT_RENDER_CONFIG.mtextLineSpacingMaxFactor);
-  const lineHeight = visualScreenHeight * TEXT_RENDER_CONFIG.mtextDefaultLineSpacingFactor * lineSpacingFactor;
+  const lineHeight = getMTextLineHeight(visualScreenHeight, lineSpacingFactor);
   const lineWidths = sourceLines.map(line => measureWidth(line));
   const maxLineWidth = Math.max(...lineWidths, 0);
 
@@ -234,7 +246,7 @@ export const buildCadTextLayout = ({
   const estimatedWidth = estimatedLayout.blockWidth * worldToScreenScale / Math.max(TEXT_RENDER_CONFIG.minimumWidthFactor, Math.abs(horizontalScale));
   const measuredWidthWithPadding = maxLineWidth * TEXT_RENDER_CONFIG.mtextLineWidthMeasurePaddingFactor;
   const blockWidth = declaredWidth > 0
-    ? Math.max(declaredWidth, Math.min(Math.max(measuredWidthWithPadding, actualWidth), declaredWidth * TEXT_RENDER_CONFIG.mtextActualWidthTrustFactor))
+    ? declaredWidth
     : Math.max(measuredWidthWithPadding, actualWidth, estimatedWidth * TEXT_RENDER_CONFIG.mtextLineWidthMeasurePaddingFactor);
   const measuredHeight = sourceLines.length > 0 ? (sourceLines.length - 1) * lineHeight + visualScreenHeight : visualScreenHeight;
   const declaredHeight = Number((entity as any).boxHeight) > 0 ? Number((entity as any).boxHeight) * worldToScreenScale : 0;

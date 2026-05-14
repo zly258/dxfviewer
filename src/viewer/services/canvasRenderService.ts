@@ -373,6 +373,11 @@ export const renderEntitiesToCanvas = (
         ctx.restore();
     };
 
+    const getShxGlyphSize = (textHeightPixels: number) => textHeightPixels * Math.min(
+        TEXT_RENDER_CONFIG.shxGlyphSizeMaxFactor,
+        Math.max(TEXT_RENDER_CONFIG.shxGlyphSizeMinFactor, TEXT_RENDER_CONFIG.shxGlyphSizeFactor),
+    );
+
     const drawShxText = (text: string, x: number, y: number, baseline: CanvasTextBaseline, textHeightPixels: number, shxFontNames: string[]) => {
         let cursorX = x;
         let glyphCount = 0;
@@ -385,7 +390,7 @@ export const renderEntitiesToCanvas = (
         for (const { char, profile } of glyphs) {
             if (char === '\r' || char === '\n') continue;
             if (char === ' ' || char === '\t') {
-                cursorX += textHeightPixels * TEXT_RENDER_CONFIG.spaceCharacterWidthFactor;
+                cursorX += getShxGlyphSize(textHeightPixels) * TEXT_RENDER_CONFIG.spaceCharacterWidthFactor;
                 continue;
             }
 

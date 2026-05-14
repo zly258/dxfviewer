@@ -205,6 +205,14 @@ const toFiniteNumber = (value: unknown, fallback = 0): number => {
   return Number.isFinite(numberValue) ? numberValue : fallback;
 };
 
+const getEffectiveGlyphSize = (size: number): number => {
+  const factor = Math.min(
+    TEXT_RENDER_CONFIG.shxGlyphSizeMaxFactor,
+    Math.max(TEXT_RENDER_CONFIG.shxGlyphSizeMinFactor, TEXT_RENDER_CONFIG.shxGlyphSizeFactor),
+  );
+  return size * factor;
+};
+
 const shapeToGlyphProfile = (shape: ShxShape | null | undefined, size: number): ShxGlyphProfile | null => {
   if (!shape) return null;
   const polylines = (shape.polylines || [])
@@ -236,11 +244,12 @@ const shapeToGlyphProfile = (shape: ShxShape | null | undefined, size: number): 
 };
 
 const getGlyphProfileFromFont = (loaded: LoadedShxFont, charCode: number, size: number): ShxGlyphProfile | null => {
-  const cacheKey = `${charCode}:${size.toFixed(3)}`;
+  const glyphSize = getEffectiveGlyphSize(size);
+  const cacheKey = `${charCode}:${glyphSize.toFixed(3)}`;
   if (loaded.cache.has(cacheKey)) return loaded.cache.get(cacheKey) || null;
 
   const profile = loaded.font.hasChar(charCode)
-    ? shapeToGlyphProfile(loaded.font.getCharShape(charCode, size), size)
+    ? shapeToGlyphProfile(loaded.font.getCharShape(charCode, glyphSize), glyphSize)
     : null;
   loaded.cache.set(cacheKey, profile);
   return profile;
@@ -271,13 +280,14 @@ export const measureShxTextRunSync = (
   const loadedFontCount = fontNames.reduce((count, fontName) => count + (getLoadedShxFontSync(fontName) ? 1 : 0), 0);
   if (loadedFontCount === 0) return null;
 
+  const glyphSize = getEffectiveGlyphSize(size);
   let width = 0;
   let glyphCount = 0;
   let fallbackCount = 0;
   for (const char of text) {
     if (char === '\n' || char === '\r') continue;
     if (char === ' ' || char === '\t') {
-      width += size * TEXT_RENDER_CONFIG.spaceCharacterWidthFactor;
+      width += glyphSize * TEXT_RENDER_CONFIG.spaceCharacterWidthFactor;
       continue;
     }
     const code = char.codePointAt(0) || char.charCodeAt(0);
@@ -286,7 +296,7 @@ export const measureShxTextRunSync = (
       width += profile.advanceWidth;
       glyphCount++;
     } else {
-      width += Math.max(fallbackWidth(char), size * TEXT_RENDER_CONFIG.averageCharacterWidthFactor);
+      width += Math.max(fallbackWidth(char), glyphSize * TEXT_RENDER_CONFIG.averageCharacterWidthFactor);
       fallbackCount++;
     }
   }
