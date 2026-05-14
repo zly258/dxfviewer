@@ -1,7 +1,6 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "experimentalDecorators": true,
     "useDefineForClassFields": false,
     "module": "ESNext",
     "lib": [
@@ -10,28 +9,24 @@
       "DOM.Iterable"
     ],
     "skipLibCheck": true,
-    "types": [
-      "node"
-    ],
     "moduleResolution": "bundler",
     "isolatedModules": true,
     "moduleDetection": "force",
-    "allowJs": true,
     "jsx": "react-jsx",
+    "strict": true,
+    "noEmit": true,
     "paths": {
-      "@/*": [
-        "./src/*"
+      "@zhangly1403/dxfviewer": [
+        "../dist/index.d.ts"
+      ],
+      "@zhangly1403/dxfviewer/style.css": [
+        "../dist/style.css"
       ]
     },
-    "allowImportingTsExtensions": true,
-    "noEmit": true
+    "types": [
+      "vite/client"
+    ]
   },
-  "exclude": [
-    "node_modules",
-    "dist",
-    "dist-example",
-    "dxfviewer-example/dist"
-  ],
   "include": [
     "src"
   ]

@@ -1,11 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import DxfViewer from '../viewer/DxfViewer';
-import '../styles/App.css';
 import { SHORTCUT_CONFIG, VIEWER_DEFAULTS } from '../shared/config/viewerConfig';
 import { DxfTabSource } from './tabs/tabModel';
 import { useDxfTabs } from './tabs/useDxfTabs';
 
-interface AppShellProps {
+export interface AppShellProps {
   editor?: boolean;
   initialFiles?: DxfTabSource[];
 }

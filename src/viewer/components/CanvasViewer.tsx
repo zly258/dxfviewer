@@ -85,7 +85,7 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
     return Math.max(Math.min(value, max), min);
   };
 
-  const renderRef = useRef<number>();
+  const renderRef = useRef<number | undefined>(undefined);
 
 
   // SHX 字体是异步读取的，字体加载完成后需要主动重绘当前画布。

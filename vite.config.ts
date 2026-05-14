@@ -2,47 +2,97 @@ import path from 'path';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import dts from 'vite-plugin-dts';
-import cssInjectedByJsPlugin from 'vite-plugin-css-injected-by-js';
+
+const libraryEntry = path.resolve(__dirname, 'src/index.ts');
+const isExternalPackage = (id: string) =>
+  id === 'react' ||
+  id === 'react-dom' ||
+  id === 'react-dom/client' ||
+  id === 'react/jsx-runtime';
+
+const normalizePath = (value: string) => value.replace(/\\/g, '/');
 
 export default defineConfig({
-  base: '/',
   build: {
     outDir: 'dist',
-    cssCodeSplit: false,
+    emptyOutDir: true,
+    cssCodeSplit: true,
+    sourcemap: false,
+    assetsInlineLimit: 0,
+    chunkSizeWarningLimit: 150,
     lib: {
-      entry: path.resolve(__dirname, 'src/index.ts'),
+      entry: libraryEntry,
       name: 'DxfViewer',
-      fileName: format => `dxfviewer.${format}.js`,
-      formats: ['es', 'umd']
+      fileName: () => 'dxfviewer.js',
+      formats: ['es'],
     },
     minify: 'terser',
+    terserOptions: {
+      module: true,
+      toplevel: true,
+      compress: {
+        passes: 2,
+        pure_getters: true,
+      },
+      mangle: {
+        toplevel: true,
+      },
+      format: {
+        comments: false,
+      },
+    },
     rollupOptions: {
-      external: ['react', 'react-dom'],
+      external: isExternalPackage,
       output: {
-        globals: {
-          react: 'React',
-          'react-dom': 'ReactDOM'
-        }
-      }
-    }
+        entryFileNames: 'dxfviewer.js',
+        chunkFileNames: 'chunks/[name]-[hash].js',
+        manualChunks(id) {
+          const moduleId = normalizePath(id);
+
+          if (moduleId.includes('node_modules/@mlightcad/shx-parser')) {
+            return 'vendor-shx';
+          }
+
+          if (moduleId.includes('/src/viewer/services/canvasRenderService') || moduleId.includes('/src/core/text/')) {
+            return 'viewer-render';
+          }
+
+          if (moduleId.includes('/src/viewer/services/dxfService') || moduleId.includes('/src/shared/utils/')) {
+            return 'viewer-loader';
+          }
+
+          if (moduleId.includes('/src/viewer/components/') || moduleId.includes('/src/app/')) {
+            return 'viewer-ui';
+          }
+
+          return undefined;
+        },
+        assetFileNames: assetInfo => {
+          if (assetInfo.name?.endsWith('.css')) {
+            return 'style.css';
+          }
+
+          return 'assets/[name]-[hash][extname]';
+        },
+      },
+    },
   },
   server: {
     port: 3000,
-    host: '0.0.0.0'
+    host: '0.0.0.0',
   },
   plugins: [
     react(),
-    cssInjectedByJsPlugin(),
     dts({
       rollupTypes: true,
       insertTypesEntry: true,
       include: ['src/**/*.ts', 'src/**/*.tsx'],
-      exclude: ['src/main.tsx']
-    })
+      exclude: ['src/main.tsx'],
+    }),
   ],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src')
-    }
-  }
+      '@': path.resolve(__dirname, './src'),
+    },
+  },
 });

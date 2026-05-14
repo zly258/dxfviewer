@@ -1,5 +1,4 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import '../styles/styles.css';
 import CanvasViewer from './components/CanvasViewer';
 import Sidebar from './components/Sidebar';
 import PropertiesPanel from './components/PropertiesPanel';
@@ -15,7 +14,7 @@ import { CanvasTheme, DrawingColorMode, UiTheme } from '../shared/types/ui';
  * DXF 查看器主容器组件
  * 负责解析文件、管理全局状态、协调侧边栏与主查看器的交互
  */
-interface DxfViewerProps {
+export interface DxfViewerProps {
   initFile?: string | File;
   fileName?: string;
   showOpenMenu?: boolean;
