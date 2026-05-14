@@ -1,11 +1,8 @@
-name: Pages
+name: Build and Deploy Example
 
 on:
-  push:
-    branches:
-      - main
-      - master
   pull_request:
+  push:
     branches:
       - main
       - master
@@ -21,48 +18,47 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
+  build-and-deploy:
     runs-on: ubuntu-latest
-
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Checkout
+      - name: 检出代码
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: 安装 Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
           registry-url: https://registry.npmjs.org/
+          cache: npm
 
-      - name: Clear npm proxy and registry
+      - name: 固定 npm 官方源
         run: |
           npm config delete proxy --location=user || true
           npm config delete https-proxy --location=user || true
           npm config set registry https://registry.npmjs.org/
           npm config set replace-registry-host always
-          npm config set package-lock false
+          npm config get registry
 
-      - name: Install dependencies
-        run: npm install --no-package-lock --registry=https://registry.npmjs.org/ --prefer-offline=false --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000
+      - name: 安装依赖
+        run: npm ci --registry=https://registry.npmjs.org/ --prefer-offline=false --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000
 
-      - name: Build
+      - name: 构建库和示例
         run: npm run build:all
 
-      - name: Upload Pages artifact
+      - name: 配置 GitHub Pages
+        if: github.event_name != 'pull_request'
+        uses: actions/configure-pages@v5
+
+      - name: 上传示例站点产物
         if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v3
         with:
           path: dxfviewer-example/dist
 
-  deploy:
-    if: github.event_name != 'pull_request'
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-
-    steps:
-      - name: Deploy to GitHub Pages
+      - name: 发布 Live Demo
+        if: github.event_name != 'pull_request'
         id: deployment
         uses: actions/deploy-pages@v4
