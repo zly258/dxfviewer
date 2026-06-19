@@ -25,6 +25,7 @@ function AppShell({ editor = true, initialFiles = [] }: AppShellProps) {
     activeTabId,
     setActiveTabId,
     openFiles,
+    openUrl,
     closeTab,
     closeAllTabs,
     closeOtherTabs,
@@ -61,6 +62,13 @@ function AppShell({ editor = true, initialFiles = [] }: AppShellProps) {
       openFiles(files);
     };
 
+    const handleGlobalUrlOpen = (event: Event) => {
+      const customEvent = event as CustomEvent<{ url: string }>;
+      if (customEvent.detail?.url) {
+        openUrl(customEvent.detail.url);
+      }
+    };
+
     const handleOpenRequest = () => {
       if (editor) globalFileInputRef.current?.click();
     };
@@ -78,15 +86,17 @@ function AppShell({ editor = true, initialFiles = [] }: AppShellProps) {
 
     window.addEventListener('open-dxf-file', handleGlobalOpen);
     window.addEventListener('open-dxf-files', handleGlobalOpen);
+    window.addEventListener('open-dxf-url', handleGlobalUrlOpen);
     window.addEventListener('request-open-dxf-file', handleOpenRequest);
     window.addEventListener('keydown', handleShortcut);
     return () => {
       window.removeEventListener('open-dxf-file', handleGlobalOpen);
       window.removeEventListener('open-dxf-files', handleGlobalOpen);
+      window.removeEventListener('open-dxf-url', handleGlobalUrlOpen);
       window.removeEventListener('request-open-dxf-file', handleOpenRequest);
       window.removeEventListener('keydown', handleShortcut);
     };
-  }, [editor, openFiles]);
+  }, [editor, openFiles, openUrl]);
 
   useEffect(() => {
     if (!tabContextMenu) return;

@@ -48,6 +48,19 @@ export const useDxfTabs = (editor: boolean, initialFiles: DxfTabSource[] = []) =
     if (nextActiveId) setActiveTabId(nextActiveId);
   }, [activeTabId, editor]);
 
+  const openUrl = useCallback((url: string) => {
+    if (!editor || !url) return;
+    const currentTabs = tabsRef.current;
+    const existingTab = currentTabs.find(tab => tab.url === url);
+    if (existingTab) {
+      setActiveTabId(existingTab.id);
+      return;
+    }
+    const tab = createDxfTab(url);
+    setTabs([...currentTabs, tab]);
+    setActiveTabId(tab.id);
+  }, [editor]);
+
   const closeTab = useCallback((id: string) => {
     if (!editor) return;
 
@@ -110,6 +123,7 @@ export const useDxfTabs = (editor: boolean, initialFiles: DxfTabSource[] = []) =
     activeTabId,
     setActiveTabId,
     openFiles,
+    openUrl,
     closeTab,
     closeAllTabs,
     closeOtherTabs,

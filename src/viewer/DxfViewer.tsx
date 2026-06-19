@@ -3,12 +3,13 @@ import CanvasViewer from './components/CanvasViewer';
 import Sidebar from './components/Sidebar';
 import PropertiesPanel from './components/PropertiesPanel';
 import ToolBar from './components/ToolBar';
-import { parseDxf, calculateExtents } from './services/dxfService';
-import { AnyEntity, ViewPort, DxfLayer, DxfBlock, EntityType, DxfStyle, DxfLineType, Point2D } from '../types';
+import { parseDxf } from '../core/parser/parseDxf';
+import { calculateExtents } from '../core/geometry/extents';
+import { serializeDxf } from '../core/writer/serializeDxf';
+import { AnyEntity, ViewPort, DxfLayer, DxfBlock, EntityType, DxfStyle, DxfLineType, Point2D, CanvasTheme, DrawingColorMode, UiTheme } from '../types';
 import { DEFAULT_LAYER, DEFAULT_VIEWPORT, LAYOUT_CONFIG, SHORTCUT_CONFIG, VIEWER_DEFAULTS, ZOOM_CONFIG } from '../shared/config/viewerConfig';
 import { Language } from '../constants/i18n';
 import { decodeDxfBuffer } from '../shared/utils/textDecoder';
-import { CanvasTheme, DrawingColorMode, UiTheme } from '../shared/types/ui';
 
 /**
  * DXF 查看器主容器组件
@@ -74,6 +75,17 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
   const savedUiSettingsRef = useRef<ViewerUiSettings>(readViewerUiSettings());
   const [entities, setEntities] = useState<AnyEntity[]>([]);
   const [layers, setLayers] = useState<Record<string, DxfLayer>>({ [DEFAULT_LAYER.name]: DEFAULT_LAYER });
+  const [hiddenLayers, setHiddenLayers] = useState<Set<string>>(new Set());
+  const [showAbout, setShowAbout] = useState(false);
+
+  const toggleLayerVisibility = useCallback((layerName: string) => {
+    setHiddenLayers(prev => {
+      const next = new Set(prev);
+      if (next.has(layerName)) next.delete(layerName);
+      else next.add(layerName);
+      return next;
+    });
+  }, []);
   const [blocks, setBlocks] = useState<Record<string, DxfBlock>>({});
   const [styles, setStyles] = useState<Record<string, DxfStyle>>({});
   const [lineTypes, setLineTypes] = useState<Record<string, DxfLineType>>({});
@@ -132,7 +144,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
 
   const fitView = useCallback((ents: AnyEntity[], blks: Record<string, DxfBlock>, currentStyles: Record<string, DxfStyle> = styles) => {
     if (ents.length === 0) return;
-    const visibleEnts = ents.filter(e => e.visible !== false && e.type !== EntityType.ATTDEF);
+    const visibleEnts = ents.filter(e => e.visible !== false && e.type !== EntityType.ATTDEF && !hiddenLayers.has(e.layer));
     if (visibleEnts.length === 0) return;
 
     const extents = calculateExtents(visibleEnts, blks, currentStyles);
@@ -182,14 +194,14 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
         targetY: centerY, 
         zoom 
     });
-  }, [styles]);
+  }, [styles, hiddenLayers]);
 
   const drawingExtents = useMemo(() => {
     if (entities.length === 0) return null;
-    const visibleEnts = entities.filter(e => e.visible !== false && e.type !== EntityType.ATTDEF && e.type !== EntityType.ATTRIB);
+    const visibleEnts = entities.filter(e => e.visible !== false && e.type !== EntityType.ATTDEF && e.type !== EntityType.ATTRIB && !hiddenLayers.has(e.layer));
     if (visibleEnts.length === 0) return null;
     return calculateExtents(visibleEnts, blocks, styles);
-  }, [entities, blocks, styles]);
+  }, [entities, blocks, styles, hiddenLayers]);
 
   const processBuffer = async (buffer: ArrayBuffer) => {
     let decoded: ReturnType<typeof decodeDxfBuffer>;
@@ -385,8 +397,42 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
       setStyles({});
       setLineTypes({});
       setSelectedEntityIds(new Set());
+      setHiddenLayers(new Set());
       setViewPort(DEFAULT_VIEWPORT);
   };
+
+  const handleExportDxf = useCallback(() => {
+    try {
+      const dxfData = {
+        entities,
+        layers,
+        blocks,
+        styles,
+        lineTypes,
+        header: {
+          extMin: drawingExtents?.min || { x: -100, y: -100 },
+          extMax: drawingExtents?.max || { x: 100, y: 100 },
+          insUnits: 4,
+          ltScale,
+        },
+        offset: worldOffset,
+      };
+      const serialized = serializeDxf(dxfData);
+      const blob = new Blob([serialized], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${fileName ? fileName.replace(/\.dxf$/i, '') : 'export'}_export.dxf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      showToast(lang === 'zh' ? '导出成功！' : 'Exported successfully!', false);
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      showToast(lang === 'zh' ? `导出失败：${error.message}` : `Export failed: ${error.message}`);
+    }
+  }, [entities, layers, blocks, styles, lineTypes, drawingExtents, worldOffset, ltScale, fileName, lang]);
 
 
 
@@ -461,6 +507,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
           onSetDrawingColorMode={setDrawingColorMode}
           lang={lang}
           onSetLang={handleSetLang}
+          onShowAbout={() => setShowAbout(true)}
         />
         {tabStrip && <div className="menu-tab-strip">{tabStrip}</div>}
       </div>
@@ -472,6 +519,8 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
             selectedEntityIds={selectedEntityIds}
             onSelectIds={handleSidebarSelectIds}
             lang={lang}
+            hiddenLayers={hiddenLayers}
+            onToggleLayerVisibility={toggleLayerVisibility}
             />
         
         <main ref={viewerRef} className="viewer-container">
@@ -510,6 +559,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
             lang={lang}
             onMouseMoveWorld={(x, y) => setMouseCoords({x, y})}
             onRenderError={setRenderErrorMessage}
+            hiddenLayers={hiddenLayers}
           />
         </main>
 
@@ -545,6 +595,39 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
           </div>
         </div>
       </div>
+      
+      {showAbout && (
+        <div className="about-modal-overlay" onClick={() => setShowAbout(false)}>
+          <div className="about-modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="about-modal-header">
+              <span className="about-modal-title">{lang === 'zh' ? '关于 DXF Viewer' : 'About DXF Viewer'}</span>
+              <span className="about-modal-close" onClick={() => setShowAbout(false)}>×</span>
+            </div>
+            <div className="about-modal-body">
+              <div className="about-logo">CAD</div>
+              <h3>{lang === 'zh' ? 'DXF 浏览器' : 'DXF Viewer'}</h3>
+              <p className="about-desc">
+                {lang === 'zh' 
+                  ? '这是一个用 React 和 HTML5 Canvas 构建的高性能、现代化的 DXF CAD 图纸双向查看与编辑库。支持 20 多种几何体及标注实体的读写渲染。' 
+                  : 'A high-performance React and Canvas-based DXF viewer & writer library. Supports parsing, rendering, and exporting over 20+ CAD geometries.'}
+              </p>
+              <div className="about-info-grid">
+                <div className="about-info-label">{lang === 'zh' ? '联系邮箱' : 'Contact Email'}</div>
+                <div className="about-info-value">
+                  <a href="mailto:zhangly1403@qq.com" className="about-email-link">zhangly1403@qq.com</a>
+                </div>
+                <div className="about-info-label">{lang === 'zh' ? '开源协议' : 'License'}</div>
+                <div className="about-info-value">MIT License</div>
+              </div>
+            </div>
+            <div className="about-modal-footer">
+              <button type="button" className="about-modal-button" onClick={() => setShowAbout(false)}>
+                {lang === 'zh' ? '关闭' : 'Close'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

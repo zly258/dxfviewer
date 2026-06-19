@@ -26,10 +26,16 @@ export enum EntityType {
   IMAGE = 'IMAGE',
   WIPEOUT = 'WIPEOUT',
   SOLID3D = '3DSOLID',
-  REGION_ENTITY = 'REGION',
   BODY = 'BODY',
-  SURFACE = 'SURFACE'
+  SURFACE = 'SURFACE',
+  HELIX = 'HELIX',
+  TOLERANCE = 'TOLERANCE'
 }
+
+export type CanvasTheme = 'black' | 'white';
+export type UiTheme = 'light' | 'dark';
+export type DrawingColorMode = 'original' | 'monochrome';
+
 
 export interface Point2D {
   x: number;
@@ -278,7 +284,83 @@ export interface DxfTable extends DxfEntity {
   colWidths?: number[];
 }
 
-export type AnyEntity = DxfLine | DxfRay | DxfXLine | DxfPoint | DxfCircle | DxfArc | DxfPolyline | DxfText | DxfEllipse | DxfSpline | DxfSolid | Dxf3DFace | DxfInsert | DxfDimension | DxfHatch | DxfRegion | DxfLeader | DxfMLeader | DxfMLine | DxfTable;
+export interface DxfImage extends DxfEntity {
+  type: EntityType.IMAGE;
+  position: Point3D;
+  imageSize: Point2D;
+  imagePath?: string;
+  imageRef?: string; // 图像定义对象的句柄
+  uVector?: Point3D;
+  vVector?: Point3D;
+  brightness?: number;
+  contrast?: number;
+  fade?: number;
+}
+
+export interface DxfWipeout extends DxfEntity {
+  type: EntityType.WIPEOUT;
+  points: Point2D[];
+  closed: boolean;
+}
+
+export interface Dxf3DSolid extends DxfEntity {
+  type: EntityType.SOLID3D;
+}
+
+export interface DxfBody extends DxfEntity {
+  type: EntityType.BODY;
+}
+
+export interface DxfSurface extends DxfEntity {
+  type: EntityType.SURFACE;
+}
+
+export interface DxfHelix extends DxfEntity {
+  type: EntityType.HELIX;
+  axisVector: Point3D;
+  startPoint: Point3D;
+  radius: number;
+  turns: number;
+  pitch: number;
+  handedness?: number; // 0 = 左手螺旋, 1 = 右手螺旋
+}
+
+export interface DxfTolerance extends DxfEntity {
+  type: EntityType.TOLERANCE;
+  position: Point3D;
+  text: string;
+  direction?: Point3D;
+}
+
+export type AnyEntity =
+  | DxfLine
+  | DxfRay
+  | DxfXLine
+  | DxfPoint
+  | DxfCircle
+  | DxfArc
+  | DxfPolyline
+  | DxfText
+  | DxfEllipse
+  | DxfSpline
+  | DxfSolid
+  | Dxf3DFace
+  | DxfInsert
+  | DxfDimension
+  | DxfHatch
+  | DxfRegion
+  | DxfLeader
+  | DxfMLeader
+  | DxfMLine
+  | DxfTable
+  | DxfImage
+  | DxfWipeout
+  | Dxf3DSolid
+  | DxfBody
+  | DxfSurface
+  | DxfHelix
+  | DxfTolerance;
+
 
 export interface DxfBlock {
   name: string;
