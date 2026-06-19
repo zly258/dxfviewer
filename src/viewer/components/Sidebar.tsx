@@ -9,6 +9,8 @@ interface SidebarProps {
   selectedEntityIds: Set<string>;
   onSelectIds: (ids: Set<string>) => void;
   lang: Language;
+  hiddenLayers?: Set<string>;
+  onToggleLayerVisibility?: (layerName: string) => void;
 }
 
 const ROW_HEIGHT = 26; // 列表项高度
@@ -17,7 +19,15 @@ type FlatItem =
   | { type: 'layer'; name: string; layer: DxfLayer; count: number; expanded: boolean }
   | { type: 'entity'; id: string; entity: AnyEntity };
 
-const Sidebar: React.FC<SidebarProps> = ({ layers, entities, selectedEntityIds, onSelectIds, lang }) => {
+const Sidebar: React.FC<SidebarProps> = ({ 
+  layers, 
+  entities, 
+  selectedEntityIds, 
+  onSelectIds, 
+  lang,
+  hiddenLayers = new Set(),
+  onToggleLayerVisibility
+}) => {
   const [expandedLayers, setExpandedLayers] = useState<Set<string>>(new Set(Object.keys(layers)));
   const containerRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
@@ -116,6 +126,20 @@ const Sidebar: React.FC<SidebarProps> = ({ layers, entities, selectedEntityIds, 
   // 获取图层颜色十六进制
   const getLayerColorHex = (layer: DxfLayer) => getAutoCadColor(layer.color);
 
+  const EyeOpenIcon = () => (
+    <svg viewBox="0 0 24 24" className="layer-eye-icon" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+      <circle cx="12" cy="12" r="3"></circle>
+    </svg>
+  );
+
+  const EyeClosedIcon = () => (
+    <svg viewBox="0 0 24 24" className="layer-eye-icon layer-eye-closed" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+      <line x1="1" y1="1" x2="23" y2="23"></line>
+    </svg>
+  );
+
   const ChevronIcon = ({ expanded }: { expanded: boolean }) => (
     <svg 
       className={`chevron ${expanded ? 'expanded' : ''}`} 
@@ -148,13 +172,24 @@ const Sidebar: React.FC<SidebarProps> = ({ layers, entities, selectedEntityIds, 
                     
                     if (item.type === 'layer') {
                         const colorHex = getLayerColorHex(item.layer);
+                        const isHidden = hiddenLayers.has(item.name);
                         return (
                             <div 
                                 key={key}
-                                className="layer-row"
+                                className={`layer-row ${isHidden ? 'layer-hidden' : ''}`}
                                 onClick={() => toggleLayer(item.name)}
                             >
                                 <ChevronIcon expanded={item.expanded} />
+                                <div 
+                                    className="layer-visibility-toggle"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        onToggleLayerVisibility?.(item.name);
+                                    }}
+                                    title={isHidden ? (lang === 'zh' ? '显示图层' : 'Show layer') : (lang === 'zh' ? '隐藏图层' : 'Hide layer')}
+                                >
+                                    {isHidden ? <EyeClosedIcon /> : <EyeOpenIcon />}
+                                </div>
                                 <div className="layer-icon" style={{ backgroundColor: colorHex }}></div>
                                 <span className="layer-name">{item.name}</span>
                                 <span className="layer-count">{item.count}</span>

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Language, UI_TRANSLATIONS } from '../../constants/i18n';
-import { CanvasTheme, DrawingColorMode, UiTheme } from '../../shared/types/ui';
+import { CanvasTheme, DrawingColorMode, UiTheme } from '../../types';
 
 interface ToolBarProps {
   onImport: (files: File[]) => void;
@@ -17,6 +17,7 @@ interface ToolBarProps {
   onSetDrawingColorMode: (mode: DrawingColorMode) => void;
   lang: Language;
   onSetLang: (lang: Language) => void;
+  onShowAbout?: () => void;
 }
 
 type MenuKey = 'file' | 'interface' | 'view';
@@ -36,8 +37,9 @@ const ToolBar: React.FC<ToolBarProps> = ({
   onSetDrawingColorMode,
   lang,
   onSetLang,
+  onShowAbout,
 }) => {
-  const [activeMenu, setActiveMenu] = useState<MenuKey | null>(null);
+  const [activeMenu, setActiveMenu] = useState<MenuKey | 'sample' | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const t = UI_TRANSLATIONS[lang];
   const isZh = lang === 'zh';
@@ -49,12 +51,12 @@ const ToolBar: React.FC<ToolBarProps> = ({
     return () => window.removeEventListener('click', closeMenu);
   }, [activeMenu]);
 
-  const toggleMenu = (event: React.MouseEvent, menu: MenuKey) => {
+  const toggleMenu = (event: React.MouseEvent, menu: MenuKey | 'sample') => {
     event.stopPropagation();
     setActiveMenu(activeMenu === menu ? null : menu);
   };
 
-  const switchMenuOnHover = (menu: MenuKey) => {
+  const switchMenuOnHover = (menu: MenuKey | 'sample') => {
     if (activeMenu && activeMenu !== menu) setActiveMenu(menu);
   };
 
@@ -165,6 +167,38 @@ const ToolBar: React.FC<ToolBarProps> = ({
           </div>
         )}
       </div>
+
+      <div
+        className={`menu-item ${activeMenu === 'sample' ? 'active' : ''}`}
+        role="menuitem"
+        onClick={(event) => toggleMenu(event, 'sample')}
+        onMouseEnter={() => switchMenuOnHover('sample')}
+      >
+        <span>{isZh ? '示例图纸' : 'Sample Drawings'}</span>
+        {activeMenu === 'sample' && (
+          <div className="dropdown-menu" role="menu" onClick={(event) => event.stopPropagation()}>
+            <button type="button" onClick={() => closeMenuAndRun(() => window.dispatchEvent(new CustomEvent('open-dxf-url', { detail: { url: '/basic.dxf' } })))} className="dropdown-item">
+              <span>{isZh ? '1. 基础几何图元' : '1. Basic Geometries'}</span>
+            </button>
+            <button type="button" onClick={() => closeMenuAndRun(() => window.dispatchEvent(new CustomEvent('open-dxf-url', { detail: { url: '/advanced.dxf' } })))} className="dropdown-item">
+              <span>{isZh ? '2. 高级图元与文字' : '2. Advanced Text & Curves'}</span>
+            </button>
+            <button type="button" onClick={() => closeMenuAndRun(() => window.dispatchEvent(new CustomEvent('open-dxf-url', { detail: { url: '/new_features.dxf' } })))} className="dropdown-item">
+              <span>{isZh ? '3. 新型占位与螺旋' : '3. IMAGE & HELIX Placements'}</span>
+            </button>
+          </div>
+        )}
+      </div>
+
+      {onShowAbout && (
+        <div
+          className="menu-item"
+          role="menuitem"
+          onClick={(event) => closeMenuAndRun(onShowAbout)}
+        >
+          <span>{isZh ? '关于' : 'About'}</span>
+        </div>
+      )}
     </div>
   );
 };

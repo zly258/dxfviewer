@@ -208,6 +208,9 @@ export function getMTextLocalTopOffset(attachmentPoint: number | undefined, bloc
 export interface CadFormattedTextSegment {
   text: string;
   underline: boolean;
+  bold?: boolean;
+  italic?: boolean;
+  color?: number;
 }
 
 export function splitCadFormattedText(rawText: string): CadFormattedTextSegment[] {

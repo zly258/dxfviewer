@@ -1,5 +1,4 @@
-import { DxfLayer, ViewPort, DxfStyle } from '../../types';
-import { CanvasTheme, DrawingColorMode } from '../types/ui';
+import { DxfLayer, ViewPort, DxfStyle, CanvasTheme, DrawingColorMode } from '../../types';
 import {
   CAD_DEFAULT_LAYER_COLOR,
   CAD_DEFAULT_LAYER_NAME,

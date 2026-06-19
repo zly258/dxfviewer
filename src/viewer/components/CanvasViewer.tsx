@@ -1,9 +1,8 @@
 import React, { useRef, useState, WheelEvent, MouseEvent, useEffect, useLayoutEffect } from 'react';
-import { AnyEntity, ViewPort, DxfLayer, DxfBlock, DxfStyle, DxfLineType, Point2D } from '../../types';
+import { AnyEntity, ViewPort, DxfLayer, DxfBlock, DxfStyle, DxfLineType, Point2D, CanvasTheme, DrawingColorMode } from '../../types';
 import { renderEntitiesToCanvas, hitTest, hitTestBox } from '../services/canvasRenderService';
 import { Language } from '../../constants/i18n';
 import { SELECTION_CONFIG, SHORTCUT_CONFIG, VIEWER_DEFAULTS } from '../../shared/config/viewerConfig';
-import { CanvasTheme, DrawingColorMode } from '../../shared/types/ui';
 import { subscribeShxFontChanged } from '../services/shxFontService';
 
 /**
@@ -29,6 +28,7 @@ interface CanvasViewerProps {
   lang: Language; // 当前语言
   onMouseMoveWorld?: (x: number, y: number) => void; // 鼠标移动时的世界坐标回调
   onRenderError?: (message: string | null) => void; // 渲染异常回调
+  hiddenLayers?: Set<string>; // 隐藏图层集合
 }
 
 const CanvasViewer: React.FC<CanvasViewerProps> = ({ 
@@ -48,7 +48,8 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
     theme,
     drawingColorMode,
     onMouseMoveWorld,
-    onRenderError
+    onRenderError,
+    hiddenLayers = new Set()
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -118,7 +119,7 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
         ctx.scale(dpr, dpr);
 
         try {
-            renderEntitiesToCanvas(ctx, entities, layers, blocks, styles, lineTypes, ltScale, viewPort, selectedEntityIds, rect.width, rect.height, theme, drawingColorMode, overlayExtents);
+            renderEntitiesToCanvas(ctx, entities, layers, blocks, styles, lineTypes, ltScale, viewPort, selectedEntityIds, rect.width, rect.height, theme, drawingColorMode, overlayExtents, hiddenLayers);
             onRenderError?.(null);
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
@@ -134,7 +135,7 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
      return () => {
         if (renderRef.current) cancelAnimationFrame(renderRef.current);
      };
-  }, [entities, layers, blocks, styles, lineTypes, ltScale, viewPort, selectedEntityIds, worldOffset, theme, drawingColorMode, overlayExtents, onRenderError, fontVersion]);
+  }, [entities, layers, blocks, styles, lineTypes, ltScale, viewPort, selectedEntityIds, worldOffset, theme, drawingColorMode, overlayExtents, onRenderError, fontVersion, hiddenLayers]);
 
   // 处理滚轮事件，使用 passive: false 以允许 preventDefault
   useEffect(() => {
