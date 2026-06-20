@@ -1167,124 +1167,243 @@ textarea {
 }
 
 /* -------------------------------------------------------------
- * 4. Responsive Mobile Design (Media Queries)
+ * 4. Responsive Mobile Design (<= 768px)
+ *
+ * 移动端采用专属外壳：全屏画布 + 左上角打开 FAB + 右上角浮动坐标
+ * + 底部 Tab 栏(图层/属性/视图/关于) + 底部上滑 Sheet。
+ * 桌面端的顶部菜单、侧栏、属性面板、状态栏在移动端全部隐藏，
+ * 由 MobileShell 组件接管。
  * ------------------------------------------------------------- */
-.floating-toggle-btn {
+
+/* 桌面端隐藏移动外壳元素（MobileShell 只在 isMobile 时渲染，这里做兜底） */
+.mobile-fab-open,
+.mobile-coord-chip,
+.mobile-tab-bar,
+.mobile-sheet,
+.mobile-sheet-backdrop {
   display: none;
 }
 
 @media (max-width: 768px) {
-  .menu-tab-row {
+  .app-container.is-mobile .menu-tab-row {
     height: auto;
-    min-height: var(--toolbar-height);
+    min-height: 0;
   }
 
-  /* Wrap toolbar to prevent dropdown menu clipping */
-  .toolbar {
-    overflow: visible;
-    flex-wrap: wrap;
-    height: auto;
-    padding: 4px 8px;
-    width: 100%;
-  }
-  
-  .toolbar .menu-item {
-    flex-shrink: 0;
+  .app-container.is-mobile .main-content {
+    border-top: 0;
   }
 
-  /* Absolute Drawers for Mobile Panels */
-  .sidebar {
+  /* 左上角：打开文件 FAB */
+  .mobile-fab-open {
+    display: flex;
     position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    width: 270px;
-    max-width: 85vw;
-    z-index: 1005;
-    transform: translateX(-100%);
-    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: none;
-    border-right: 1px solid var(--border-color);
+    top: 12px;
+    left: 12px;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--accent-blue);
+    color: #ffffff;
+    border: none;
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.28);
+    cursor: pointer;
+    z-index: 1020;
+    transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
 
-  .sidebar.open {
-    transform: translateX(0);
-    box-shadow: var(--shadow-panel);
+  .mobile-fab-open:active {
+    transform: scale(0.9);
   }
 
-  .properties-panel {
+  /* 右上角：浮动坐标小标签 */
+  .mobile-coord-chip {
+    display: inline-flex;
     position: absolute;
-    right: 0;
-    top: 0;
-    bottom: 0;
-    width: 290px;
-    max-width: 85vw;
-    z-index: 1005;
-    transform: translateX(100%);
-    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    box-shadow: none;
-    border-left: 1px solid var(--border-color);
+    top: 14px;
+    right: 12px;
+    gap: 8px;
+    padding: 5px 10px;
+    border-radius: 14px;
+    background-color: rgba(255, 255, 255, 0.82);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    font-size: 11px;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.14);
+    z-index: 1020;
+    pointer-events: none;
   }
 
-  .properties-panel.open {
-    transform: translateX(0);
-    box-shadow: var(--shadow-panel);
+  .theme-dark .mobile-coord-chip {
+    background-color: rgba(42, 45, 51, 0.82);
+    color: var(--text-primary);
+    border-color: var(--border-color);
   }
 
-  /* Overlay backdrop */
-  .drawer-backdrop {
+  .mobile-coord-chip .coord-selected {
+    color: var(--accent-blue);
+    font-weight: 600;
+  }
+
+  /* Sheet 遮罩 */
+  .mobile-sheet-backdrop {
+    display: block;
     position: absolute;
     inset: 0;
     background-color: rgba(15, 23, 42, 0.4);
     backdrop-filter: blur(2px);
     -webkit-backdrop-filter: blur(2px);
-    z-index: 1000;
+    z-index: 1030;
     opacity: 0;
     pointer-events: none;
-    transition: opacity 0.3s ease;
+    transition: opacity 0.25s ease;
   }
 
-  .drawer-backdrop.visible {
+  .mobile-sheet-backdrop.visible {
     opacity: 1;
     pointer-events: auto;
   }
 
-  /* Floating Toggle Buttons (mobile only): circular icons at top-left / top-right of the canvas */
-  .floating-toggle-btn {
+  /* 底部上滑 Sheet */
+  .mobile-sheet {
+    display: flex;
+    flex-direction: column;
     position: absolute;
-    top: 10px;
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 62vh;
+    max-height: 62vh;
     background-color: var(--bg-elevated);
-    color: var(--accent-blue);
-    border: 1px solid var(--border-color);
-    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.22);
+    border-top-left-radius: 16px;
+    border-top-right-radius: 16px;
+    box-shadow: 0 -8px 30px rgba(15, 23, 42, 0.24);
+    z-index: 1040;
+    transform: translateY(100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
+  }
+
+  .mobile-sheet.open {
+    transform: translateY(0);
+  }
+
+  .mobile-sheet-handle {
+    flex-shrink: 0;
+    height: 26px;
     display: flex;
     align-items: center;
     justify-content: center;
+    cursor: grab;
+    touch-action: none;
+  }
+
+  .mobile-sheet-handle:active {
+    cursor: grabbing;
+  }
+
+  .mobile-sheet-grip {
+    width: 38px;
+    height: 5px;
+    border-radius: 3px;
+    background-color: var(--border-strong);
+  }
+
+  .mobile-sheet-content {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Sheet 内复用桌面端 Sidebar / PropertiesPanel，覆盖固定宽度与边框 */
+  .mobile-sheet-content .sidebar,
+  .mobile-sheet-content .properties-panel {
+    width: 100% !important;
+    height: 100% !important;
+    border-right: 0 !important;
+    border-left: 0 !important;
+    background-color: transparent !important;
+  }
+
+  /* 视图 Sheet 列表 */
+  .mobile-view-list {
+    padding: 4px 8px 16px;
+  }
+
+  .mobile-view-item {
+    width: 100%;
+    height: 46px;
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    border: 0;
+    background: transparent;
+    color: var(--text-primary);
+    font-size: 15px;
+    font-family: inherit;
+    text-align: left;
+    border-radius: var(--radius-small);
     cursor: pointer;
-    z-index: 1010;
-    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.2s ease, color 0.2s ease;
   }
 
-  .floating-toggle-btn:active {
-    transform: scale(0.92);
+  .mobile-view-item:active {
+    background-color: var(--bg-hover);
   }
 
-  .floating-toggle-btn.btn-left {
-    left: 10px;
+  .mobile-view-item.checked {
+    color: var(--accent-blue);
+    font-weight: 600;
   }
 
-  .floating-toggle-btn.btn-right {
-    right: 10px;
+  .mobile-view-divider {
+    height: 1px;
+    margin: 4px 12px;
+    background-color: var(--border-color);
   }
 
-  .floating-toggle-btn.active {
-    background-color: var(--accent-blue);
-    color: #ffffff;
-    border-color: var(--accent-blue);
+  /* 底部 Tab 栏 */
+  .mobile-tab-bar {
+    display: flex;
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 50px;
+    background-color: var(--bg-secondary);
+    border-top: 1px solid var(--border-color);
+    z-index: 1050;
+    box-sizing: border-box;
+    padding-bottom: env(safe-area-inset-bottom, 0);
+  }
+
+  .mobile-tab {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: color 0.15s ease;
+  }
+
+  .mobile-tab.active {
+    color: var(--accent-blue);
+    font-weight: 600;
+  }
+
+  .mobile-tab:active {
+    background-color: var(--bg-hover);
   }
 }
+
 
 
