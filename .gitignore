@@ -12,6 +12,9 @@ dist*/
 dist-ssr
 *.local
 
+# WorkBuddy local workspace data
+.workbuddy/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

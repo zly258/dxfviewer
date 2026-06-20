@@ -15,11 +15,19 @@ export const DEFAULT_VIEWPORT: ViewPort = {
 export const VIEWER_DEFAULTS = {
   language: 'zh' as const,
   uiTheme: 'light' as const,
-  canvasTheme: 'black' as CanvasTheme,
   drawingColorMode: 'original' as DrawingColorMode,
   toastDurationMs: 5000,
   defaultLineTypeScale: CAD_DEFAULT_LINE_TYPE_SCALE,
 };
+
+/**
+ * 画布背景色跟随 UI 主题：
+ * - 浅色 UI  → 白色画布
+ * - 深色 UI  → 深色画布
+ * 场景背景不再单独暴露为 prop，统一由 uiTheme 决定。
+ */
+export const canvasThemeFromUiTheme = (uiTheme: 'light' | 'dark'): CanvasTheme =>
+  uiTheme === 'dark' ? 'black' : 'white';
 
 export const LAYOUT_CONFIG = {
   minViewportWidth: 100,
@@ -69,6 +77,12 @@ export const SELECTION_CONFIG = {
   geometryHitTolerancePixels: 20,
   minimumHitToleranceWorld: 1e-10,
   maximumHitToleranceViewportFactor: 0.1,
+  // 文字拾取相对几何拾取的容差倍数。原值 2.0 会让文字包围盒过度扩张，
+  // 抢占附近几何体的点击；改为 1.0 使文字与几何体按相同容差判定。
+  textHitToleranceFactor: 1.0,
+  // 点击落在文字包围盒内部时，给文字距离加一个惩罚分（占容差的比例），
+  // 这样当点击正好落在几何体上时，几何体（距离≈0）会优先于文字被选中。
+  textHitInsidePenaltyFactor: 0.3,
   selectionBorderColor: '#00A8FF',
   selectionBorderWidth: 2,
   selectionControlPointFill: '#00A8FF',
@@ -95,7 +109,15 @@ export const DEFAULT_ENTITY_COLOR = '#FFFFFF';
 
 export const TEXT_RENDER_CONFIG = {
   minimumWidthFactor: 0.01,
-  tinyTextPixelHeight: 3,
+  // 文字在屏幕上的视觉高度低于该值（像素）时，改用稳定的占位矩形渲染，
+  // 避免极小字号下 measureText / SHX 描边出现拉伸、错位、散射等失真。
+  tinyTextPixelHeight: 9,
+  // ALIGNED/FIT 文字按目标宽度 / 测量宽度做缩放，当测量值在亚像素级别不可靠时
+  // 可能产生极端拉伸（巨长文字）。此处对缩放比例做上下限钳制。
+  maximumTextFitScale: 40,
+  minimumTextFitScale: 0.02,
+  // 占位矩形相对视觉高度的最大宽高比，防止布局计算异常时画出超长矩形。
+  tinyTextPlaceholderMaxAspect: 60,
   averageCharacterWidthFactor: 0.72,
   cjkCharacterWidthFactor: 1.0,
   latinCharacterWidthFactor: 0.58,

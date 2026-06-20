@@ -1,43 +1,41 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Language, UI_TRANSLATIONS } from '@/config/i18n';
-import { CanvasTheme, DrawingColorMode, UiTheme } from '@/types';
+import { DrawingColorMode, UiTheme } from '@/types';
 
 
 interface ToolBarProps {
   onImport: (files: File[]) => void;
-  onClear: () => void;
   onFitView: () => void;
-  showDrawingExtents: boolean;
-  onToggleDrawingExtents: () => void;
   showOpen?: boolean;
   uiTheme: UiTheme;
   onSetUiTheme: (theme: UiTheme) => void;
-  canvasTheme: CanvasTheme;
-  onSetCanvasTheme: (theme: CanvasTheme) => void;
   drawingColorMode: DrawingColorMode;
   onSetDrawingColorMode: (mode: DrawingColorMode) => void;
   lang: Language;
   onSetLang: (lang: Language) => void;
+  showSidebar: boolean;
+  onToggleSidebar: () => void;
+  showProperties: boolean;
+  onToggleProperties: () => void;
   onShowAbout?: () => void;
 }
 
-type MenuKey = 'file' | 'interface' | 'view' | 'sample';
+type MenuKey = 'view';
 
 const ToolBar: React.FC<ToolBarProps> = ({
   onImport,
-  onClear,
   onFitView,
-  showDrawingExtents,
-  onToggleDrawingExtents,
   showOpen = true,
   uiTheme,
   onSetUiTheme,
-  canvasTheme,
-  onSetCanvasTheme,
   drawingColorMode,
   onSetDrawingColorMode,
   lang,
   onSetLang,
+  showSidebar,
+  onToggleSidebar,
+  showProperties,
+  onToggleProperties,
   onShowAbout
 }) => {
   const [activeMenu, setActiveMenu] = useState<MenuKey | null>(null);
@@ -52,12 +50,12 @@ const ToolBar: React.FC<ToolBarProps> = ({
     return () => window.removeEventListener('click', closeMenu);
   }, [activeMenu]);
 
-  const toggleMenu = (event: React.MouseEvent, menu: MenuKey | 'sample') => {
+  const toggleMenu = (event: React.MouseEvent, menu: MenuKey) => {
     event.stopPropagation();
     setActiveMenu(activeMenu === menu ? null : menu);
   };
 
-  const switchMenuOnHover = (menu: MenuKey | 'sample') => {
+  const switchMenuOnHover = (menu: MenuKey) => {
     if (activeMenu && activeMenu !== menu) setActiveMenu(menu);
   };
 
@@ -91,40 +89,48 @@ const ToolBar: React.FC<ToolBarProps> = ({
 
       {showOpen && (
         <div
-          className={`menu-item ${activeMenu === 'file' ? 'active' : ''}`}
+          className="menu-item"
           role="menuitem"
-          onClick={(event) => toggleMenu(event, 'file')}
-          onMouseEnter={() => switchMenuOnHover('file')}
+          onClick={openFileDialog}
+          title={isZh ? '打开 DXF 文件' : 'Open DXF file'}
         >
-          <span>{isZh ? '文件' : 'File'}</span>
-          {activeMenu === 'file' && (
-            <div className="dropdown-menu" role="menu" onClick={(event) => event.stopPropagation()}>
-              <button type="button" onClick={openFileDialog} className="dropdown-item">
-                <span>{isZh ? '打开 DXF...' : 'Open DXF...'}</span>
-              </button>
-              <button type="button" onClick={() => closeMenuAndRun(onClear)} className="dropdown-item">
-                <span>{isZh ? '关闭当前图纸' : 'Close Current Drawing'}</span>
-              </button>
-            </div>
-          )}
+          <span>{isZh ? '打开' : 'Open'}</span>
         </div>
       )}
 
       <div
-        className={`menu-item ${activeMenu === 'interface' ? 'active' : ''}`}
+        className={`menu-item ${activeMenu === 'view' ? 'active' : ''}`}
         role="menuitem"
-        onClick={(event) => toggleMenu(event, 'interface')}
-        onMouseEnter={() => switchMenuOnHover('interface')}
+        onClick={(event) => toggleMenu(event, 'view')}
+        onMouseEnter={() => switchMenuOnHover('view')}
       >
-        <span>{isZh ? '界面' : 'Interface'}</span>
-        {activeMenu === 'interface' && (
+        <span>{t.view}</span>
+        {activeMenu === 'view' && (
           <div className="dropdown-menu" role="menu" onClick={(event) => event.stopPropagation()}>
-            <div className="dropdown-header">{isZh ? '主题' : 'Theme'}</div>
+            <button type="button" onClick={() => closeMenuAndRun(onFitView)} className="dropdown-item">
+              <span>{t.fitView}</span>
+            </button>
+            <div className="divider" />
             <button type="button" onClick={() => closeMenuAndRun(() => onSetUiTheme('light'))} className={`dropdown-item ${uiTheme === 'light' ? 'checked' : ''}`}>
-              <span>{isZh ? '浅色' : 'Light'}</span>
+              <span>{t.light}</span>
             </button>
             <button type="button" onClick={() => closeMenuAndRun(() => onSetUiTheme('dark'))} className={`dropdown-item ${uiTheme === 'dark' ? 'checked' : ''}`}>
-              <span>{isZh ? '深色' : 'Dark'}</span>
+              <span>{t.dark}</span>
+            </button>
+            <div className="divider" />
+            <button
+              type="button"
+              onClick={() => closeMenuAndRun(() => onSetDrawingColorMode(drawingColorMode === 'monochrome' ? 'original' : 'monochrome'))}
+              className={`dropdown-item ${drawingColorMode === 'monochrome' ? 'checked' : ''}`}
+            >
+              <span>{t.monochrome}</span>
+            </button>
+            <div className="divider" />
+            <button type="button" onClick={() => closeMenuAndRun(onToggleSidebar)} className={`dropdown-item ${showSidebar ? 'checked' : ''}`}>
+              <span>{t.layers}</span>
+            </button>
+            <button type="button" onClick={() => closeMenuAndRun(onToggleProperties)} className={`dropdown-item ${showProperties ? 'checked' : ''}`}>
+              <span>{t.properties}</span>
             </button>
             <div className="divider" />
             <button type="button" onClick={() => closeMenuAndRun(() => onSetLang(lang === 'zh' ? 'en' : 'zh'))} className="dropdown-item">
@@ -134,66 +140,13 @@ const ToolBar: React.FC<ToolBarProps> = ({
         )}
       </div>
 
-      <div
-        className={`menu-item ${activeMenu === 'view' ? 'active' : ''}`}
-        role="menuitem"
-        onClick={(event) => toggleMenu(event, 'view')}
-        onMouseEnter={() => switchMenuOnHover('view')}
-      >
-        <span>{isZh ? '视图' : 'View'}</span>
-        {activeMenu === 'view' && (
-          <div className="dropdown-menu" role="menu" onClick={(event) => event.stopPropagation()}>
-            <button type="button" onClick={() => closeMenuAndRun(onFitView)} className="dropdown-item">
-              <span>{t.fitView}</span>
-            </button>
-            <button type="button" onClick={() => closeMenuAndRun(onToggleDrawingExtents)} className={`dropdown-item ${showDrawingExtents ? 'checked' : ''}`}>
-              <span>{t.showDrawingExtents}</span>
-            </button>
-            <div className="divider" />
-            <div className="dropdown-header">{isZh ? '背景' : 'Background'}</div>
-            <button type="button" onClick={() => closeMenuAndRun(() => onSetCanvasTheme('black'))} className={`dropdown-item ${canvasTheme === 'black' ? 'checked' : ''}`}>
-              <span>{isZh ? '黑色背景' : 'Black Background'}</span>
-            </button>
-            <button type="button" onClick={() => closeMenuAndRun(() => onSetCanvasTheme('white'))} className={`dropdown-item ${canvasTheme === 'white' ? 'checked' : ''}`}>
-              <span>{isZh ? '白色背景' : 'White Background'}</span>
-            </button>
-            <div className="divider" />
-            <button
-              type="button"
-              onClick={() => closeMenuAndRun(() => onSetDrawingColorMode(drawingColorMode === 'monochrome' ? 'original' : 'monochrome'))}
-              className={`dropdown-item ${drawingColorMode === 'monochrome' ? 'checked' : ''}`}
-            >
-              <span>{isZh ? '黑白模式' : 'Monochrome Mode'}</span>
-            </button>
-          </div>
-        )}
-      </div>
-
-      <div
-        className={`menu-item ${activeMenu === 'sample' ? 'active' : ''}`}
-        role="menuitem"
-        onClick={(event) => toggleMenu(event, 'sample')}
-        onMouseEnter={() => switchMenuOnHover('sample')}
-      >
-        <span>{isZh ? '示例图纸' : 'Sample Drawings'}</span>
-        {activeMenu === 'sample' && (
-          <div className="dropdown-menu" role="menu" onClick={(event) => event.stopPropagation()}>
-            <button type="button" onClick={() => closeMenuAndRun(() => window.dispatchEvent(new CustomEvent('open-dxf-url', { detail: { url: '/comprehensive.dxf' } })))} className="dropdown-item">
-              <span>{isZh ? '综合特性图纸 (Comprehensive)' : 'Comprehensive Drawing'}</span>
-            </button>
-          </div>
-        )}
-      </div>
-
-
-
       {onShowAbout && (
         <div
           className="menu-item"
           role="menuitem"
           onClick={(event) => closeMenuAndRun(onShowAbout)}
         >
-          <span>{isZh ? '关于' : 'About'}</span>
+          <span>{t.about}</span>
         </div>
       )}
     </div>
