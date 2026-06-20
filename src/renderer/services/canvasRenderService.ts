@@ -341,18 +341,20 @@ export const hitTest = (
     });
 
     /**
-     * 递归检查单个实体是否被点击
+     * 递归检查单个实体，返回到该实体的最短几何距离
      */
-    const checkEntity = (ent: AnyEntity, tx?: (p: Point2D) => Point2D, depth: number = 0): boolean => {
-        if (ent.visible === false || depth > 20) return false;
+    const checkEntityDistance = (ent: AnyEntity, tx?: (p: Point2D) => Point2D, depth: number = 0): number => {
+        if (ent.visible === false || depth > 20) return Infinity;
 
         const layer = layers[ent.layer];
-        if (layer && layer.isVisible === false) return false;
+        if (layer && layer.isVisible === false) return Infinity;
 
         const p = tx ? tx : (pt: Point2D) => pt;
         
         const isTextEntity = [EntityType.TEXT, EntityType.MTEXT, EntityType.ATTRIB, EntityType.ATTDEF].includes(ent.type);
         const effectiveThreshold = isTextEntity ? (threshold * 2.0) : threshold;
+
+        let minDist = Infinity;
 
         // 使用预计算的包围盒进行初步碰撞检测
         if (ent.extents) {
@@ -378,7 +380,7 @@ export const hitTest = (
             const insideBox = x >= min.x - margin && x <= max.x + margin && 
                               y >= min.y - margin && y <= max.y + margin;
             
-            if (!insideBox) return false;
+            if (!insideBox) return Infinity;
 
             const isContainerOrText = [
                 EntityType.TEXT, 
@@ -388,26 +390,26 @@ export const hitTest = (
                 EntityType.HATCH
             ].includes(ent.type);
 
-            if (isContainerOrText) return true;
+            if (isContainerOrText) return 0;
         }
 
         // 精确几何算法做详细碰撞计算
         if (ent.type === EntityType.LINE) {
             const s = p(ent.start), e = p(ent.end);
-            return distanceToLine(x, y, s.x, s.y, e.x, e.y) < effectiveThreshold;
+            minDist = distanceToLine(x, y, s.x, s.y, e.x, e.y);
         } else if (ent.type === EntityType.RAY) {
             const s = p(ent.basePoint);
             const e = { x: s.x + ent.direction.x * 1000000, y: s.y + ent.direction.y * 1000000 };
-            return distanceToLine(x, y, s.x, s.y, e.x, e.y) < effectiveThreshold;
+            minDist = distanceToLine(x, y, s.x, s.y, e.x, e.y);
         } else if (ent.type === EntityType.XLINE) {
             const s = p(ent.basePoint);
             const p1 = { x: s.x - ent.direction.x * 1000000, y: s.y - ent.direction.y * 1000000 };
             const p2 = { x: s.x + ent.direction.x * 1000000, y: s.y + ent.direction.y * 1000000 };
-            return distanceToLine(x, y, p1.x, p1.y, p2.x, p2.y) < effectiveThreshold;
+            minDist = distanceToLine(x, y, p1.x, p1.y, p2.x, p2.y);
         } else if (ent.type === EntityType.CIRCLE) {
             const c = p(ent.center);
             const d = Math.sqrt(Math.pow(x - c.x, 2) + Math.pow(y - c.y, 2));
-            return Math.abs(d - ent.radius) < effectiveThreshold;
+            minDist = Math.abs(d - ent.radius);
         } else if (ent.type === EntityType.ARC) {
             const c = p(ent.center);
             const d = Math.sqrt(Math.pow(x - c.x, 2) + Math.pow(y - c.y, 2));
@@ -430,7 +432,9 @@ export const hitTest = (
                     e = temp;
                 }
                 
-                return s > e ? (angle >= s || angle <= e) : (angle >= s && angle <= e);
+                if (s > e ? (angle >= s || angle <= e) : (angle >= s && angle <= e)) {
+                    minDist = Math.abs(d - ent.radius);
+                }
             }
         } else if (ent.type === EntityType.LWPOLYLINE || ent.type === EntityType.POLYLINE) {
             const isFlipped = (ent.extrusion?.z || 1) < 0;
@@ -440,7 +444,7 @@ export const hitTest = (
                 const bulge = ent.bulges ? (ent.bulges[j] || 0) : 0;
                 
                 if (Math.abs(bulge) < 1e-6) {
-                    if (distanceToLine(x, y, p1.x, p1.y, p2.x, p2.y) < effectiveThreshold) return true;
+                    minDist = Math.min(minDist, distanceToLine(x, y, p1.x, p1.y, p2.x, p2.y));
                 } else {
                     const dist = Math.sqrt((p2.x - p1.x)**2 + (p2.y - p1.y)**2);
                     if (dist > 1e-9) {
@@ -474,10 +478,12 @@ export const hitTest = (
                                 e = temp;
                             }
                             
-                            if (s > e ? (angle >= s || angle <= e) : (angle >= s && angle <= e)) return true;
+                            if (s > e ? (angle >= s || angle <= e) : (angle >= s && angle <= e)) {
+                                minDist = Math.min(minDist, Math.abs(d - radius));
+                            }
                         }
                     } else {
-                        if (Math.sqrt((x - p1.x)**2 + (y - p1.y)**2) < effectiveThreshold) return true;
+                        minDist = Math.min(minDist, Math.sqrt((x - p1.x)**2 + (y - p1.y)**2));
                     }
                 }
             }
@@ -485,15 +491,15 @@ export const hitTest = (
              const points = sampleSplinePoints(ent.controlPoints || [], ent.degree || 3, ent.knots, ent.weights, 20);
              for (let j = 0; j < points.length - 1; j++) {
                 const p1 = p(points[j]), p2 = p(points[j+1]);
-                if (distanceToLine(x, y, p1.x, p1.y, p2.x, p2.y) < effectiveThreshold) return true;
+                minDist = Math.min(minDist, distanceToLine(x, y, p1.x, p1.y, p2.x, p2.y));
             }
         } else if (ent.type === EntityType.POINT) {
             const pos = p(ent.position);
-            return Math.sqrt(Math.pow(x - pos.x, 2) + Math.pow(y - pos.y, 2)) < effectiveThreshold;
+            minDist = Math.sqrt(Math.pow(x - pos.x, 2) + Math.pow(y - pos.y, 2));
         } else if (ent.type === EntityType.LEADER) {
             for (let j = 0; j < ent.points.length - 1; j++) {
                 const p1 = p(ent.points[j]), p2 = p(ent.points[j+1]);
-                if (distanceToLine(x, y, p1.x, p1.y, p2.x, p2.y) < effectiveThreshold) return true;
+                minDist = Math.min(minDist, distanceToLine(x, y, p1.x, p1.y, p2.x, p2.y));
             }
         } else if (ent.type === EntityType.ELLIPSE) {
             const c = p(ent.center);
@@ -509,7 +515,8 @@ export const hitTest = (
             const localY = dx * sin + dy * cos;
             const normDist = (localX * localX) / (rx * rx) + (localY * localY) / (ry * ry);
             
-            if (Math.abs(Math.sqrt(normDist) - 1) < effectiveThreshold / Math.min(rx, ry)) {
+            const distFromEllipse = Math.abs(Math.sqrt(normDist) - 1) * Math.min(rx, ry);
+            if (distFromEllipse < effectiveThreshold) {
                 let param = Math.atan2(localY / ry, localX / rx);
                 while (param < 0) param += Math.PI * 2;
                 while (param >= Math.PI * 2) param -= Math.PI * 2;
@@ -521,75 +528,98 @@ export const hitTest = (
                     s = e;
                     e = temp;
                 }
-                return s > e ? (param >= s || param <= e) : (param >= s && param <= e);
+                if (s > e ? (param >= s || param <= e) : (param >= s && param <= e)) {
+                    minDist = distFromEllipse;
+                }
             }
         } else if (ent.type === EntityType.INSERT || ent.type === EntityType.ACAD_TABLE) {
             const block = blocks[ent.blockName];
-            if (!block) return false;
-            
-            const scale = ent.scale || { x: 1, y: 1, z: 1 };
-            const rotation = (ent.rotation || 0) * Math.PI / 180;
-            const cos = Math.cos(rotation), sin = Math.sin(rotation);
-            
-            const tx = (pt: Point2D) => {
-                const bx = pt.x - block.basePoint.x;
-                const by = pt.y - block.basePoint.y;
-                const sx = bx * scale.x;
-                const sy = by * scale.y;
-                return {
-                    x: ent.position.x + sx * cos - sy * sin,
-                    y: ent.position.y + sx * sin + sy * cos
+            if (block) {
+                const scale = ent.scale || { x: 1, y: 1, z: 1 };
+                const rotation = (ent.rotation || 0) * Math.PI / 180;
+                const cos = Math.cos(rotation), sin = Math.sin(rotation);
+                
+                const newTx = (pt: Point2D) => {
+                    const bx = pt.x - block.basePoint.x;
+                    const by = pt.y - block.basePoint.y;
+                    const sx = bx * scale.x;
+                    const sy = by * scale.y;
+                    return {
+                        x: ent.position.x + sx * cos - sy * sin,
+                        y: ent.position.y + sx * sin + sy * cos
+                    };
                 };
-            };
-            
-            for (const child of block.entities) {
-                if (checkEntity(child, tx, depth + 1)) return true;
-            }
-            if ((ent as any).attributes) {
-                for (const attr of (ent as any).attributes) {
-                    if (checkEntity(attr, undefined, depth + 1)) return true;
+                
+                for (const child of block.entities) {
+                    const d = checkEntityDistance(child, newTx, depth + 1);
+                    if (d < minDist) minDist = d;
+                }
+                if ((ent as any).attributes) {
+                    for (const attr of (ent as any).attributes) {
+                        const d = checkEntityDistance(attr, undefined, depth + 1);
+                        if (d < minDist) minDist = d;
+                    }
                 }
             }
         } else if (ent.type === EntityType.DIMENSION) {
             const block = blocks[ent.blockName];
-            if (!block) return false;
+            if (block) {
+                const dp = (ent as any).definitionPoint || { x: 0, y: 0 };
+                let treatAsLocal = false;
+                if (block.extents) {
+                    const bw = block.extents.max.x - block.extents.min.x;
+                    const bh = block.extents.max.y - block.extents.min.y;
+                    const size = Math.max(Math.abs(bw), Math.abs(bh), 1);
+                    const bc = { x: (block.extents.min.x + block.extents.max.x) / 2, y: (block.extents.min.y + block.extents.max.y) / 2 };
+                    const distance = Math.hypot(bc.x - dp.x, bc.y - dp.y);
+                    treatAsLocal = distance > size * 5;
+                }
 
-            const dp = (ent as any).definitionPoint || { x: 0, y: 0 };
-            let treatAsLocal = false;
-            if (block.extents) {
-                const bw = block.extents.max.x - block.extents.min.x;
-                const bh = block.extents.max.y - block.extents.min.y;
-                const size = Math.max(Math.abs(bw), Math.abs(bh), 1);
-                const bc = { x: (block.extents.min.x + block.extents.max.x) / 2, y: (block.extents.min.y + block.extents.max.y) / 2 };
-                const distance = Math.hypot(bc.x - dp.x, bc.y - dp.y);
-                treatAsLocal = distance > size * 5;
-            }
+                const newTx = treatAsLocal
+                    ? (pt: Point2D) => ({ x: dp.x + (pt.x - block.basePoint.x), y: dp.y + (pt.y - block.basePoint.y) })
+                    : (pt: Point2D) => pt;
 
-            const tx = treatAsLocal
-                ? (pt: Point2D) => ({ x: dp.x + (pt.x - block.basePoint.x), y: dp.y + (pt.y - block.basePoint.y) })
-                : (pt: Point2D) => pt;
-
-            for (const child of block.entities) {
-                if (checkEntity(child, tx, depth + 1)) return true;
+                for (const child of block.entities) {
+                    const d = checkEntityDistance(child, newTx, depth + 1);
+                    if (d < minDist) minDist = d;
+                }
             }
         }
-        return false;
+
+        return minDist < effectiveThreshold ? minDist : Infinity;
     };
+
+    let bestId: string | null = null;
+    let bestDist = Infinity;
 
     // 优先匹配 Dimension
     for (const ent of entities) {
         if (ent.type === EntityType.DIMENSION) {
-            if (checkEntity(ent)) return ent.id;
+            const d = checkEntityDistance(ent);
+            if (d < bestDist) {
+                bestDist = d;
+                bestId = ent.id;
+            }
         }
     }
 
-    // 倒序匹配以选择最上方的实体
+    if (bestId) return bestId;
+
+    // 匹配其他实体
     for (let i = entities.length - 1; i >= 0; i--) {
         const ent = entities[i];
-        if (ent.type !== EntityType.DIMENSION && checkEntity(ent)) return ent.id;
+        if (ent.type !== EntityType.DIMENSION) {
+            const d = checkEntityDistance(ent);
+            if (d < bestDist) {
+                bestDist = d;
+                bestId = ent.id;
+            }
+        }
     }
-    return null;
+
+    return bestId;
 };
+
 
 /**
  * 矩形框选测试
