@@ -35,23 +35,19 @@ function AppShell({ editor = true, initialFiles = [] }: AppShellProps) {
     closeTabsToRight,
   } = useDxfTabs(editor, initialFiles);
 
-  const [uiTheme, setUiTheme] = useState<UiTheme>(VIEWER_DEFAULTS.uiTheme);
-  const [canvasTheme, setCanvasTheme] = useState<CanvasTheme>(VIEWER_DEFAULTS.canvasTheme);
-  const [drawingColorMode, setDrawingColorMode] = useState<DrawingColorMode>(VIEWER_DEFAULTS.drawingColorMode);
-  const [lang, setLang] = useState<Language>(VIEWER_DEFAULTS.language);
-
-  useEffect(() => {
+  const savedSettings = useMemo(() => {
     try {
       const raw = window.localStorage.getItem('dxfviewer.uiSettings.v1');
-      if (raw) {
-        const settings = JSON.parse(raw);
-        if (settings.uiTheme) setUiTheme(settings.uiTheme);
-        if (settings.canvasTheme) setCanvasTheme(settings.canvasTheme);
-        if (settings.drawingColorMode) setDrawingColorMode(settings.drawingColorMode);
-        if (settings.language) setLang(settings.language);
-      }
+      if (raw) return JSON.parse(raw);
     } catch {}
+    return {};
   }, []);
+
+  const [uiTheme, setUiTheme] = useState<UiTheme>(savedSettings.uiTheme || VIEWER_DEFAULTS.uiTheme);
+  const [canvasTheme, setCanvasTheme] = useState<CanvasTheme>(savedSettings.canvasTheme || VIEWER_DEFAULTS.canvasTheme);
+  const [drawingColorMode, setDrawingColorMode] = useState<DrawingColorMode>(savedSettings.drawingColorMode || VIEWER_DEFAULTS.drawingColorMode);
+  const [lang, setLang] = useState<Language>(savedSettings.language || VIEWER_DEFAULTS.language);
+
 
   const showAppToast = (message: string) => {
     setToastMessage(message);

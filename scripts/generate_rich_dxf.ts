@@ -193,6 +193,35 @@ function generateRichDxf() {
         add(11, -200 + i); add(21, -100); add(31, 0);
     }
 
+    // 7. LEADER
+    add(0, 'LEADER');
+    add(8, '0');
+    add(73, 3); // Number of vertices
+    add(10, 500); add(20, 500); add(30, 0);
+    add(10, 550); add(20, 550); add(30, 0);
+    add(10, 600); add(20, 550); add(30, 0);
+
+    // 8. DIMENSION
+    add(0, 'DIMENSION');
+    add(8, '0');
+    add(2, 'CHAIR'); // Cheat: Use existing CHAIR block as the dimension geometry block for simplicity
+    add(10, -100); add(20, 600); add(30, 0); // Definition point
+    add(11, 0); add(21, 600); add(31, 0); // Text position
+    add(70, 0); // Aligned type
+    add(1, '100.0'); // User text
+    add(13, -100); add(23, 580); add(33, 0); // Extension line 1
+    add(14, 0); add(24, 580); add(34, 0); // Extension line 2
+
+    // 9. ACAD_TABLE
+    // Often represented as an INSERT of an anonymous block containing lines and text
+    // We will just create an ACAD_TABLE entity and hope dxf-parser parses it or ignores it gracefully.
+    add(0, 'ACAD_TABLE');
+    add(8, '0');
+    add(10, -500); add(20, -500); add(30, 0);
+    add(11, 1); add(21, 0); add(31, 0);
+    add(91, 3); // rows
+    add(92, 3); // columns
+
     add(0, 'ENDSEC');
     add(0, 'EOF');
 
