@@ -109,15 +109,19 @@ export const DEFAULT_ENTITY_COLOR = '#FFFFFF';
 
 export const TEXT_RENDER_CONFIG = {
   minimumWidthFactor: 0.01,
+  // widthFactor 上限钳制，防止损坏的 DXF 数据导致水平拉伸失控。
+  maximumWidthFactor: 100,
   // 文字在屏幕上的视觉高度低于该值（像素）时，改用稳定的占位矩形渲染，
   // 避免极小字号下 measureText / SHX 描边出现拉伸、错位、散射等失真。
-  tinyTextPixelHeight: 9,
+  // 提升至 14px：9px 阈值仍然太低，SHX 多段线在 10-13px 会产生散乱断裂的描边。
+  tinyTextPixelHeight: 14,
   // ALIGNED/FIT 文字按目标宽度 / 测量宽度做缩放，当测量值在亚像素级别不可靠时
   // 可能产生极端拉伸（巨长文字）。此处对缩放比例做上下限钳制。
-  maximumTextFitScale: 40,
+  // 收紧上限 40→10：40x 拉伸仍然过于极端，10x 足以覆盖合理的 FIT 文字场景。
+  maximumTextFitScale: 10,
   minimumTextFitScale: 0.02,
   // 占位矩形相对视觉高度的最大宽高比，防止布局计算异常时画出超长矩形。
-  tinyTextPlaceholderMaxAspect: 60,
+  tinyTextPlaceholderMaxAspect: 40,
   averageCharacterWidthFactor: 0.72,
   cjkCharacterWidthFactor: 1.0,
   latinCharacterWidthFactor: 0.58,
