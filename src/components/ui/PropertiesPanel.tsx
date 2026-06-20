@@ -13,9 +13,10 @@ interface PropertiesPanelProps {
   styles?: Record<string, DxfStyle>; // 样式表
   offset?: { x: number, y: number }; // 世界坐标偏移（用于显示原始坐标）
   lang: Language; // 当前语言
+  className?: string;
 }
 
-const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, styles = {}, offset, lang }) => {
+const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, styles = {}, offset, lang, className }) => {
   const t = UI_TRANSLATIONS[lang];
   const entNames = ENTITY_TYPE_NAMES[lang];
   
@@ -245,7 +246,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, styles = {}
   };
 
   return (
-      <div className="properties-panel">
+      <div className={`properties-panel ${className || ''}`}>
         <div className="properties-header">
           {t.propertiesTitle || "属性面板"}
         </div>

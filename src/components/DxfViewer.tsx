@@ -88,6 +88,8 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
   const [layers, setLayers] = useState<Record<string, DxfLayer>>({ [DEFAULT_LAYER.name]: DEFAULT_LAYER });
   const [hiddenLayers, setHiddenLayers] = useState<Set<string>>(new Set());
   const [showAbout, setShowAbout] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [mobilePropertiesOpen, setMobilePropertiesOpen] = useState(false);
 
   const toggleLayerVisibility = useCallback((layerName: string) => {
     setHiddenLayers(prev => {
@@ -358,6 +360,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
 
   const handleSidebarSelectIds = (ids: Set<string>) => {
       setSelectedEntityIds(ids);
+      setMobileSidebarOpen(false);
       if (ids.size === 1) {
           const id = Array.from(ids)[0];
           const ent = entities.find(e => e.id === id);
@@ -509,7 +512,17 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
       </div>
 
       <div className="main-content">
+        {/* Drawer Backdrop for Mobile */}
+        <div 
+          className={`drawer-backdrop ${(mobileSidebarOpen || mobilePropertiesOpen) ? 'visible' : ''}`}
+          onClick={() => {
+            setMobileSidebarOpen(false);
+            setMobilePropertiesOpen(false);
+          }}
+        />
+
         <Sidebar 
+            className={mobileSidebarOpen ? 'open' : ''}
             layers={layers} 
             entities={entities} 
             selectedEntityIds={selectedEntityIds}
@@ -559,7 +572,41 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
           />
         </main>
 
+        {/* Floating action buttons for mobile panel toggling */}
+        <button 
+          type="button" 
+          className={`floating-toggle-btn btn-left ${mobileSidebarOpen ? 'active' : ''}`}
+          onClick={() => {
+            setMobileSidebarOpen(prev => !prev);
+            setMobilePropertiesOpen(false);
+          }}
+          title={lang === 'zh' ? '切换图层结构' : 'Toggle Layers'}
+        >
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+            <polyline points="2 17 12 22 22 17"></polyline>
+            <polyline points="2 12 12 17 22 12"></polyline>
+          </svg>
+        </button>
+
+        <button 
+          type="button" 
+          className={`floating-toggle-btn btn-right ${mobilePropertiesOpen ? 'active' : ''}`}
+          onClick={() => {
+            setMobilePropertiesOpen(prev => !prev);
+            setMobileSidebarOpen(false);
+          }}
+          title={lang === 'zh' ? '切换属性面板' : 'Toggle Properties'}
+        >
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="16" x2="12" y2="12"></line>
+            <line x1="12" y1="8" x2="12.01" y2="8"></line>
+          </svg>
+        </button>
+
         <PropertiesPanel 
+                className={mobilePropertiesOpen ? 'open' : ''}
                 entities={selectedEntities} 
                 styles={styles}
                 offset={worldOffset}

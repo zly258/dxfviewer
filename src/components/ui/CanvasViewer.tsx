@@ -57,6 +57,10 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
   const lastMiddleClickRef = useRef<{ time: number; x: number; y: number } | null>(null);
   viewPortRef.current = viewPort;
   
+  const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const lastTouchRef = useRef<{ x: number; y: number; dist: number } | null>(null);
+  const isTouchPanningRef = useRef<boolean>(false);
+  
   const [isPanning, setIsPanning] = useState(false);
   const [isBoxSelecting, setIsBoxSelecting] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
@@ -142,7 +146,7 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
      };
   }, [entities, layers, blocks, styles, lineTypes, ltScale, viewPort, selectedEntityIds, worldOffset, theme, drawingColorMode, overlayExtents, onRenderError, fontVersion, hiddenLayers, currentMousePos]);
 
-  // 处理滚轮事件，使用 passive: false 以允许 preventDefault
+  // 处理滚轮和触控事件
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -177,9 +181,142 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
       });
     };
 
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 1) {
+        const touch = e.touches[0];
+        touchStartRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
+        lastTouchRef.current = { x: touch.clientX, y: touch.clientY, dist: 0 };
+        isTouchPanningRef.current = false;
+      } else if (e.touches.length === 2) {
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+        const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+        const midX = (t1.clientX + t2.clientX) / 2;
+        const midY = (t1.clientY + t2.clientY) / 2;
+        lastTouchRef.current = { x: midX, y: midY, dist };
+        isTouchPanningRef.current = true;
+      }
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (!lastTouchRef.current) return;
+      
+      if (e.touches.length === 1) {
+        const touch = e.touches[0];
+        const dx = touch.clientX - lastTouchRef.current.x;
+        const dy = touch.clientY - lastTouchRef.current.y;
+        
+        if (!isTouchPanningRef.current && touchStartRef.current) {
+          const moveDist = Math.hypot(touch.clientX - touchStartRef.current.x, touch.clientY - touchStartRef.current.y);
+          if (moveDist > 6) {
+            isTouchPanningRef.current = true;
+          }
+        }
+        
+        if (isTouchPanningRef.current) {
+          if (e.cancelable) e.preventDefault();
+          const currentVP = viewPortRef.current;
+          const safeZoom = Math.max(Math.abs(currentVP.zoom), Number.MIN_VALUE);
+          const newTargetX = currentVP.targetX - dx / safeZoom;
+          const newTargetY = currentVP.targetY + dy / safeZoom;
+          
+          onViewPortChange({
+            targetX: safeClamp(newTargetX, -Number.MAX_VALUE, Number.MAX_VALUE),
+            targetY: safeClamp(newTargetY, -Number.MAX_VALUE, Number.MAX_VALUE),
+            zoom: currentVP.zoom
+          });
+          
+          lastTouchRef.current = { x: touch.clientX, y: touch.clientY, dist: 0 };
+        }
+      } else if (e.touches.length === 2) {
+        if (e.cancelable) e.preventDefault();
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+        const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+        const midX = (t1.clientX + t2.clientX) / 2;
+        const midY = (t1.clientY + t2.clientY) / 2;
+        
+        const currentVP = viewPortRef.current;
+        const lastDist = lastTouchRef.current.dist || dist;
+        const scaleFactor = dist / lastDist;
+        const newZoom = currentVP.zoom * scaleFactor;
+        
+        const MIN_ZOOM = 1e-10;
+        const MAX_ZOOM = 1e10;
+        const safeZoom = Math.max(Math.min(newZoom, MAX_ZOOM), MIN_ZOOM);
+        
+        const rect = container.getBoundingClientRect();
+        const zoomCenterX = midX - rect.left;
+        const zoomCenterY = midY - rect.top;
+        const viewCenterX = rect.width / 2;
+        const viewCenterY = rect.height / 2;
+        
+        const targetXWithZoom = currentVP.targetX + (zoomCenterX - viewCenterX) * (1/currentVP.zoom - 1/safeZoom);
+        const targetYWithZoom = currentVP.targetY - (zoomCenterY - viewCenterY) * (1/currentVP.zoom - 1/safeZoom);
+        
+        const panDx = midX - lastTouchRef.current.x;
+        const panDy = midY - lastTouchRef.current.y;
+        
+        const finalTargetX = targetXWithZoom - panDx / safeZoom;
+        const finalTargetY = targetYWithZoom + panDy / safeZoom;
+        
+        onViewPortChange({
+          targetX: safeClamp(finalTargetX, -Number.MAX_VALUE, Number.MAX_VALUE),
+          targetY: safeClamp(finalTargetY, -Number.MAX_VALUE, Number.MAX_VALUE),
+          zoom: safeZoom
+        });
+        
+        lastTouchRef.current = { x: midX, y: midY, dist };
+      }
+    };
+
+    const onTouchEnd = (e: TouchEvent) => {
+      if (!isTouchPanningRef.current && touchStartRef.current && e.touches.length === 0) {
+        const duration = Date.now() - touchStartRef.current.time;
+        if (duration < 300) {
+          const rect = container.getBoundingClientRect();
+          const tapX = touchStartRef.current.x - rect.left;
+          const tapY = touchStartRef.current.y - rect.top;
+          const wPos = screenToWorld(tapX, tapY);
+          
+          const currentVP = viewPortRef.current;
+          const safeZoom = Math.max(Math.abs(currentVP.zoom), Number.MIN_VALUE);
+          const worldPerPixel = 1 / safeZoom;
+          const viewWorldSpan = Math.max(rect.width, rect.height) * worldPerPixel;
+          const thresholdCap = Math.max(viewWorldSpan * SELECTION_CONFIG.maximumHitToleranceViewportFactor, SELECTION_CONFIG.minimumHitToleranceWorld);
+          
+          const threshold = Math.min(
+              Math.max(SELECTION_CONFIG.geometryHitTolerancePixels * 2.5 * worldPerPixel, SELECTION_CONFIG.minimumHitToleranceWorld),
+              thresholdCap
+          );
+          
+          const hitId = hitTest(wPos.x, wPos.y, threshold, entities, blocks, layers, styles);
+          
+          if (hitId) {
+            onSelectIds(new Set([hitId]));
+          } else {
+            onSelectIds(new Set());
+          }
+        }
+      }
+      
+      touchStartRef.current = null;
+      lastTouchRef.current = null;
+      isTouchPanningRef.current = false;
+    };
+
     container.addEventListener('wheel', onWheel as any, { passive: false });
-    return () => container.removeEventListener('wheel', onWheel as any);
-  }, [onViewPortChange]);
+    container.addEventListener('touchstart', onTouchStart, { passive: true });
+    container.addEventListener('touchmove', onTouchMove, { passive: false });
+    container.addEventListener('touchend', onTouchEnd, { passive: true });
+
+    return () => {
+      container.removeEventListener('wheel', onWheel as any);
+      container.removeEventListener('touchstart', onTouchStart);
+      container.removeEventListener('touchmove', onTouchMove);
+      container.removeEventListener('touchend', onTouchEnd);
+    };
+  }, [onViewPortChange, entities, blocks, layers, styles, onSelectIds]);
 
   const handleMouseDown = (e: MouseEvent) => {
     const rect = containerRef.current?.getBoundingClientRect();
