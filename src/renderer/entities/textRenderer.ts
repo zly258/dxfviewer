@@ -8,12 +8,16 @@ import {
   CAD_DEFAULT_TEXT_HEIGHT, 
   CAD_BY_LAYER_COLOR 
 } from '@/config/cadConstants';
-import { 
-  cleanCadText, 
-  cleanMText, 
-  getCadTextAnchorPosition, 
-  getEffectiveTextHeight, 
-  splitCadFormattedText 
+import {
+  cleanCadText,
+  cleanMText,
+  getCadTextAnchorPosition,
+  getEffectiveTextHeight,
+  splitCadFormattedText,
+  estimateCadTextLayout,
+  getTextHorizontalCanvasAlign,
+  getTextVerticalCanvasBaseline,
+  getMTextLocalTopOffset,
 } from '@/utils/textUtils';
 import { buildCadTextLayout } from '@/core/text/textLayoutEngine';
 import { getCanvasFont } from '@/utils/fontResolver';
@@ -316,40 +320,47 @@ export const drawTextEntity = (
     }
 
     if (actualVisualScreenHeight < TEXT_RENDER_CONFIG.tinyTextPixelHeight && !isSelected) {
-        const layout = buildCadTextLayout({
-            entity: ent,
-            styles,
-            context: ctx,
-            worldToScreenScale: transform.scale,
-            noWrap: noMTextWrap,
-        });
-        if (!layout || !Number.isFinite(layout.visualScreenHeight) || layout.visualScreenHeight <= 0) {
+        // Tiny text 路径：使用纯计算估算（estimateCadTextLayout）替代 buildCadTextLayout。
+        // 后者依赖 ctx.measureText，但此处 ctx.font 尚未设置，测量结果会使用上一个实体
+        // 遗留的字体大小，导致宽度严重失真（巨长矩形）和位置偏移。
+        // estimateCadTextLayout 完全基于字符类型和字号计算，不依赖 canvas 状态，稳定可靠。
+        const estimate = estimateCadTextLayout(ent, styles);
+        if (!estimate || !estimate.plainText) {
             ctx.restore();
             return;
         }
-        // 占位矩形用视觉高度作为最小尺寸保证可见，同时钳制最大宽高比，
-        // 避免布局在亚像素测量下产生超长或错位矩形。
-        const placeholderHeight = layout.visualScreenHeight;
+        const placeholderHeight = Math.max(actualVisualScreenHeight, 2);
         const maxAllowedWidth = placeholderHeight * TEXT_RENDER_CONFIG.tinyTextPlaceholderMaxAspect;
-        const clampWidth = (w: number) => {
-            if (!Number.isFinite(w) || w <= 0) return placeholderHeight;
-            return Math.min(Math.max(w, placeholderHeight), maxAllowedWidth);
-        };
-        ctx.scale(layout.horizontalScale * layout.generationScale.x, layout.generationScale.y);
-        if (layout.isMText) {
-            const width = clampWidth(Math.max(layout.blockWidth, layout.visualScreenHeight));
-            ctx.fillRect(layout.boxLeft, layout.boxTop, width, Math.max(layout.blockHeight, layout.visualScreenHeight));
+        const estScreenHeight = estimate.blockHeight * transform.scale;
+        const estScreenWidth = estimate.blockWidth * transform.scale;
+        const height = isMText ? Math.max(estScreenHeight, placeholderHeight) : placeholderHeight;
+        const rawWidth = Math.max(estScreenWidth, placeholderHeight);
+        const width = Math.min(Math.max(rawWidth, placeholderHeight), maxAllowedWidth);
+
+        // 直接在屏幕坐标系绘制占位矩形，不使用 ctx.scale，
+        // 避免 horizontalScale / generationScale 在亚像素下放大误差。
+        let x = 0;
+        let y = 0;
+        if (isMText) {
+            const attachmentPoint = ent.attachmentPoint || 1;
+            if ([2, 5, 8].includes(attachmentPoint)) x = -width / 2;
+            else if ([3, 6, 9].includes(attachmentPoint)) x = -width;
+            y = getMTextLocalTopOffset(attachmentPoint, height);
         } else {
-            const width = clampWidth(Math.max(layout.blockWidth, layout.visualScreenHeight));
-            let x = 0;
-            if (layout.align === 'center') x = -width / 2;
-            else if (layout.align === 'right') x = -width;
-            let y = -layout.visualScreenHeight * TEXT_RENDER_CONFIG.alphabeticBaselineOffsetFactor;
-            if (layout.baseline === 'top') y = 0;
-            else if (layout.baseline === 'middle') y = -layout.visualScreenHeight / 2;
-            else if (layout.baseline === 'bottom') y = -layout.visualScreenHeight;
-            ctx.fillRect(x, y, width, layout.visualScreenHeight);
+            const align = getTextHorizontalCanvasAlign(hAlign);
+            const baseline = getTextVerticalCanvasBaseline(ent.vAlign, hAlign);
+            if (align === 'center') x = -width / 2;
+            else if (align === 'right') x = -width;
+            if (baseline === 'top') y = 0;
+            else if (baseline === 'middle') y = -height / 2;
+            else if (baseline === 'bottom') y = -height;
+            else y = -placeholderHeight * TEXT_RENDER_CONFIG.alphabeticBaselineOffsetFactor;
         }
+
+        // 处理水平镜像（textGenerationFlags bit 1），等价于 ctx.scale(-1, 1) 的位置翻转
+        if ((ent.textGenerationFlags & 2) !== 0) x = -x - width;
+
+        ctx.fillRect(x, y, width, height);
         ctx.restore();
         return;
     }

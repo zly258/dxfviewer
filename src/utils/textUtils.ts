@@ -89,8 +89,14 @@ export function getEffectiveTextWidthFactor(ent: DxfText, styles?: Record<string
   }
 
   if (!factor) factor = style?.widthFactor || 1;
-  if (Math.abs(factor) < TEXT_RENDER_CONFIG.minimumWidthFactor) {
+  const absFactor = Math.abs(factor);
+  if (absFactor < TEXT_RENDER_CONFIG.minimumWidthFactor) {
     return factor >= 0 ? TEXT_RENDER_CONFIG.minimumWidthFactor : -TEXT_RENDER_CONFIG.minimumWidthFactor;
+  }
+  // 上限钳制：防止损坏的 DXF 数据中 widthFactor 过大导致水平拉伸失控。
+  const maxFactor = TEXT_RENDER_CONFIG.maximumWidthFactor ?? 100;
+  if (absFactor > maxFactor) {
+    return factor >= 0 ? maxFactor : -maxFactor;
   }
   return factor;
 }
