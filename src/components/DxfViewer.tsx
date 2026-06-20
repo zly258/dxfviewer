@@ -3,6 +3,8 @@ import CanvasViewer from '@/components/ui/CanvasViewer';
 import Sidebar from '@/components/ui/Sidebar';
 import PropertiesPanel from '@/components/ui/PropertiesPanel';
 import ToolBar from '@/components/ui/ToolBar';
+import MobileShell from '@/components/ui/MobileShell';
+import { useIsMobile } from '@/hooks/useMediaQuery';
 import { parseDxf } from '@/core/parser/parseDxf';
 import { calculateExtents } from '@/core/geometry/extents';
 import { AnyEntity, ViewPort, DxfLayer, DxfBlock, EntityType, DxfStyle, DxfLineType, Point2D, CanvasTheme, DrawingColorMode, UiTheme } from '@/types';
@@ -84,8 +86,8 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
   const [layers, setLayers] = useState<Record<string, DxfLayer>>({ [DEFAULT_LAYER.name]: DEFAULT_LAYER });
   const [hiddenLayers, setHiddenLayers] = useState<Set<string>>(new Set());
   const [showAbout, setShowAbout] = useState(false);
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const [mobilePropertiesOpen, setMobilePropertiesOpen] = useState(false);
+  const isMobile = useIsMobile();
+  const mobileFileInputRef = useRef<HTMLInputElement>(null);
 
   const toggleLayerVisibility = useCallback((layerName: string) => {
     setHiddenLayers(prev => {
@@ -347,7 +349,6 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
 
   const handleSidebarSelectIds = (ids: Set<string>) => {
       setSelectedEntityIds(ids);
-      setMobileSidebarOpen(false);
       if (ids.size === 1) {
           const id = Array.from(ids)[0];
           const ent = entities.find(e => e.id === id);
@@ -422,6 +423,12 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
     await loadFromFile(files[0]);
   };
 
+  const handleMobileFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files ? Array.from(event.target.files) : [];
+    event.target.value = '';
+    if (files.length > 0) handleImport(files);
+  };
+
   const selectedEntities = entities.filter(e => selectedEntityIds.has(e.id));
   const visibleEntityCount = useMemo(() => entities.filter(e => e.visible !== false && e.type !== EntityType.ATTDEF && e.type !== EntityType.ATTRIB).length, [entities]);
   const viewerNoticeMessage = useMemo(() => {
@@ -438,8 +445,37 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
     return null;
   }, [parseErrorMessage, isLoading, isNoticeDismissed, renderErrorMessage, initFile, entities.length, visibleEntityCount, lang]);
 
+  const sidebarContent = (
+    <Sidebar
+      layers={layers}
+      entities={entities}
+      selectedEntityIds={selectedEntityIds}
+      onSelectIds={handleSidebarSelectIds}
+      lang={lang}
+      hiddenLayers={hiddenLayers}
+      onToggleLayerVisibility={toggleLayerVisibility}
+    />
+  );
+
+  const propertiesContent = (
+    <PropertiesPanel
+      entities={selectedEntities}
+      styles={styles}
+      offset={worldOffset}
+      lang={lang}
+    />
+  );
+
   return (
-    <div ref={containerRef} className={`app-container ${uiTheme === 'dark' ? 'theme-dark' : ''}`} style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+    <div ref={containerRef} className={`app-container ${uiTheme === 'dark' ? 'theme-dark' : ''} ${isMobile ? 'is-mobile' : ''}`} style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <input
+        ref={mobileFileInputRef}
+        type="file"
+        accept=".dxf"
+        multiple
+        onChange={handleMobileFileChange}
+        className="hidden-file-input"
+      />
       {toastMessage && (
         <div className="toast-container">
           <div className={`toast ${toastMessage.isError ? 'error' : 'success'}`}>
@@ -463,49 +499,33 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
         </div>
       )}
 
+      {(!isMobile || tabStrip) && (
       <div className="menu-tab-row">
-        <ToolBar
-          onImport={handleImport}
-          onFitView={handleFitView}
-          showOpen={showOpenMenu}
-          uiTheme={uiTheme}
-          onSetUiTheme={handleSetUiTheme}
-          drawingColorMode={drawingColorMode}
-          onSetDrawingColorMode={handleSetDrawingColorMode}
-          lang={lang}
-          onSetLang={handleSetLang}
-          showSidebar={showSidebar}
-          onToggleSidebar={() => setShowSidebar(v => !v)}
-          showProperties={showProperties}
-          onToggleProperties={() => setShowProperties(v => !v)}
-          onShowAbout={() => setShowAbout(true)}
-        />
+        {!isMobile && (
+          <ToolBar
+            onImport={handleImport}
+            onFitView={handleFitView}
+            showOpen={showOpenMenu}
+            uiTheme={uiTheme}
+            onSetUiTheme={handleSetUiTheme}
+            drawingColorMode={drawingColorMode}
+            onSetDrawingColorMode={handleSetDrawingColorMode}
+            lang={lang}
+            onSetLang={handleSetLang}
+            showSidebar={showSidebar}
+            onToggleSidebar={() => setShowSidebar(v => !v)}
+            showProperties={showProperties}
+            onToggleProperties={() => setShowProperties(v => !v)}
+            onShowAbout={() => setShowAbout(true)}
+          />
+        )}
         {tabStrip && <div className="menu-tab-strip">{tabStrip}</div>}
       </div>
+      )}
 
       <div className="main-content">
-        {/* Drawer Backdrop for Mobile */}
-        <div 
-          className={`drawer-backdrop ${(mobileSidebarOpen || mobilePropertiesOpen) ? 'visible' : ''}`}
-          onClick={() => {
-            setMobileSidebarOpen(false);
-            setMobilePropertiesOpen(false);
-          }}
-        />
+        {!isMobile && showSidebar && sidebarContent}
 
-        {showSidebar && (
-          <Sidebar
-              className={mobileSidebarOpen ? 'open' : ''}
-              layers={layers}
-              entities={entities}
-              selectedEntityIds={selectedEntityIds}
-              onSelectIds={handleSidebarSelectIds}
-              lang={lang}
-              hiddenLayers={hiddenLayers}
-              onToggleLayerVisibility={toggleLayerVisibility}
-              />
-        )}
-        
         <main ref={viewerRef} className="viewer-container">
           {viewerNoticeMessage && (
             <div className="viewer-error-panel">
@@ -543,58 +563,31 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
             onRenderError={setRenderErrorMessage}
             hiddenLayers={hiddenLayers}
           />
+
+          {isMobile && (
+            <MobileShell
+              lang={lang}
+              showOpen={showOpenMenu}
+              onOpen={() => mobileFileInputRef.current?.click()}
+              onFitView={handleFitView}
+              uiTheme={uiTheme}
+              onSetUiTheme={handleSetUiTheme}
+              drawingColorMode={drawingColorMode}
+              onSetDrawingColorMode={handleSetDrawingColorMode}
+              onSetLang={handleSetLang}
+              onShowAbout={() => setShowAbout(true)}
+              mouseCoords={mouseCoords}
+              selectedCount={selectedEntityIds.size}
+              sidebarContent={sidebarContent}
+              propertiesContent={propertiesContent}
+            />
+          )}
         </main>
 
-        {/* Floating toggle buttons (mobile only): circular icons at top-left / top-right of the canvas */}
-        {showSidebar && (
-          <button
-            type="button"
-            className={`floating-toggle-btn btn-left ${mobileSidebarOpen ? 'active' : ''}`}
-            onClick={() => {
-              setMobileSidebarOpen(prev => !prev);
-              setMobilePropertiesOpen(false);
-            }}
-            title={lang === 'zh' ? '切换图层结构' : 'Toggle Layers'}
-            aria-label={lang === 'zh' ? '图层' : 'Layers'}
-          >
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
-              <polyline points="2 17 12 22 22 17"></polyline>
-              <polyline points="2 12 12 17 22 12"></polyline>
-            </svg>
-          </button>
-        )}
-
-        {showProperties && (
-          <button
-            type="button"
-            className={`floating-toggle-btn btn-right ${mobilePropertiesOpen ? 'active' : ''}`}
-            onClick={() => {
-              setMobilePropertiesOpen(prev => !prev);
-              setMobileSidebarOpen(false);
-            }}
-            title={lang === 'zh' ? '切换属性面板' : 'Toggle Properties'}
-            aria-label={lang === 'zh' ? '属性' : 'Properties'}
-          >
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10"></circle>
-              <line x1="12" y1="16" x2="12" y2="12"></line>
-              <line x1="12" y1="8" x2="12.01" y2="8"></line>
-            </svg>
-          </button>
-        )}
-
-        {showProperties && (
-          <PropertiesPanel
-                className={mobilePropertiesOpen ? 'open' : ''}
-                entities={selectedEntities}
-                styles={styles}
-                offset={worldOffset}
-                lang={lang}
-            />
-        )}
+        {!isMobile && showProperties && propertiesContent}
       </div>
 
+      {!isMobile && (
       <div className="status-bar">
         <div className="status-left">
           <div className="status-coords">
@@ -619,7 +612,8 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
           </div>
         </div>
       </div>
-      
+      )}
+
       {showAbout && (
         <div className="about-modal-overlay" onClick={() => setShowAbout(false)}>
           <div className="about-modal-content" onClick={(e) => e.stopPropagation()}>
