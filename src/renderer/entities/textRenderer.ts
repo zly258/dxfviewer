@@ -306,37 +306,21 @@ export const drawTextEntity = (
     const profile = resolveCadTextFontProfile(ent.styleName, styles, ent.value);
     const fontScaleFactor = (profile === 'trueType' || profile === 'cjk') ? TEXT_RENDER_CONFIG.trueTypeFontHeightFactor : TEXT_RENDER_CONFIG.shxFontHeightFactor;
     
-    // 使用固定的 100px 虚拟高度绕过浏览器小字号限制
-    const VIRTUAL_FONT_SIZE = 100;
-    const virtualEntityHeight = VIRTUAL_FONT_SIZE / fontScaleFactor;
-
-    const originalHeight = ent.height;
-    ent.height = virtualEntityHeight;
-    ctx.font = getCanvasFont(ent, styles);
-    ent.height = originalHeight;
-
     const effectiveHeight = getEffectiveTextHeight(ent, styles);
-    const virtualWorldToScreenScale = virtualEntityHeight / effectiveHeight;
-
-    const shxFontNames = getTextShxFontNames(ent, styles);
-
-    const layout = buildCadTextLayout({
-        entity: ent,
-        styles,
-        context: ctx,
-        worldToScreenScale: virtualWorldToScreenScale,
-        noWrap: noMTextWrap,
-    });
-    if (!layout) {
-        ctx.restore();
-        return;
-    }
-
     const actualVisualScreenHeight = effectiveHeight * transform.scale * fontScaleFactor;
-    const renderScale = actualVisualScreenHeight / VIRTUAL_FONT_SIZE;
 
     if (actualVisualScreenHeight < TEXT_RENDER_CONFIG.tinyTextPixelHeight && !isSelected) {
-        ctx.scale(renderScale, renderScale);
+        const layout = buildCadTextLayout({
+            entity: ent,
+            styles,
+            context: ctx,
+            worldToScreenScale: transform.scale,
+            noWrap: noMTextWrap,
+        });
+        if (!layout) {
+            ctx.restore();
+            return;
+        }
         ctx.scale(layout.horizontalScale * layout.generationScale.x, layout.generationScale.y);
         if (layout.isMText) {
             ctx.fillRect(layout.boxLeft, layout.boxTop, Math.max(layout.blockWidth, layout.visualScreenHeight), Math.max(layout.blockHeight, layout.visualScreenHeight));
@@ -355,7 +339,25 @@ export const drawTextEntity = (
         return;
     }
 
-    ctx.scale(renderScale, renderScale);
+    const originalHeight = ent.height;
+    ent.height = effectiveHeight * transform.scale / fontScaleFactor; // Set to screen height
+    ctx.font = getCanvasFont(ent, styles);
+    ent.height = originalHeight;
+
+    const shxFontNames = getTextShxFontNames(ent, styles);
+
+    const layout = buildCadTextLayout({
+        entity: ent,
+        styles,
+        context: ctx,
+        worldToScreenScale: transform.scale,
+        noWrap: noMTextWrap,
+    });
+    
+    if (!layout) {
+        ctx.restore();
+        return;
+    }
 
     if (layout.isMText) {
         ctx.scale(layout.horizontalScale * layout.generationScale.x, layout.generationScale.y);
@@ -384,9 +386,8 @@ export const drawTextEntity = (
         const dy = ent.secondPosition.y - ent.position.y;
         const targetWidth = Math.hypot(dx, dy) * transform.scale;
         const measuredWidth = Math.max(layout.blockWidth, TEXT_RENDER_CONFIG.minimumMeasuredTextWidth);
-        const virtualTargetWidth = targetWidth / renderScale;
         if (targetWidth > 0 && measuredWidth > 0) {
-            const scale = virtualTargetWidth / measuredWidth;
+            const scale = targetWidth / measuredWidth;
             ctx.scale(scale, hAlign === 3 ? scale : 1);
         }
         drawFormattedTextLine(ctx, shxDebugEnabled, shxDebugStats, ent.value || layout.plainText, layout.plainText, 0, 0, 'left', layout.baseline, layout.visualScreenHeight, shxFontNames);
