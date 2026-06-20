@@ -442,9 +442,13 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
     }
   };
 
+  // 根据 theme 计算 --canvas-bg 的实际色值，通过 inline style 写入容器，
+  // 确保 CSS fallback 和主题切换瞬间不会出现黑色闪烁。
+  const canvasBgColor = theme === 'white' ? '#FFFFFF' : '#212121';
+
   return (
-    <div 
-      ref={containerRef} 
+    <div
+      ref={containerRef}
       className="canvas-container"
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
@@ -453,7 +457,7 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
         setIsPanning(false);
         setIsBoxSelecting(false);
       }}
-      style={{ cursor: isPanning ? 'grabbing' : 'default' }}
+      style={{ cursor: isPanning ? 'grabbing' : 'default', '--canvas-bg': canvasBgColor } as React.CSSProperties}
     >
       <canvas ref={canvasRef} />
       

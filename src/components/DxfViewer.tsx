@@ -152,6 +152,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
   // 画布背景跟随 UI 主题：浅色 UI → 白底，深色 UI → 黑底。
   // 不再单独暴露 canvasTheme，避免 UI 主题与画布背景不一致。
   const canvasTheme: CanvasTheme = canvasThemeFromUiTheme(uiTheme);
+  const canvasBgColor = canvasTheme === 'white' ? '#FFFFFF' : '#212121';
 
   const drawingColorMode = controlledDrawingColorMode || internalDrawingColorMode;
   const handleSetDrawingColorMode = useCallback((newMode: DrawingColorMode) => {
@@ -467,7 +468,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
   );
 
   return (
-    <div ref={containerRef} className={`app-container ${uiTheme === 'dark' ? 'theme-dark' : ''} ${isMobile ? 'is-mobile' : ''}`} style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+    <div ref={containerRef} className={`app-container ${uiTheme === 'dark' ? 'theme-dark' : ''} ${isMobile ? 'is-mobile' : ''}`} style={{ height: '100%', display: 'flex', flexDirection: 'column', '--canvas-bg': canvasBgColor } as React.CSSProperties}>
       <input
         ref={mobileFileInputRef}
         type="file"
