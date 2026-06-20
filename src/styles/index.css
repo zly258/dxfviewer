@@ -1202,21 +1202,23 @@ textarea {
 /* -------------------------------------------------------------
  * 4. Responsive Mobile Design (Media Queries)
  * ------------------------------------------------------------- */
+.floating-toggle-btn {
+  display: none;
+}
+
 @media (max-width: 768px) {
-  /* Swipeable Horizontal Toolbar */
-  .toolbar {
-    overflow-x: auto;
-    overflow-y: hidden;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-    white-space: nowrap;
-    flex-wrap: nowrap;
-    width: 100%;
-    -webkit-overflow-scrolling: touch;
+  .menu-tab-row {
+    height: auto;
+    min-height: var(--toolbar-height);
   }
-  
-  .toolbar::-webkit-scrollbar {
-    display: none;
+
+  /* Wrap toolbar to prevent dropdown menu clipping */
+  .toolbar {
+    overflow: visible;
+    flex-wrap: wrap;
+    height: auto;
+    padding: 4px 8px;
+    width: 100%;
   }
   
   .toolbar .menu-item {
@@ -1316,4 +1318,5 @@ textarea {
     color: var(--text-primary);
   }
 }
+
 
