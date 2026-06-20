@@ -11,6 +11,7 @@ interface SidebarProps {
   lang: Language;
   hiddenLayers?: Set<string>;
   onToggleLayerVisibility?: (layerName: string) => void;
+  className?: string;
 }
 
 const ROW_HEIGHT = 26; // 列表项高度
@@ -26,7 +27,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   onSelectIds, 
   lang,
   hiddenLayers = new Set(),
-  onToggleLayerVisibility
+  onToggleLayerVisibility,
+  className
 }) => {
   const [expandedLayers, setExpandedLayers] = useState<Set<string>>(new Set(Object.keys(layers)));
   const containerRef = useRef<HTMLDivElement>(null);
@@ -126,17 +128,16 @@ const Sidebar: React.FC<SidebarProps> = ({
   // 获取图层颜色十六进制
   const getLayerColorHex = (layer: DxfLayer) => getAutoCadColor(layer.color);
 
-  const EyeOpenIcon = () => (
-    <svg viewBox="0 0 24 24" className="layer-eye-icon" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-      <circle cx="12" cy="12" r="3"></circle>
-    </svg>
-  );
-
-  const EyeClosedIcon = () => (
-    <svg viewBox="0 0 24 24" className="layer-eye-icon layer-eye-closed" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
-      <line x1="1" y1="1" x2="23" y2="23"></line>
+  const CheckboxIcon = ({ checked }: { checked: boolean }) => (
+    <svg viewBox="0 0 24 24" className="layer-checkbox-icon" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      {checked ? (
+        <>
+          <rect x="3" y="3" width="18" height="18" rx="3" fill="var(--accent-blue)" stroke="var(--accent-blue)"></rect>
+          <polyline points="7 12 10 15 17 8" stroke="#ffffff" strokeWidth="3"></polyline>
+        </>
+      ) : (
+        <rect x="3" y="3" width="18" height="18" rx="3" stroke="var(--border-strong)"></rect>
+      )}
     </svg>
   );
 
@@ -155,7 +156,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   );
 
   return (
-    <div className="sidebar">
+    <div className={`sidebar ${className || ''}`}>
       <div className="sidebar-header">
         {t.layersTitle}
       </div>
@@ -188,7 +189,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                                     }}
                                     title={isHidden ? (lang === 'zh' ? '显示图层' : 'Show layer') : (lang === 'zh' ? '隐藏图层' : 'Hide layer')}
                                 >
-                                    {isHidden ? <EyeClosedIcon /> : <EyeOpenIcon />}
+                                    <CheckboxIcon checked={!isHidden} />
                                 </div>
                                 <div className="layer-icon" style={{ backgroundColor: colorHex }}></div>
                                 <span className="layer-name">{item.name}</span>
