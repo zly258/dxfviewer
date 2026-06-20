@@ -1,4 +1,4 @@
-import { AnyEntity, EntityType, Point2D } from '../../types';
+import { AnyEntity, EntityType, Point2D } from '@/types';
 
 /** 将实体的所有坐标字段按给定偏移量进行平移。 */
 export const offsetEntity = (ent: AnyEntity, offset: Point2D): void => {

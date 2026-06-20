@@ -1,4 +1,4 @@
-import { HatchEdge, HatchLoop, Point2D } from '../../types';
+import { HatchEdge, HatchLoop, Point2D } from '@/types';
 import { sampleBulgeSegment } from './bulge';
 
 const TWO_PI = Math.PI * 2;

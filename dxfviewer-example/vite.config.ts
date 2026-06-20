@@ -5,7 +5,7 @@ import react from '@vitejs/plugin-react';
 const normalizePath = (value: string) => value.replace(/\\/g, '/');
 
 export default defineConfig({
-  base: './',
+  base: process.env.VITE_BASE_PATH || './',
   plugins: [react()],
   build: {
     outDir: 'dist',

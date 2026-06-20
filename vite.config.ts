@@ -53,15 +53,15 @@ export default defineConfig({
             return 'vendor-shx';
           }
 
-          if (moduleId.includes('/src/viewer/services/canvasRenderService') || moduleId.includes('/src/core/text/')) {
+          if (moduleId.includes('/src/renderer/services/canvasRenderService') || moduleId.includes('/src/core/text/')) {
             return 'viewer-render';
           }
 
-          if (moduleId.includes('/src/viewer/services/dxfService') || moduleId.includes('/src/shared/utils/')) {
+          if (moduleId.includes('/src/utils/')) {
             return 'viewer-loader';
           }
 
-          if (moduleId.includes('/src/viewer/components/') || moduleId.includes('/src/app/')) {
+          if (moduleId.includes('/src/components/ui/') || moduleId.includes('/src/components/app/')) {
             return 'viewer-ui';
           }
 
@@ -86,8 +86,7 @@ export default defineConfig({
     dts({
       rollupTypes: true,
       insertTypesEntry: true,
-      include: ['src/**/*.ts', 'src/**/*.tsx'],
-      exclude: ['src/main.tsx'],
+      include: ['src/**/*.ts', 'src/**/*.tsx']
     }),
   ],
   resolve: {

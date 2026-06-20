@@ -1,5 +1,5 @@
-import { Point2D, DxfEntity, Point3D } from '../../types';
-import { CAD_BY_LAYER_COLOR } from '../../shared/constants/cadConstants';
+import { Point2D, DxfEntity, Point3D } from '@/types';
+import { CAD_BY_LAYER_COLOR } from '@/config/cadConstants';
 
 /**
  * DXF 解析状态机类，负责逐行读取和 Peek 组码

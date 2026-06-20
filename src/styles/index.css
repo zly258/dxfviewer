@@ -154,6 +154,7 @@ textarea {
   line-height: 28px;
   cursor: pointer;
   box-sizing: border-box;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .menu-item:hover,
@@ -166,26 +167,35 @@ textarea {
 .menu-item.active {
   background-color: var(--bg-active);
   border-color: var(--accent-blue);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
 .dropdown-menu {
   position: absolute;
-  top: calc(100% + 3px);
+  top: calc(100% + 4px);
   left: 0;
   z-index: 900;
   min-width: 190px;
-  padding: 5px;
+  padding: 6px;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-medium);
   background-color: var(--bg-elevated);
   box-shadow: var(--shadow-menu);
   box-sizing: border-box;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  animation: dropdownFadeIn 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes dropdownFadeIn {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 .dropdown-item,
 .dropdown-header {
   width: 100%;
-  height: 30px;
+  height: 32px;
   display: flex;
   align-items: center;
   box-sizing: border-box;
@@ -203,6 +213,7 @@ textarea {
   border-radius: var(--radius-small);
   color: var(--text-primary);
   cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 
 .dropdown-item:hover {
@@ -227,7 +238,7 @@ textarea {
 
 .divider {
   height: 1px;
-  margin: 5px 4px;
+  margin: 6px 4px;
   background-color: var(--border-color);
 }
 

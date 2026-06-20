@@ -47,6 +47,8 @@ jobs:
 
       - name: 构建库和示例
         run: npm run build:all
+        env:
+          VITE_BASE_PATH: /${{ github.event.repository.name }}/
 
       - name: 配置 GitHub Pages
         if: github.event_name != 'pull_request'
