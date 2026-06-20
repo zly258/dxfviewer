@@ -67,7 +67,6 @@ export const renderEntitiesToCanvas = (
     height: number,
     theme: CanvasTheme,
     drawingColorMode: DrawingColorMode = 'original',
-    overlayExtents?: { min: Point2D, max: Point2D } | null,
     hiddenLayers: Set<string> = new Set()
 ) => {
     // 使用画布主题背景色填充整个 Canvas
@@ -246,40 +245,6 @@ export const renderEntitiesToCanvas = (
     // 遍历图纸中的顶级实体进行依次渲染绘制
     entities.forEach(ent => drawEntity(ent, transform, undefined, undefined, false, 0, false));
 
-    // 绘制套图叠合图纸范围的虚线外边框（若配置存在）
-    if (overlayExtents) {
-        const corners = [
-            { x: overlayExtents.min.x, y: overlayExtents.min.y },
-            { x: overlayExtents.max.x, y: overlayExtents.min.y },
-            { x: overlayExtents.max.x, y: overlayExtents.max.y },
-            { x: overlayExtents.min.x, y: overlayExtents.max.y }
-        ].map(p => transform.project(p));
-
-        ctx.save();
-        ctx.setLineDash([6, 4]);
-        ctx.lineWidth = 1;
-        ctx.strokeStyle = theme === 'white' ? '#1e40af' : '#60a5fa';
-        ctx.beginPath();
-        ctx.moveTo(corners[0].x, corners[0].y);
-        ctx.lineTo(corners[1].x, corners[1].y);
-        ctx.lineTo(corners[2].x, corners[2].y);
-        ctx.lineTo(corners[3].x, corners[3].y);
-        ctx.closePath();
-        ctx.stroke();
-
-        const cx = (overlayExtents.min.x + overlayExtents.max.x) / 2;
-        const cy = (overlayExtents.min.y + overlayExtents.max.y) / 2;
-        const c = transform.project({ x: cx, y: cy });
-        ctx.setLineDash([]);
-        ctx.beginPath();
-        ctx.moveTo(c.x - 6, c.y);
-        ctx.lineTo(c.x + 6, c.y);
-        ctx.moveTo(c.x, c.y - 6);
-        ctx.lineTo(c.x, c.y + 6);
-        ctx.stroke();
-        ctx.restore();
-    }
-
     // 绘制 SHX 字体性能与命中信息
     if (shxDebugEnabled) {
         ctx.save();
@@ -350,16 +315,17 @@ export const hitTest = (
         if (layer && layer.isVisible === false) return Infinity;
 
         const p = tx ? tx : (pt: Point2D) => pt;
-        
+
         const isTextEntity = [EntityType.TEXT, EntityType.MTEXT, EntityType.ATTRIB, EntityType.ATTDEF].includes(ent.type);
-        const effectiveThreshold = isTextEntity ? (threshold * 2.0) : threshold;
+        // 文字拾取容差与几何体保持一致（原 2.0 会让文字包围盒过度扩张，抢夺附近几何体的点击）。
+        const effectiveThreshold = isTextEntity ? (threshold * SELECTION_CONFIG.textHitToleranceFactor) : threshold;
 
         let minDist = Infinity;
 
         // 使用预计算的包围盒进行初步碰撞检测
         if (ent.extents) {
             let { min, max } = ent.extents;
-            
+
             if (tx) {
                 const corners = [
                     p({ x: min.x, y: min.y }),
@@ -377,20 +343,25 @@ export const hitTest = (
             }
 
             const margin = effectiveThreshold * 1.2;
-            const insideBox = x >= min.x - margin && x <= max.x + margin && 
+            const insideBox = x >= min.x - margin && x <= max.x + margin &&
                               y >= min.y - margin && y <= max.y + margin;
-            
+
             if (!insideBox) return Infinity;
 
-            const isContainerOrText = [
-                EntityType.TEXT, 
-                EntityType.MTEXT, 
-                EntityType.ATTRIB, 
-                EntityType.ATTDEF,
-                EntityType.HATCH
-            ].includes(ent.type);
+            if (isTextEntity) {
+                // 文字按"到包围盒的真实距离"判定：落在盒内距离为 0，否则取到最近边的距离。
+                // 关键修复：原来盒内直接返回 0，会让旁边文字抢走本应选中几何体的点击。
+                // 现在盒内追加一个惩罚分，使点击正好落在几何体上时（几何体距离≈0）优先选中几何体。
+                const dx = Math.max(min.x - x, 0, x - max.x);
+                const dy = Math.max(min.y - y, 0, y - max.y);
+                const inside = dx === 0 && dy === 0;
+                const bboxDist = inside ? 0 : Math.hypot(dx, dy);
+                const penalized = bboxDist + (inside ? effectiveThreshold * SELECTION_CONFIG.textHitInsidePenaltyFactor : 0);
+                return penalized < effectiveThreshold ? penalized : Infinity;
+            }
 
-            if (isContainerOrText) return 0;
+            // 面类实体（如填充）落在包围盒内即视为命中
+            if (ent.type === EntityType.HATCH) return 0;
         }
 
         // 精确几何算法做详细碰撞计算

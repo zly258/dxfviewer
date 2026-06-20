@@ -6,7 +6,7 @@ import ToolBar from '@/components/ui/ToolBar';
 import { parseDxf } from '@/core/parser/parseDxf';
 import { calculateExtents } from '@/core/geometry/extents';
 import { AnyEntity, ViewPort, DxfLayer, DxfBlock, EntityType, DxfStyle, DxfLineType, Point2D, CanvasTheme, DrawingColorMode, UiTheme } from '@/types';
-import { DEFAULT_LAYER, DEFAULT_VIEWPORT, LAYOUT_CONFIG, SHORTCUT_CONFIG, VIEWER_DEFAULTS, ZOOM_CONFIG } from '@/config/viewerConfig';
+import { DEFAULT_LAYER, DEFAULT_VIEWPORT, LAYOUT_CONFIG, SHORTCUT_CONFIG, VIEWER_DEFAULTS, ZOOM_CONFIG, canvasThemeFromUiTheme } from '@/config/viewerConfig';
 import { Language } from '@/config/i18n';
 import { decodeDxfBuffer } from '@/core/parser/utils/textDecoder';
 
@@ -26,21 +26,19 @@ export interface DxfViewerProps {
   defaultLanguage?: Language; // 默认语言
   lang?: Language; // 受控语言属性
   onLanguageChange?: (lang: Language) => void;
-  uiTheme?: UiTheme; // 受控UI主题
+  uiTheme?: UiTheme; // 受控UI主题（画布背景跟随该主题：浅色→白底，深色→黑底）
   onUiThemeChange?: (theme: UiTheme) => void;
-  canvasTheme?: CanvasTheme; // 受控画布背景
-  onCanvasThemeChange?: (theme: CanvasTheme) => void;
   drawingColorMode?: DrawingColorMode; // 受控图纸色彩模式
   onDrawingColorModeChange?: (mode: DrawingColorMode) => void;
 }
 
 
 interface ViewerUiSettings {
-  showDrawingExtents?: boolean;
   uiTheme?: UiTheme;
-  canvasTheme?: CanvasTheme;
   drawingColorMode?: DrawingColorMode;
   language?: Language;
+  showSidebar?: boolean;
+  showProperties?: boolean;
 }
 
 const VIEWER_UI_SETTINGS_KEY = 'dxfviewer.uiSettings.v1';
@@ -78,8 +76,6 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
   onLanguageChange,
   uiTheme: controlledUiTheme,
   onUiThemeChange,
-  canvasTheme: controlledCanvasTheme,
-  onCanvasThemeChange,
   drawingColorMode: controlledDrawingColorMode,
   onDrawingColorModeChange
 }) => {
@@ -104,7 +100,8 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
   const [lineTypes, setLineTypes] = useState<Record<string, DxfLineType>>({});
   const [ltScale, setLtScale] = useState(VIEWER_DEFAULTS.defaultLineTypeScale);
   const [worldOffset, setWorldOffset] = useState<Point2D | undefined>();
-  const [showDrawingExtents, setShowDrawingExtents] = useState(savedUiSettingsRef.current.showDrawingExtents ?? false);
+  const [showSidebar, setShowSidebar] = useState(savedUiSettingsRef.current.showSidebar ?? true);
+  const [showProperties, setShowProperties] = useState(savedUiSettingsRef.current.showProperties ?? true);
   
   const [isLoading, setIsLoading] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState(0);
@@ -114,7 +111,6 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
   
   const [viewPort, setViewPort] = useState<ViewPort>(DEFAULT_VIEWPORT);
   const [internalUiTheme, setInternalUiTheme] = useState<UiTheme>(savedUiSettingsRef.current.uiTheme ?? VIEWER_DEFAULTS.uiTheme);
-  const [internalCanvasTheme, setInternalCanvasTheme] = useState<CanvasTheme>(savedUiSettingsRef.current.canvasTheme ?? VIEWER_DEFAULTS.canvasTheme);
   const [internalDrawingColorMode, setInternalDrawingColorMode] = useState<DrawingColorMode>(savedUiSettingsRef.current.drawingColorMode ?? VIEWER_DEFAULTS.drawingColorMode);
   const [internalLang, setInternalLang] = useState<Language>(savedUiSettingsRef.current.language ?? defaultLanguage);
   const [mouseCoords, setMouseCoords] = useState<{x: number, y: number}>({x: 0, y: 0});
@@ -151,11 +147,9 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
     onUiThemeChange?.(newTheme);
   }, [onUiThemeChange]);
 
-  const canvasTheme = controlledCanvasTheme || internalCanvasTheme;
-  const handleSetCanvasTheme = useCallback((newTheme: CanvasTheme) => {
-    setInternalCanvasTheme(newTheme);
-    onCanvasThemeChange?.(newTheme);
-  }, [onCanvasThemeChange]);
+  // 画布背景跟随 UI 主题：浅色 UI → 白底，深色 UI → 黑底。
+  // 不再单独暴露 canvasTheme，避免 UI 主题与画布背景不一致。
+  const canvasTheme: CanvasTheme = canvasThemeFromUiTheme(uiTheme);
 
   const drawingColorMode = controlledDrawingColorMode || internalDrawingColorMode;
   const handleSetDrawingColorMode = useCallback((newMode: DrawingColorMode) => {
@@ -165,13 +159,13 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
 
   useEffect(() => {
     writeViewerUiSettings({
-      showDrawingExtents,
       uiTheme,
-      canvasTheme,
       drawingColorMode,
       language: lang,
+      showSidebar,
+      showProperties,
     });
-  }, [showDrawingExtents, uiTheme, canvasTheme, drawingColorMode, lang]);
+  }, [uiTheme, drawingColorMode, lang, showSidebar, showProperties]);
 
   const fitView = useCallback((ents: AnyEntity[], blks: Record<string, DxfBlock>, currentStyles: Record<string, DxfStyle> = styles) => {
     if (ents.length === 0) return;
@@ -226,13 +220,6 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
         zoom 
     });
   }, [styles, hiddenLayers]);
-
-  const drawingExtents = useMemo(() => {
-    if (entities.length === 0) return null;
-    const visibleEnts = entities.filter(e => e.visible !== false && e.type !== EntityType.ATTDEF && e.type !== EntityType.ATTRIB && !hiddenLayers.has(e.layer));
-    if (visibleEnts.length === 0) return null;
-    return calculateExtents(visibleEnts, blocks, styles);
-  }, [entities, blocks, styles, hiddenLayers]);
 
   const processBuffer = async (buffer: ArrayBuffer) => {
     let decoded: ReturnType<typeof decodeDxfBuffer>;
@@ -419,20 +406,6 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
     return () => window.removeEventListener('keydown', handleShortcut);
   }, [handleFitView]);
 
-  const handleClear = () => {
-      setParseErrorMessage(null);
-      setRenderErrorMessage(null);
-      setIsNoticeDismissed(false);
-      setEntities([]);
-      setLayers({ [DEFAULT_LAYER.name]: DEFAULT_LAYER });
-      setBlocks({});
-      setStyles({});
-      setLineTypes({});
-      setSelectedEntityIds(new Set());
-      setHiddenLayers(new Set());
-      setViewPort(DEFAULT_VIEWPORT);
-  };
-
 
 
   const handleImport = async (files: File[]) => {
@@ -491,21 +464,20 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
       )}
 
       <div className="menu-tab-row">
-        <ToolBar 
+        <ToolBar
           onImport={handleImport}
-          onClear={handleClear}
           onFitView={handleFitView}
-          showDrawingExtents={showDrawingExtents}
-          onToggleDrawingExtents={() => setShowDrawingExtents(v => !v)}
           showOpen={showOpenMenu}
           uiTheme={uiTheme}
           onSetUiTheme={handleSetUiTheme}
-          canvasTheme={canvasTheme}
-          onSetCanvasTheme={handleSetCanvasTheme}
           drawingColorMode={drawingColorMode}
           onSetDrawingColorMode={handleSetDrawingColorMode}
           lang={lang}
           onSetLang={handleSetLang}
+          showSidebar={showSidebar}
+          onToggleSidebar={() => setShowSidebar(v => !v)}
+          showProperties={showProperties}
+          onToggleProperties={() => setShowProperties(v => !v)}
           onShowAbout={() => setShowAbout(true)}
         />
         {tabStrip && <div className="menu-tab-strip">{tabStrip}</div>}
@@ -521,16 +493,18 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
           }}
         />
 
-        <Sidebar 
-            className={mobileSidebarOpen ? 'open' : ''}
-            layers={layers} 
-            entities={entities} 
-            selectedEntityIds={selectedEntityIds}
-            onSelectIds={handleSidebarSelectIds}
-            lang={lang}
-            hiddenLayers={hiddenLayers}
-            onToggleLayerVisibility={toggleLayerVisibility}
-            />
+        {showSidebar && (
+          <Sidebar
+              className={mobileSidebarOpen ? 'open' : ''}
+              layers={layers}
+              entities={entities}
+              selectedEntityIds={selectedEntityIds}
+              onSelectIds={handleSidebarSelectIds}
+              lang={lang}
+              hiddenLayers={hiddenLayers}
+              onToggleLayerVisibility={toggleLayerVisibility}
+              />
+        )}
         
         <main ref={viewerRef} className="viewer-container">
           {viewerNoticeMessage && (
@@ -549,20 +523,19 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
               </button>
             </div>
           )}
-          <CanvasViewer 
-            entities={entities} 
+          <CanvasViewer
+            entities={entities}
             layers={layers}
             blocks={blocks}
             styles={styles}
             lineTypes={lineTypes}
             ltScale={ltScale}
-            viewPort={viewPort} 
+            viewPort={viewPort}
             onViewPortChange={setViewPort}
             selectedEntityIds={selectedEntityIds}
             onSelectIds={setSelectedEntityIds}
             onFitView={handleFitView}
             worldOffset={worldOffset}
-            overlayExtents={showDrawingExtents && drawingExtents ? { min: drawingExtents.min, max: drawingExtents.max } : null}
             theme={canvasTheme}
             drawingColorMode={drawingColorMode}
             lang={lang}
@@ -572,46 +545,54 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
           />
         </main>
 
-        {/* Floating action buttons for mobile panel toggling */}
-        <button 
-          type="button" 
-          className={`floating-toggle-btn btn-left ${mobileSidebarOpen ? 'active' : ''}`}
-          onClick={() => {
-            setMobileSidebarOpen(prev => !prev);
-            setMobilePropertiesOpen(false);
-          }}
-          title={lang === 'zh' ? '切换图层结构' : 'Toggle Layers'}
-        >
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
-            <polyline points="2 17 12 22 22 17"></polyline>
-            <polyline points="2 12 12 17 22 12"></polyline>
-          </svg>
-        </button>
+        {/* Floating toggle buttons (mobile only): circular icons at top-left / top-right of the canvas */}
+        {showSidebar && (
+          <button
+            type="button"
+            className={`floating-toggle-btn btn-left ${mobileSidebarOpen ? 'active' : ''}`}
+            onClick={() => {
+              setMobileSidebarOpen(prev => !prev);
+              setMobilePropertiesOpen(false);
+            }}
+            title={lang === 'zh' ? '切换图层结构' : 'Toggle Layers'}
+            aria-label={lang === 'zh' ? '图层' : 'Layers'}
+          >
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+              <polyline points="2 17 12 22 22 17"></polyline>
+              <polyline points="2 12 12 17 22 12"></polyline>
+            </svg>
+          </button>
+        )}
 
-        <button 
-          type="button" 
-          className={`floating-toggle-btn btn-right ${mobilePropertiesOpen ? 'active' : ''}`}
-          onClick={() => {
-            setMobilePropertiesOpen(prev => !prev);
-            setMobileSidebarOpen(false);
-          }}
-          title={lang === 'zh' ? '切换属性面板' : 'Toggle Properties'}
-        >
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10"></circle>
-            <line x1="12" y1="16" x2="12" y2="12"></line>
-            <line x1="12" y1="8" x2="12.01" y2="8"></line>
-          </svg>
-        </button>
+        {showProperties && (
+          <button
+            type="button"
+            className={`floating-toggle-btn btn-right ${mobilePropertiesOpen ? 'active' : ''}`}
+            onClick={() => {
+              setMobilePropertiesOpen(prev => !prev);
+              setMobileSidebarOpen(false);
+            }}
+            title={lang === 'zh' ? '切换属性面板' : 'Toggle Properties'}
+            aria-label={lang === 'zh' ? '属性' : 'Properties'}
+          >
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="16" x2="12" y2="12"></line>
+              <line x1="12" y1="8" x2="12.01" y2="8"></line>
+            </svg>
+          </button>
+        )}
 
-        <PropertiesPanel 
+        {showProperties && (
+          <PropertiesPanel
                 className={mobilePropertiesOpen ? 'open' : ''}
-                entities={selectedEntities} 
+                entities={selectedEntities}
                 styles={styles}
                 offset={worldOffset}
                 lang={lang}
             />
+        )}
       </div>
 
       <div className="status-bar">
@@ -662,11 +643,6 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
                 <div className="about-info-label">{lang === 'zh' ? '开源协议' : 'License'}</div>
                 <div className="about-info-value">MIT License</div>
               </div>
-            </div>
-            <div className="about-modal-footer">
-              <button type="button" className="about-modal-button" onClick={() => setShowAbout(false)}>
-                {lang === 'zh' ? '关闭' : 'Close'}
-              </button>
             </div>
           </div>
         </div>

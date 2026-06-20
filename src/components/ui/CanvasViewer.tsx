@@ -21,7 +21,6 @@ interface CanvasViewerProps {
   onSelectIds: (ids: Set<string>) => void; // 选择状态更新回调
   onFitView: () => void; // 适应视图回调
   worldOffset?: Point2D; // 坐标偏移（用于显示原始坐标）
-  overlayExtents?: { min: Point2D, max: Point2D } | null;
   ltScale?: number; // 全局线型比例
   theme: CanvasTheme; // 画布背景主题
   drawingColorMode: DrawingColorMode;
@@ -42,8 +41,7 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
     selectedEntityIds, 
     onSelectIds, 
     onFitView,
-    worldOffset, 
-    overlayExtents,
+    worldOffset,
     ltScale = VIEWER_DEFAULTS.defaultLineTypeScale, 
     theme,
     drawingColorMode,
@@ -125,7 +123,7 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
         ctx.scale(dpr, dpr);
 
         try {
-            renderEntitiesToCanvas(ctx, entities, layers, blocks, styles, lineTypes, ltScale, viewPort, selectedEntityIds, rect.width, rect.height, theme, drawingColorMode, overlayExtents, hiddenLayers);
+            renderEntitiesToCanvas(ctx, entities, layers, blocks, styles, lineTypes, ltScale, viewPort, selectedEntityIds, rect.width, rect.height, theme, drawingColorMode, hiddenLayers);
             onRenderError?.(null);
 
 
@@ -144,7 +142,7 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
      return () => {
         if (renderRef.current) cancelAnimationFrame(renderRef.current);
      };
-  }, [entities, layers, blocks, styles, lineTypes, ltScale, viewPort, selectedEntityIds, worldOffset, theme, drawingColorMode, overlayExtents, onRenderError, fontVersion, hiddenLayers, currentMousePos]);
+  }, [entities, layers, blocks, styles, lineTypes, ltScale, viewPort, selectedEntityIds, worldOffset, theme, drawingColorMode, onRenderError, fontVersion, hiddenLayers, currentMousePos]);
 
   // 处理滚轮和触控事件
   useEffect(() => {

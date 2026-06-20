@@ -3,7 +3,7 @@ import DxfViewer from '@/components/DxfViewer';
 import { SHORTCUT_CONFIG, VIEWER_DEFAULTS } from '@/config/viewerConfig';
 import { DxfTabSource } from '@/components/app/tabs/tabModel';
 import { useDxfTabs } from '@/components/app/tabs/useDxfTabs';
-import { UiTheme, CanvasTheme, DrawingColorMode } from '@/types';
+import { UiTheme, DrawingColorMode } from '@/types';
 import { Language } from '@/config/i18n';
 
 export interface AppShellProps {
@@ -44,7 +44,6 @@ function AppShell({ editor = true, initialFiles = [] }: AppShellProps) {
   }, []);
 
   const [uiTheme, setUiTheme] = useState<UiTheme>(savedSettings.uiTheme || VIEWER_DEFAULTS.uiTheme);
-  const [canvasTheme, setCanvasTheme] = useState<CanvasTheme>(savedSettings.canvasTheme || VIEWER_DEFAULTS.canvasTheme);
   const [drawingColorMode, setDrawingColorMode] = useState<DrawingColorMode>(savedSettings.drawingColorMode || VIEWER_DEFAULTS.drawingColorMode);
   const [lang, setLang] = useState<Language>(savedSettings.language || VIEWER_DEFAULTS.language);
 
@@ -240,12 +239,11 @@ function AppShell({ editor = true, initialFiles = [] }: AppShellProps) {
       )}
       <div className="tabs-content">
         {tabs.length === 0 ? (
-          <DxfViewer 
-            showOpenMenu={editor} 
-            onOpenFiles={openFiles} 
+          <DxfViewer
+            showOpenMenu={editor}
+            onOpenFiles={openFiles}
             tabStrip={tabStrip}
             uiTheme={uiTheme} onUiThemeChange={setUiTheme}
-            canvasTheme={canvasTheme} onCanvasThemeChange={setCanvasTheme}
             drawingColorMode={drawingColorMode} onDrawingColorModeChange={setDrawingColorMode}
             lang={lang} onLanguageChange={setLang}
           />
@@ -267,7 +265,6 @@ function AppShell({ editor = true, initialFiles = [] }: AppShellProps) {
                 tabStrip={tabStrip}
                 onOpenFailed={(message) => handleTabOpenFailed(tab.id, message)}
                 uiTheme={uiTheme} onUiThemeChange={setUiTheme}
-                canvasTheme={canvasTheme} onCanvasThemeChange={setCanvasTheme}
                 drawingColorMode={drawingColorMode} onDrawingColorModeChange={setDrawingColorMode}
                 lang={lang} onLanguageChange={setLang}
               />

@@ -135,10 +135,20 @@ import {
 | `onLanguageChange` | `(lang: Language) => void` | `undefined` | 语言切换回调 |
 | `showOpenMenu` | `boolean` | `true` | 是否显示打开文件入口 |
 | `tabStrip` | `React.ReactNode` | `undefined` | 外部传入的标签栏区域 |
+| `uiTheme` | `'light' \| 'dark'` | `undefined` | 当前 UI 主题，受控（画布背景跟随该主题：浅色→白底，深色→黑底） |
+| `onUiThemeChange` | `(theme: UiTheme) => void` | `undefined` | UI 主题切换回调 |
+| `drawingColorMode` | `'original' \| 'monochrome'` | `undefined` | 图纸色彩模式，受控 |
+| `onDrawingColorModeChange` | `(mode: DrawingColorMode) => void` | `undefined` | 图纸色彩模式切换回调 |
 | `onLoad` | `(data: any) => void` | `undefined` | DXF 加载成功回调 |
 | `onError` | `(err: Error) => void` | `undefined` | DXF 加载或解析失败回调 |
 | `onOpenFiles` | `(files: File[]) => void` | `undefined` | 外部接管打开文件时使用 |
 | `onOpenFailed` | `(message: string) => void` | `undefined` | 打开失败回调，适合外层关闭失败标签页 |
+
+说明：
+
+- 画布背景不再单独暴露，统一跟随 `uiTheme`：浅色主题为白底画布，深色主题为黑底画布。
+- 界面语言、UI 主题、图纸色彩模式、图层面板与属性面板的显隐状态会在非受控模式下持久化到 `localStorage`。
+
 
 ## SHX 字体目录
 
@@ -493,10 +503,19 @@ import {
 | `onLanguageChange` | `(lang: Language) => void` | `undefined` | Language change callback |
 | `showOpenMenu` | `boolean` | `true` | Whether to show the open file entry |
 | `tabStrip` | `React.ReactNode` | `undefined` | External tab strip area |
+| `uiTheme` | `'light' \| 'dark'` | `undefined` | Current UI theme, controlled (canvas background follows this theme: light → white, dark → black) |
+| `onUiThemeChange` | `(theme: UiTheme) => void` | `undefined` | UI theme change callback |
+| `drawingColorMode` | `'original' \| 'monochrome'` | `undefined` | Drawing color mode, controlled |
+| `onDrawingColorModeChange` | `(mode: DrawingColorMode) => void` | `undefined` | Drawing color mode change callback |
 | `onLoad` | `(data: any) => void` | `undefined` | Called when DXF is loaded successfully |
 | `onError` | `(err: Error) => void` | `undefined` | Called when DXF loading or parsing fails |
 | `onOpenFiles` | `(files: File[]) => void` | `undefined` | Used when file opening is handled by the outer application |
 | `onOpenFailed` | `(message: string) => void` | `undefined` | Called when opening fails, useful for closing failed tabs |
+
+Notes:
+
+- The canvas background is no longer exposed separately; it follows `uiTheme`: light theme yields a white canvas, dark theme yields a black canvas.
+- UI language, UI theme, drawing color mode, and the visibility of the layer and properties panels are persisted to `localStorage` when running in uncontrolled mode.
 
 ## SHX Font Directory
 

@@ -305,9 +305,15 @@ export const drawTextEntity = (
 
     const profile = resolveCadTextFontProfile(ent.styleName, styles, ent.value);
     const fontScaleFactor = (profile === 'trueType' || profile === 'cjk') ? TEXT_RENDER_CONFIG.trueTypeFontHeightFactor : TEXT_RENDER_CONFIG.shxFontHeightFactor;
-    
+
     const effectiveHeight = getEffectiveTextHeight(ent, styles);
     const actualVisualScreenHeight = effectiveHeight * transform.scale * fontScaleFactor;
+
+    // 极端缩放或异常数据下高度可能退化为非有限值，直接跳过绘制避免污染画布。
+    if (!Number.isFinite(actualVisualScreenHeight) || actualVisualScreenHeight <= 0) {
+        ctx.restore();
+        return;
+    }
 
     if (actualVisualScreenHeight < TEXT_RENDER_CONFIG.tinyTextPixelHeight && !isSelected) {
         const layout = buildCadTextLayout({
@@ -317,15 +323,24 @@ export const drawTextEntity = (
             worldToScreenScale: transform.scale,
             noWrap: noMTextWrap,
         });
-        if (!layout) {
+        if (!layout || !Number.isFinite(layout.visualScreenHeight) || layout.visualScreenHeight <= 0) {
             ctx.restore();
             return;
         }
+        // 占位矩形用视觉高度作为最小尺寸保证可见，同时钳制最大宽高比，
+        // 避免布局在亚像素测量下产生超长或错位矩形。
+        const placeholderHeight = layout.visualScreenHeight;
+        const maxAllowedWidth = placeholderHeight * TEXT_RENDER_CONFIG.tinyTextPlaceholderMaxAspect;
+        const clampWidth = (w: number) => {
+            if (!Number.isFinite(w) || w <= 0) return placeholderHeight;
+            return Math.min(Math.max(w, placeholderHeight), maxAllowedWidth);
+        };
         ctx.scale(layout.horizontalScale * layout.generationScale.x, layout.generationScale.y);
         if (layout.isMText) {
-            ctx.fillRect(layout.boxLeft, layout.boxTop, Math.max(layout.blockWidth, layout.visualScreenHeight), Math.max(layout.blockHeight, layout.visualScreenHeight));
+            const width = clampWidth(Math.max(layout.blockWidth, layout.visualScreenHeight));
+            ctx.fillRect(layout.boxLeft, layout.boxTop, width, Math.max(layout.blockHeight, layout.visualScreenHeight));
         } else {
-            const width = Math.max(layout.blockWidth, layout.visualScreenHeight);
+            const width = clampWidth(Math.max(layout.blockWidth, layout.visualScreenHeight));
             let x = 0;
             if (layout.align === 'center') x = -width / 2;
             else if (layout.align === 'right') x = -width;
@@ -387,7 +402,13 @@ export const drawTextEntity = (
         const targetWidth = Math.hypot(dx, dy) * transform.scale;
         const measuredWidth = Math.max(layout.blockWidth, TEXT_RENDER_CONFIG.minimumMeasuredTextWidth);
         if (targetWidth > 0 && measuredWidth > 0) {
-            const scale = targetWidth / measuredWidth;
+            // 测量宽度在亚像素字号下可能严重偏小，导致 targetWidth/measuredWidth 爆炸性放大，
+            // 文字被拉成"巨长"。这里对缩放比例做钳制，保证视觉上仍贴合目标宽度方向但不会失控。
+            const rawScale = targetWidth / measuredWidth;
+            const scale = Math.min(
+                Math.max(rawScale, TEXT_RENDER_CONFIG.minimumTextFitScale),
+                TEXT_RENDER_CONFIG.maximumTextFitScale,
+            );
             ctx.scale(scale, hAlign === 3 ? scale : 1);
         }
         drawFormattedTextLine(ctx, shxDebugEnabled, shxDebugStats, ent.value || layout.plainText, layout.plainText, 0, 0, 'left', layout.baseline, layout.visualScreenHeight, shxFontNames);
