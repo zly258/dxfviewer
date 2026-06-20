@@ -217,8 +217,10 @@ function AppShell({ editor = true, initialFiles = [] }: AppShellProps) {
     if (files.length > 0) openFiles(files);
   };
 
+  const canvasBgColor = uiTheme === 'dark' ? '#212121' : '#FFFFFF';
+
   return (
-    <div className={`app-main-container ${uiTheme === 'dark' ? 'theme-dark' : ''}`}>
+    <div className={`app-main-container ${uiTheme === 'dark' ? 'theme-dark' : ''}`} style={{ '--canvas-bg': canvasBgColor } as React.CSSProperties}>
       {toastMessage && (
         <div className="toast-container app-toast-container">
           <div className="toast error">

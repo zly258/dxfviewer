@@ -252,7 +252,8 @@ textarea {
   min-height: 0;
   overflow: hidden;
   position: relative;
-  border-top: 1px solid var(--border-color);
+  /* 边界线由上方 menu-tab-row 的 border-bottom 统一提供，此处不重复绘制，
+     避免两栏切换时出现双边或边界线错位/断裂。 */
   box-sizing: border-box;
 }
 
@@ -449,7 +450,9 @@ textarea {
   overflow: hidden;
   user-select: none;
   cursor: default !important;
-  background-color: var(--canvas-bg, #212121);
+  /* 默认白色，避免浅色主题下 --canvas-bg 未及时设置时出现黑色闪烁。
+   深色主题由 CanvasViewer 通过 inline style 覆盖为 #212121。 */
+  background-color: var(--canvas-bg, #ffffff);
 }
 
 .canvas-container canvas {
@@ -875,7 +878,8 @@ textarea {
   flex: 1;
   position: relative;
   min-height: 0;
-  background-color: var(--canvas-bg, #212121);
+  /* 与 canvas-container 一致：默认白色，深色主题由 JS 侧覆盖 */
+  background-color: var(--canvas-bg, #ffffff);
 }
 
 .tab-viewer-host {
