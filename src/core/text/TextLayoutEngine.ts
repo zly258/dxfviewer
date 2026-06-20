@@ -1,5 +1,5 @@
-import { DxfStyle, DxfText, EntityType } from '../../types';
-import { TEXT_RENDER_CONFIG } from '../../shared/config/viewerConfig';
+import { DxfStyle, DxfText, EntityType } from '@/types';
+import { TEXT_RENDER_CONFIG } from '@/config/viewerConfig';
 import {
   cleanCadText,
   cleanMText,
@@ -14,9 +14,9 @@ import {
   getTextVerticalCanvasBaseline,
   splitCadFormattedLines,
   CadFormattedTextLine,
-} from '../../viewer/utils/textUtils';
-import { resolveCadTextFontProfile } from '../../viewer/services/fontService';
-import { getTextShxFontNames, measureShxTextRunSync } from '../../viewer/services/shxFontService';
+} from '@/utils/textUtils';
+import { resolveCadTextFontProfile } from '@/renderer/services/fontService';
+import { getTextShxFontNames, measureShxTextRunSync } from '@/renderer/services/shxFontService';
 
 export interface CadTextLayoutInput {
   entity: DxfText;

@@ -1,4 +1,4 @@
-import { Point2D, Point3D } from '../../types';
+import { Point2D, Point3D } from '@/types';
 
 export interface OcsMatrix {
   Ax: Point3D;

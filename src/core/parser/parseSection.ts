@@ -1,5 +1,5 @@
-import { DxfLayer, DxfStyle, DxfLineType, DxfBlock } from '../../types';
-import { DxfParserState } from './DxfParserState';
+import { DxfLayer, DxfStyle, DxfLineType, DxfBlock } from '@/types';
+import { DxfParserState } from './dxfParserState';
 import { parseEntityDispatcher } from './parseEntity';
 
 /**

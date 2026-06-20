@@ -1,4 +1,4 @@
-import { Point2D } from '../../types';
+import { Point2D } from '@/types';
 
 export interface BulgeArcGeometry {
   center: Point2D;

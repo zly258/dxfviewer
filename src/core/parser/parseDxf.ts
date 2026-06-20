@@ -7,18 +7,18 @@ import {
   DxfHeader, 
   AnyEntity, 
   EntityType 
-} from '../../types';
-import { DxfParserState, parsePoint } from './DxfParserState';
+} from '@/types';
+import { DxfParserState, parsePoint } from './dxfParserState';
 import { parseTable, parseBlock } from './parseSection';
 import { parseEntityDispatcher } from './parseEntity';
-import { offsetEntity } from '../geometry/offset';
-import { calculateExtents, getEntityExtents, precomputeBlockExtents } from '../geometry/extents';
+import { offsetEntity } from '@/core/geometry/offset';
+import { calculateExtents, getEntityExtents, precomputeBlockExtents } from '@/core/geometry/extents';
 import { 
   CAD_DEFAULT_LAYER_COLOR, 
   CAD_DEFAULT_LAYER_NAME, 
   CAD_DEFAULT_TEXT_STYLE 
-} from '../../shared/constants/cadConstants';
-import { DEFAULT_TEXT_STYLE, EXTENTS_CONFIG } from '../../shared/config/viewerConfig';
+} from '@/config/cadConstants';
+import { DEFAULT_TEXT_STYLE, EXTENTS_CONFIG } from '@/config/viewerConfig';
 
 /**
  * 确保 DXF 文件结构有效，有基本的 SECTION 和 ENTITIES 标记

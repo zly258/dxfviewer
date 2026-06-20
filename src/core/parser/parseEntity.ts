@@ -18,7 +18,7 @@ import {
   DxfWipeout, 
   DxfHelix, 
   DxfTolerance 
-} from '../../types';
+} from '@/types';
 import { 
   DxfParserState, 
   readVal, 
@@ -26,13 +26,13 @@ import {
   parsePoint, 
   parseCommon, 
   applyCommonGroup 
-} from './DxfParserState';
-import { getOcsToWcsMatrix, applyOcs, getWcsRotation } from '../geometry/ocs';
-import { sampleSplinePoints } from '../geometry/curveSampling';
-import { sampleBulgeSegment } from '../geometry/bulge';
-import { normalizeAcadTableGeometry } from '../geometry/extents';
-import { CAD_BY_LAYER_COLOR, CAD_DEFAULT_TEXT_STYLE } from '../../shared/constants/cadConstants';
-import { LEADER_RENDER_CONFIG } from '../../shared/config/viewerConfig';
+} from './dxfParserState';
+import { getOcsToWcsMatrix, applyOcs, getWcsRotation } from '@/core/geometry/ocs';
+import { sampleSplinePoints } from '@/core/geometry/curveSampling';
+import { sampleBulgeSegment } from '@/core/geometry/bulge';
+import { normalizeAcadTableGeometry } from '@/core/geometry/extents';
+import { CAD_BY_LAYER_COLOR, CAD_DEFAULT_TEXT_STYLE } from '@/config/cadConstants';
+import { LEADER_RENDER_CONFIG } from '@/config/viewerConfig';
 
 /**
  * 样条曲线预计算点转换函数

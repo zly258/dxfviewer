@@ -21,7 +21,7 @@
     "README.md"
   ],
   "scripts": {
-    "dev": "vite",
+    "dev": "npm --workspace dxfviewer-example run dev",
     "dev:example": "npm run build:lib && npm --workspace dxfviewer-example run dev",
     "typecheck": "tsc --noEmit",
     "build": "npm run build:lib",

@@ -1,9 +1,9 @@
-import { AnyEntity, DxfBlock, DxfStyle, DxfText, DxfTable, EntityType, Point2D } from '../../types';
-import { EXTENTS_CONFIG, TABLE_EXTENTS_CONFIG, LEADER_RENDER_CONFIG, TEXT_RENDER_CONFIG } from '../../shared/config/viewerConfig';
-import { CAD_DEFAULT_TEXT_HEIGHT } from '../../shared/constants/cadConstants';
+import { AnyEntity, DxfBlock, DxfStyle, DxfText, DxfTable, EntityType, Point2D } from '@/types';
+import { EXTENTS_CONFIG, TABLE_EXTENTS_CONFIG, LEADER_RENDER_CONFIG, TEXT_RENDER_CONFIG } from '@/config/viewerConfig';
+import { CAD_DEFAULT_TEXT_HEIGHT } from '@/config/cadConstants';
 import { sampleBulgeSegment } from './bulge';
 import { sampleEllipsePoints, sampleHatchLoop, sampleSplinePoints } from './curveSampling';
-import { getCadTextExtents, pointsToExtents, cleanMText } from '../../viewer/utils/textUtils';
+import { getCadTextExtents, pointsToExtents, cleanMText } from '@/utils/textUtils';
 import {
     isPlaceholderAttributeText,
     isTextLikeEntity,
@@ -13,8 +13,8 @@ import {
     isPrimaryGeometryEntity,
     isTableWithDrawableBlock,
     isBlockInsertWithDrawableExtents,
-} from '../entity/entityClassify';
-import { getMLeaderTerminalPoint, getMLeaderTextPosition, getMLeaderTextAttachment } from '../entity/mleaderUtils';
+} from '@/utils/entityClassify';
+import { getMLeaderTerminalPoint, getMLeaderTextPosition, getMLeaderTextAttachment } from '@/utils/mleaderUtils';
 
 // ─── 包围盒更新器 ────────────────────────────────────────────────────
 
