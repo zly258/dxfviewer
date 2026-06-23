@@ -1,4 +1,4 @@
-﻿import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { AnyEntity, EntityType, DxfLayer } from '@/types';
 import { getAutoCadColor } from '@/utils/colorUtils';
 import { Language, UI_TRANSLATIONS, ENTITY_TYPE_NAMES } from '@/config/i18n';
@@ -16,6 +16,9 @@ interface LayerPanelProps {
 
 const ROW_HEIGHT = 26; // 列表项高度。
 
+type SortKey = 'name' | 'count';
+type SortDir = 'asc' | 'desc';
+
 type FlatItem = 
   | { type: 'layer'; name: string; layer: DxfLayer; count: number; expanded: boolean }
   | { type: 'entity'; id: string; entity: AnyEntity };
@@ -32,8 +35,13 @@ const LayerPanel: React.FC<LayerPanelProps> = ({
 }) => {
   const [expandedLayers, setExpandedLayers] = useState<Set<string>>(new Set(Object.keys(layers)));
   const containerRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [containerHeight, setContainerHeight] = useState(500);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [hideEmptyLayers, setHideEmptyLayers] = useState(false);
+  const [sortKey, setSortKey] = useState<SortKey>('name');
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
   const t = UI_TRANSLATIONS[lang];
   const entNames = ENTITY_TYPE_NAMES[lang];
 
@@ -46,10 +54,45 @@ const LayerPanel: React.FC<LayerPanelProps> = ({
     }, {} as Record<string, AnyEntity[]>);
   }, [entities]);
 
+  // 切换排序方向
+  const handleSortToggle = useCallback((key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortKey(key);
+      setSortDir(key === 'count' ? 'desc' : 'asc');
+    }
+  }, [sortKey]);
+
   // 生成扁平化的列表用于虚拟滚动
   const flatList = useMemo(() => {
     const list: FlatItem[] = [];
-    const layerNames = Object.keys(layers).sort();
+    let layerNames = Object.keys(layers);
+
+    // 搜索过滤
+    const q = searchQuery.trim().toLowerCase();
+    if (q) {
+      layerNames = layerNames.filter(name => name.toLowerCase().includes(q));
+    }
+
+    // 空图层过滤
+    if (hideEmptyLayers) {
+      layerNames = layerNames.filter(name => (entitiesByLayer[name]?.length ?? 0) > 0);
+    }
+
+    // 排序
+    layerNames.sort((a, b) => {
+      let cmp = 0;
+      if (sortKey === 'name') {
+        cmp = a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+      } else {
+        const ca = entitiesByLayer[a]?.length ?? 0;
+        const cb = entitiesByLayer[b]?.length ?? 0;
+        cmp = ca - cb;
+        if (cmp === 0) cmp = a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+      }
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
 
     for (const name of layerNames) {
         const layerEnts = entitiesByLayer[name] || [];
@@ -74,7 +117,7 @@ const LayerPanel: React.FC<LayerPanelProps> = ({
         }
     }
     return list;
-  }, [layers, entitiesByLayer, expandedLayers]);
+  }, [layers, entitiesByLayer, expandedLayers, searchQuery, hideEmptyLayers, sortKey, sortDir]);
 
   const totalHeight = flatList.length * ROW_HEIGHT;
   
@@ -155,10 +198,104 @@ const LayerPanel: React.FC<LayerPanelProps> = ({
     </svg>
   );
 
+  // 排序图标
+  const SortIcon = ({ active, dir }: { active: boolean; dir: SortDir }) => (
+    <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
+      style={{ opacity: active ? 1 : 0.45, transition: 'opacity 0.15s' }}>
+      {dir === 'asc' || !active ? (
+        <>
+          <polyline points="4 10 8 6 12 10" />
+        </>
+      ) : (
+        <>
+          <polyline points="4 6 8 10 12 6" />
+        </>
+      )}
+    </svg>
+  );
+
+  const layerCount = Object.keys(layers).length;
+  const filteredCount = flatList.filter(i => i.type === 'layer').length;
+
   return (
     <div className={`layer-panel ${className || ''}`}>
       <div className="layer-panel-header">
-        {t.layersTitle}
+        <span className="layer-panel-title">{t.layersTitle}</span>
+        {layerCount > 0 && (
+          <span className="layer-panel-header-count">{filteredCount}/{layerCount}</span>
+        )}
+      </div>
+
+      {/* 搜索 & 工具栏 */}
+      <div className="layer-toolbar">
+        <div className="layer-search-box">
+          <svg className="layer-search-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="6.5" cy="6.5" r="4" />
+            <line x1="10" y1="10" x2="13.5" y2="13.5" />
+          </svg>
+          <input
+            ref={searchInputRef}
+            className="layer-search-input"
+            type="text"
+            placeholder={t.layerSearch || 'Search layers…'}
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            spellCheck={false}
+          />
+          {searchQuery && (
+            <button
+              className="layer-search-clear"
+              onClick={() => { setSearchQuery(''); searchInputRef.current?.focus(); }}
+              tabIndex={-1}
+              title="Clear"
+            >
+              ×
+            </button>
+          )}
+        </div>
+
+        <div className="layer-toolbar-actions">
+          {/* 隐藏空图层 */}
+          <button
+            className={`layer-tool-btn ${hideEmptyLayers ? 'active' : ''}`}
+            title={t.layerFilterEmpty || 'Hide empty layers'}
+            onClick={() => setHideEmptyLayers(v => !v)}
+          >
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="2" y="4" width="5" height="8" rx="1" />
+              <rect x="9" y="4" width="5" height="8" rx="1" opacity={hideEmptyLayers ? "0.35" : "1"} />
+              {hideEmptyLayers && <line x1="10" y1="3" x2="14" y2="13" strokeWidth="1.5" stroke="currentColor" />}
+            </svg>
+          </button>
+
+          {/* 按名称排序 */}
+          <button
+            className={`layer-tool-btn ${sortKey === 'name' ? 'active' : ''}`}
+            title={t.layerSortName || 'Sort by name'}
+            onClick={() => handleSortToggle('name')}
+          >
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="3" y1="4" x2="9" y2="4" />
+              <line x1="3" y1="8" x2="7" y2="8" />
+              <line x1="3" y1="12" x2="5.5" y2="12" />
+              {sortKey === 'name' && <SortIcon active={true} dir={sortDir} />}
+            </svg>
+          </button>
+
+          {/* 按数量排序 */}
+          <button
+            className={`layer-tool-btn ${sortKey === 'count' ? 'active' : ''}`}
+            title={t.layerSortCount || 'Sort by count'}
+            onClick={() => handleSortToggle('count')}
+          >
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="3" y1="4" x2="13" y2="4" />
+              <line x1="3" y1="8" x2="10" y2="8" />
+              <line x1="3" y1="12" x2="7" y2="12" />
+              {sortKey === 'count' && <SortIcon active={true} dir={sortDir} />}
+            </svg>
+          </button>
+        </div>
       </div>
       
       <div 
@@ -166,6 +303,11 @@ const LayerPanel: React.FC<LayerPanelProps> = ({
         className="layer-panel-content"
         onScroll={handleScroll}
       >
+        {flatList.length === 0 && (
+          <div className="layer-empty-hint">
+            {t.layerEmptyHint || 'No matching layers'}
+          </div>
+        )}
         <div style={{ height: totalHeight, position: 'relative' }}>
             <div style={{ transform: `translateY(${offsetY}px)` }}>
                 {visibleItems.map((item) => {

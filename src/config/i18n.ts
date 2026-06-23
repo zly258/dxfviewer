@@ -70,7 +70,14 @@ export const UI_TRANSLATIONS: Record<Language, Record<string, string>> = {
     xScale: 'X Scale',
     imageWidth: 'Image Width',
     imageHeight: 'Image Height',
-    imageRef: 'Image Ref'
+    imageRef: 'Image Ref',
+    layerSearch: 'Search layers…',
+    layerFilterEmpty: 'Hide empty layers',
+    layerSortName: 'Sort by name',
+    layerSortCount: 'Sort by count',
+    layerSortAsc: 'Ascending',
+    layerSortDesc: 'Descending',
+    layerEmptyHint: 'No matching layers'
   },
   zh: {
     view: '视图',
@@ -151,7 +158,14 @@ export const UI_TRANSLATIONS: Record<Language, Record<string, string>> = {
     xScale: 'X 向比例',
     imageWidth: '图像宽度',
     imageHeight: '图像高度',
-    imageRef: '图像引用'
+    imageRef: '图像引用',
+    layerSearch: '搜索图层…',
+    layerFilterEmpty: '隐藏空图层',
+    layerSortName: '按名称排序',
+    layerSortCount: '按数量排序',
+    layerSortAsc: '升序',
+    layerSortDesc: '降序',
+    layerEmptyHint: '无匹配图层'
   }
 };
 
