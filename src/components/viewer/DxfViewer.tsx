@@ -103,6 +103,58 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
   const [worldOffset, setWorldOffset] = useState<Point2D | undefined>();
   const [showLayerPanel, setShowLayerPanel] = useState(savedUiSettingsRef.current.showLayerPanel ?? savedUiSettingsRef.current.showSidebar ?? true);
   const [showProperties, setShowProperties] = useState(savedUiSettingsRef.current.showProperties ?? true);
+  const [layerPanelWidth, setLayerPanelWidth] = useState(270);
+  const [propertiesWidth, setPropertiesWidth] = useState(330);
+  const layerResizingRef = useRef(false);
+  const propertiesResizingRef = useRef(false);
+  const resizeStartXRef = useRef(0);
+  const resizeStartWidthRef = useRef(0);
+
+  const startResizeLayerPanel = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    layerResizingRef.current = true;
+    resizeStartXRef.current = e.clientX;
+    resizeStartWidthRef.current = layerPanelWidth;
+    const onMove = (me: MouseEvent) => {
+      if (!layerResizingRef.current) return;
+      const delta = me.clientX - resizeStartXRef.current;
+      setLayerPanelWidth(Math.max(160, Math.min(520, resizeStartWidthRef.current + delta)));
+    };
+    const onUp = () => {
+      layerResizingRef.current = false;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, [layerPanelWidth]);
+
+  const startResizePropertiesPanel = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    propertiesResizingRef.current = true;
+    resizeStartXRef.current = e.clientX;
+    resizeStartWidthRef.current = propertiesWidth;
+    const onMove = (me: MouseEvent) => {
+      if (!propertiesResizingRef.current) return;
+      const delta = me.clientX - resizeStartXRef.current;
+      setPropertiesWidth(Math.max(180, Math.min(560, resizeStartWidthRef.current - delta)));
+    };
+    const onUp = () => {
+      propertiesResizingRef.current = false;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, [propertiesWidth]);
   
   const [isLoading, setIsLoading] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState(0);
@@ -666,6 +718,33 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
     />
   );
 
+  // PC 模式下带动态宽度的面板包裹器
+  const layerPanelWrapped = !isMobile && showLayerPanel ? (
+    <div style={{ display: 'flex', flexShrink: 0, height: '100%' }}>
+      <div style={{ width: layerPanelWidth, flexShrink: 0, height: '100%', overflow: 'hidden' }}>
+        {layerPanelContent}
+      </div>
+      <div
+        className="panel-resize-handle panel-resize-handle-right"
+        onMouseDown={startResizeLayerPanel}
+        title="Drag to resize"
+      />
+    </div>
+  ) : null;
+
+  const propertiesPanelWrapped = !isMobile && showProperties ? (
+    <div style={{ display: 'flex', flexShrink: 0, height: '100%' }}>
+      <div
+        className="panel-resize-handle panel-resize-handle-left"
+        onMouseDown={startResizePropertiesPanel}
+        title="Drag to resize"
+      />
+      <div style={{ width: propertiesWidth, flexShrink: 0, height: '100%', overflow: 'hidden' }}>
+        {propertiesContent}
+      </div>
+    </div>
+  ) : null;
+
   return (
     <div ref={containerRef} className={`app-container ${effectiveUiTheme === 'dark' ? 'theme-dark' : ''} ${isMobile ? 'is-mobile' : ''}`} style={{ height: '100%', display: 'flex', flexDirection: 'column', '--canvas-bg': canvasBgColor } as React.CSSProperties}>
       <input
@@ -710,7 +789,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
       )}
 
       <div className="main-content">
-        {!isMobile && showLayerPanel && layerPanelContent}
+        {layerPanelWrapped}
 
         <main ref={viewerRef} className="viewer-container">
           {viewerNoticeMessage && (
@@ -786,7 +865,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
           )}
         </main>
 
-        {!isMobile && showProperties && propertiesContent}
+        {propertiesPanelWrapped}
       </div>
 
       {!isMobile && layouts.length > 1 && (

@@ -103,8 +103,9 @@ button:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-  outline: 2px solid var(--accent-blue);
-  outline-offset: 2px;
+  outline: 1.5px solid var(--accent-blue);
+  outline-offset: 1px;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-blue) 18%, transparent);
 }
 
 .app-container {
@@ -397,12 +398,12 @@ textarea:focus-visible {
 }
 
 .layer-panel {
-  width: var(--layer-panel-width);
+  width: 100%;
   border-right: 1px solid var(--border-color);
 }
 
 .properties-panel {
-  width: var(--properties-width);
+  width: 100%;
   border-left: 1px solid var(--border-color);
 }
 
@@ -412,12 +413,36 @@ textarea:focus-visible {
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  padding: 0 12px;
+  padding: 0 10px 0 12px;
   border-bottom: 1px solid var(--border-color);
   background-color: var(--bg-tertiary);
   color: var(--text-secondary);
   font-size: 13px;
   font-weight: 600;
+  gap: 6px;
+}
+
+.layer-panel-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.layer-panel-header-count {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  padding: 0 6px;
+  line-height: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
 }
 
 .layer-panel-content,
@@ -1997,6 +2022,177 @@ textarea:focus-visible {
     left: max(12px, env(safe-area-inset-left, 0px));
     width: min(360px, calc(100vw - 96px));
   }
+}
+
+/* ---------------------------------------------------------------
+ * 面板拖拽调整宽度手柄（PC 模式）
+ * ------------------------------------------------------------- */
+.panel-resize-handle {
+  flex-shrink: 0;
+  width: 5px;
+  height: 100%;
+  cursor: col-resize;
+  position: relative;
+  z-index: 10;
+  transition: background-color 0.15s ease;
+  background-color: transparent;
+}
+
+.panel-resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 40px;
+  width: 3px;
+  border-radius: 2px;
+  background-color: var(--border-color);
+  transition: background-color 0.15s ease, height 0.15s ease;
+}
+
+.panel-resize-handle-right {
+  border-left: 1px solid var(--border-color);
+}
+.panel-resize-handle-right::after {
+  left: 0;
+}
+
+.panel-resize-handle-left {
+  border-right: 1px solid var(--border-color);
+}
+.panel-resize-handle-left::after {
+  right: 0;
+}
+
+.panel-resize-handle:hover,
+.panel-resize-handle:active {
+  background-color: color-mix(in srgb, var(--accent-blue) 10%, transparent);
+}
+
+.panel-resize-handle:hover::after,
+.panel-resize-handle:active::after {
+  background-color: var(--accent-blue);
+  height: 56px;
+}
+
+/* ---------------------------------------------------------------
+ * 图层面板搜索工具栏
+ * ------------------------------------------------------------- */
+.layer-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--border-color);
+  background-color: var(--bg-secondary);
+  flex-shrink: 0;
+}
+
+.layer-search-box {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 6px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-small);
+  background-color: var(--bg-primary);
+  box-sizing: border-box;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.layer-search-box:focus-within {
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-blue) 15%, transparent);
+}
+
+.layer-search-icon {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.layer-search-input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 12px;
+  outline: none;
+  padding: 0;
+}
+
+.layer-search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.layer-search-clear {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--bg-tertiary);
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+.layer-search-clear:hover {
+  background-color: var(--bg-active);
+  color: var(--text-primary);
+}
+
+.layer-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.layer-tool-btn {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-small);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+  flex-shrink: 0;
+}
+
+.layer-tool-btn:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-bright);
+}
+
+.layer-tool-btn.active {
+  background-color: var(--accent-blue-soft);
+  border-color: transparent;
+  color: var(--accent-blue);
+}
+
+.layer-empty-hint {
+  padding: 20px 12px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 12px;
 }
 
 .text-search-highlight {
