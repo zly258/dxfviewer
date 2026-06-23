@@ -1,9 +1,9 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+﻿import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { AnyEntity, EntityType, DxfLayer } from '@/types';
 import { getAutoCadColor } from '@/utils/colorUtils';
 import { Language, UI_TRANSLATIONS, ENTITY_TYPE_NAMES } from '@/config/i18n';
 
-interface SidebarProps {
+interface LayerPanelProps {
   layers: Record<string, DxfLayer>;
   entities: AnyEntity[];
   selectedEntityIds: Set<string>;
@@ -14,13 +14,13 @@ interface SidebarProps {
   className?: string;
 }
 
-const ROW_HEIGHT = 26; // 列表项高度
+const ROW_HEIGHT = 26; // 列表项高度。
 
 type FlatItem = 
   | { type: 'layer'; name: string; layer: DxfLayer; count: number; expanded: boolean }
   | { type: 'entity'; id: string; entity: AnyEntity };
 
-const Sidebar: React.FC<SidebarProps> = ({ 
+const LayerPanel: React.FC<LayerPanelProps> = ({ 
   layers, 
   entities, 
   selectedEntityIds, 
@@ -156,14 +156,14 @@ const Sidebar: React.FC<SidebarProps> = ({
   );
 
   return (
-    <div className={`sidebar ${className || ''}`}>
-      <div className="sidebar-header">
+    <div className={`layer-panel ${className || ''}`}>
+      <div className="layer-panel-header">
         {t.layersTitle}
       </div>
       
       <div 
         ref={containerRef}
-        className="sidebar-content"
+        className="layer-panel-content"
         onScroll={handleScroll}
       >
         <div style={{ height: totalHeight, position: 'relative' }}>
@@ -220,4 +220,4 @@ const Sidebar: React.FC<SidebarProps> = ({
   );
 };
 
-export default Sidebar;
+export default LayerPanel;

@@ -1,4 +1,4 @@
-import { AnyEntity, DxfLayer, CanvasTheme, DrawingColorMode } from '@/types';
+﻿import { AnyEntity, DxfLayer, CanvasTheme, DrawingColorMode } from '@/types';
 import { DEFAULT_ENTITY_COLOR, MONOCHROME_ENTITY_COLORS } from '@/config/viewerConfig';
 import { CAD_BY_BLOCK_COLOR, CAD_BY_LAYER_COLOR } from '@/config/cadConstants';
 import { getAutoCadColor, trueColorToHex } from './colorUtils';

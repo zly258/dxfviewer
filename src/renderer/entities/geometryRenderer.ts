@@ -1,7 +1,5 @@
-import { 
-  AnyEntity, 
+﻿import { 
   Point2D, 
-  EntityType, 
   DxfLine, 
   DxfRay, 
   DxfXLine, 
@@ -9,10 +7,11 @@ import {
   DxfCircle, 
   DxfArc, 
   DxfEllipse, 
-  DxfPolyline, 
   DxfMLine, 
   DxfSpline, 
-  DxfHelix 
+  DxfHelix,
+  DxfViewport,
+  DxfShape 
 } from '@/types';
 import { sampleEllipsePoints, sampleSplinePoints } from '@/core/geometry/curveSampling';
 import { sampleBulgeSegment } from '@/core/geometry/bulge';
@@ -237,7 +236,6 @@ export const drawHelix = (ctx: CanvasRenderingContext2D, ent: DxfHelix, transfor
     const lenV = Math.sqrt(Vx * Vx + Vy * Vy + Vz * Vz);
     const Vxn = Vx / lenV;
     const Vyn = Vy / lenV;
-    const Vzn = Vz / lenV;
 
     const segmentsPerTurn = 32;
     const totalSteps = Math.ceil(N * segmentsPerTurn);
@@ -256,4 +254,50 @@ export const drawHelix = (ctx: CanvasRenderingContext2D, ent: DxfHelix, transfor
         else ctx.lineTo(sp.x, sp.y);
     }
     ctx.stroke();
+};
+
+
+/**
+ * 绘制纸张空间视口边框。
+ */
+export const drawViewport = (ctx: CanvasRenderingContext2D, ent: DxfViewport, transform: RenderTransform) => {
+    const halfWidth = Math.abs(ent.width || 0) / 2;
+    const halfHeight = Math.abs(ent.height || 0) / 2;
+    if (halfWidth <= 0 || halfHeight <= 0) return;
+    const corners = [
+        { x: ent.center.x - halfWidth, y: ent.center.y - halfHeight },
+        { x: ent.center.x + halfWidth, y: ent.center.y - halfHeight },
+        { x: ent.center.x + halfWidth, y: ent.center.y + halfHeight },
+        { x: ent.center.x - halfWidth, y: ent.center.y + halfHeight },
+    ];
+    ctx.beginPath();
+    corners.forEach((corner, index) => {
+        const point = transform.project(corner);
+        if (index === 0) ctx.moveTo(point.x, point.y);
+        else ctx.lineTo(point.x, point.y);
+    });
+    ctx.closePath();
+    ctx.stroke();
+};
+
+/**
+ * 绘制 SHAPE 占位符。
+ */
+export const drawShape = (ctx: CanvasRenderingContext2D, ent: DxfShape, transform: RenderTransform) => {
+    const point = transform.project(ent.position);
+    const size = Math.max(4, Math.min(14, Math.abs(ent.size || 1) * Math.abs(transform.scale)));
+    ctx.beginPath();
+    ctx.moveTo(point.x - size, point.y);
+    ctx.lineTo(point.x + size, point.y);
+    ctx.moveTo(point.x, point.y - size);
+    ctx.lineTo(point.x, point.y + size);
+    ctx.stroke();
+
+    if (ent.name && size > 5) {
+        ctx.save();
+        ctx.font = '11px sans-serif';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText(ent.name, point.x + size + 3, point.y - size - 2);
+        ctx.restore();
+    }
 };

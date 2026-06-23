@@ -1,4 +1,4 @@
-import { 
+﻿import { 
   AnyEntity, 
   EntityType, 
   DxfLayer, 
@@ -6,7 +6,6 @@ import {
   DxfStyle, 
   DxfLineType,
   Point2D, 
-  DxfText, 
   ViewPort, 
   CanvasTheme, 
   DrawingColorMode 
@@ -18,8 +17,7 @@ import {
 } from '@/config/viewerConfig';
 import { resolveEntityColor } from '@/utils/entityColor';
 import { resolveCadStrokeStyle } from '@/utils/lineStyle';
-import { sampleSplinePoints, sampleEllipsePoints } from '@/core/geometry/curveSampling';
-import { cleanMText } from '@/utils/textUtils';
+import { sampleSplinePoints } from '@/core/geometry/curveSampling';
 
 // 导入图元具体的 Canvas 绘制函数
 import { 
@@ -34,7 +32,9 @@ import {
   drawPolyline, 
   drawMLine, 
   drawSpline, 
-  drawHelix 
+  drawHelix,
+  drawViewport,
+  drawShape 
 } from '@/renderer/entities/geometryRenderer';
 import { drawTextEntity } from '@/renderer/entities/textRenderer';
 import { drawInsertOrTable, drawDimension } from '@/renderer/entities/blockRenderer';
@@ -51,7 +51,7 @@ import {
 const SELECTION_COLOR = SELECTION_CONFIG.selectionBorderColor;
 
 /**
- * 将 DXF 图纸中所有的可绘制图元绘制到 Canvas 画布上
+ * 将 DXF 图纸中所有可绘制图元绘制到画布上。
  */
 export const renderEntitiesToCanvas = (
     ctx: CanvasRenderingContext2D,
@@ -89,10 +89,6 @@ export const renderEntitiesToCanvas = (
         scale: viewPort.zoom,
         rotation: 0,
     };
-
-    // 开启 SHX 字体调试分析
-    const shxDebugEnabled = typeof window !== 'undefined' && window.localStorage?.getItem('dxfviewer.shxDebug') === '1';
-    const shxDebugStats = { glyphs: 0, fallbacks: 0, runs: 0 };
 
     // 建立实体 Handle 映射表用于解析引线关联信息
     const entityByHandle = new Map<string, AnyEntity>();
@@ -133,7 +129,7 @@ export const renderEntitiesToCanvas = (
         ctx.strokeStyle = color;
         ctx.fillStyle = color;
 
-        // 解析 CAD 线宽、线型属性并应用到 Canvas 绘图上下文
+        // 解析 CAD 线宽、线型属性并应用到画布绘图上下文。
         let strokeStyle = resolveCadStrokeStyle({
             entity: ent,
             layer,
@@ -200,18 +196,24 @@ export const renderEntitiesToCanvas = (
             case EntityType.HELIX:
                 drawHelix(ctx, ent, transform);
                 break;
+            case EntityType.VIEWPORT:
+                drawViewport(ctx, ent, transform);
+                break;
+            case EntityType.SHAPE:
+                drawShape(ctx, ent, transform);
+                break;
             case EntityType.TEXT:
             case EntityType.MTEXT:
             case EntityType.ATTRIB:
             case EntityType.ATTDEF:
-                drawTextEntity(ctx, ent, transform, styles, theme, color, isSelected, noMTextWrap, shxDebugEnabled, shxDebugStats);
+                drawTextEntity(ctx, ent, transform, styles, theme, color, noMTextWrap);
                 break;
             case EntityType.INSERT:
             case EntityType.ACAD_TABLE:
-                drawInsertOrTable(ctx, ent, transform, blocks, theme, color, isSelected, layerName, depth, noMTextWrap, drawEntity);
+                drawInsertOrTable(ctx, ent, transform, blocks, color, isSelected, layerName, depth, noMTextWrap, drawEntity);
                 break;
             case EntityType.DIMENSION:
-                drawDimension(ctx, ent, transform, blocks, theme, color, isSelected, layerName, depth, noMTextWrap, drawEntity);
+                drawDimension(ctx, ent, transform, blocks, color, isSelected, layerName, depth, noMTextWrap, drawEntity);
                 break;
             case EntityType.HATCH:
                 drawHatch(ctx, ent, transform, color);
@@ -224,8 +226,8 @@ export const renderEntitiesToCanvas = (
                 drawLeader(ctx, ent, transform, color, entityByHandle);
                 break;
             case EntityType.MLEADER:
-                drawMLeader(ctx, ent, transform, color, layerName, isSelected, depth, (textEntity, trans, lName, col, sel, d) => {
-                    drawTextEntity(ctx, textEntity, trans, styles, theme, col, sel, true, shxDebugEnabled, shxDebugStats);
+                drawMLeader(ctx, ent, transform, color, layerName, isSelected, depth, (textEntity, trans, _layerName, col, _sel) => {
+                    drawTextEntity(ctx, textEntity, trans, styles, theme, col, true);
                 });
                 break;
             case EntityType.IMAGE:
@@ -244,17 +246,6 @@ export const renderEntitiesToCanvas = (
 
     // 遍历图纸中的顶级实体进行依次渲染绘制
     entities.forEach(ent => drawEntity(ent, transform, undefined, undefined, false, 0, false));
-
-    // 绘制 SHX 字体性能与命中信息
-    if (shxDebugEnabled) {
-        ctx.save();
-        ctx.font = '12px sans-serif';
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'top';
-        ctx.fillStyle = theme === 'white' ? '#166534' : '#86efac';
-        ctx.fillText(`SHX glyph: ${shxDebugStats.glyphs}, fallback: ${shxDebugStats.fallbacks}, runs: ${shxDebugStats.runs}`, 8, 8);
-        ctx.restore();
-    }
 };
 
 /**

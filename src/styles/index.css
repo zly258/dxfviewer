@@ -1,6 +1,8 @@
-:root {
-  --font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-  --font-size-base: 14px;
+﻿:root {
+  --font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", Arial, sans-serif;
+  --font-size-base: 13px;
+  --font-size-small: 12px;
+  --control-height: 30px;
 
   --bg-primary: #f7f8fa;
   --bg-secondary: #ffffff;
@@ -30,8 +32,8 @@
   --radius-medium: 6px;
   --radius-large: 8px;
 
-  --toolbar-height: 34px;
-  --sidebar-width: 270px;
+  --toolbar-height: 44px;
+  --layer-panel-width: 270px;
   --properties-width: 330px;
   --status-bar-height: 28px;
   --status-bar-bg: #eef1f5;
@@ -81,7 +83,7 @@ body {
   font-family: var(--font-family);
   font-size: var(--font-size-base);
   background-color: var(--bg-primary);
-  color: var(--text-primary);
+  color: var(--text-secondary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -91,6 +93,18 @@ input,
 select,
 textarea {
   font: inherit;
+}
+
+button {
+  color: inherit;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--accent-blue);
+  outline-offset: 2px;
 }
 
 .app-container {
@@ -103,6 +117,7 @@ textarea {
   position: relative;
   background-color: var(--bg-primary);
   color: var(--text-primary);
+  letter-spacing: 0.01em;
 }
 
 .menu-tab-row {
@@ -111,13 +126,26 @@ textarea {
   flex-shrink: 0;
   height: var(--toolbar-height);
   background-color: var(--bg-secondary);
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 0;
   box-sizing: border-box;
   position: relative;
   z-index: 500;
 }
 
-.menu-tab-row .toolbar {
+.menu-tab-row::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background-color: var(--border-color);
+  pointer-events: none;
+  z-index: 700;
+}
+
+.menu-tab-row .toolbar,
+.menu-tab-row .tabs-container {
   border-bottom: 0;
 }
 
@@ -128,17 +156,101 @@ textarea {
   overflow: hidden;
 }
 
+.menu-tab-strip .tabs-container {
+  height: 100%;
+  min-height: 0;
+}
+
 .toolbar {
   height: var(--toolbar-height);
   display: flex;
   align-items: center;
   flex-shrink: 0;
-  gap: 2px;
+  gap: 3px;
   padding: 0 8px;
   background-color: var(--bg-secondary);
   box-sizing: border-box;
   user-select: none;
   z-index: 501;
+}
+
+.toolbar-button {
+  height: 34px;
+  min-width: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-small);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 32px;
+  cursor: pointer;
+  box-sizing: border-box;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.toolbar-icon-button {
+  width: 36px;
+  padding: 0;
+}
+
+.toolbar-button:hover:not(:disabled),
+.toolbar-button.active,
+.toolbar-menu.active > .toolbar-button {
+  background-color: var(--bg-hover);
+  border-color: transparent;
+  color: var(--text-bright);
+}
+
+.toolbar-button.active,
+.toolbar-menu.active > .toolbar-button {
+  background-color: var(--accent-blue-soft);
+  border-color: transparent;
+  color: var(--accent-blue);
+}
+
+.toolbar-button:disabled {
+  color: var(--text-muted);
+  cursor: default;
+  opacity: 0.48;
+}
+
+.toolbar-icon {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.toolbar-icon svg {
+  width: 22px;
+  height: 22px;
+  display: block;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.toolbar-menu {
+  position: relative;
+  height: 36px;
+}
+
+.toolbar-separator {
+  width: 1px;
+  height: 24px;
+  margin: 0 7px;
+  background-color: var(--border-color);
+  flex-shrink: 0;
 }
 
 .menu-item {
@@ -165,8 +277,9 @@ textarea {
 }
 
 .menu-item.active {
-  background-color: var(--bg-active);
-  border-color: var(--accent-blue);
+  background-color: var(--accent-blue-soft);
+  border-color: transparent;
+  color: var(--accent-blue);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
@@ -216,9 +329,15 @@ textarea {
   transition: background-color 0.15s ease, color 0.15s ease;
 }
 
-.dropdown-item:hover {
+.dropdown-item:hover:not(:disabled) {
   background-color: var(--bg-hover);
   color: var(--text-bright);
+}
+
+.dropdown-item:disabled {
+  color: var(--text-muted);
+  cursor: default;
+  opacity: 0.55;
 }
 
 .dropdown-item.checked::after {
@@ -252,7 +371,7 @@ textarea {
   min-height: 0;
   overflow: hidden;
   position: relative;
-  /* 边界线由上方 menu-tab-row 的 border-bottom 统一提供，此处不重复绘制，
+  /* 边界线由上方菜单标签行的底边框统一提供，此处不重复绘制，
      避免两栏切换时出现双边或边界线错位/断裂。 */
   box-sizing: border-box;
 }
@@ -267,7 +386,7 @@ textarea {
   position: relative;
 }
 
-.sidebar,
+.layer-panel,
 .properties-panel {
   display: flex;
   flex-direction: column;
@@ -277,8 +396,8 @@ textarea {
   background-color: var(--bg-secondary);
 }
 
-.sidebar {
-  width: var(--sidebar-width);
+.layer-panel {
+  width: var(--layer-panel-width);
   border-right: 1px solid var(--border-color);
 }
 
@@ -287,7 +406,7 @@ textarea {
   border-left: 1px solid var(--border-color);
 }
 
-.sidebar-header,
+.layer-panel-header,
 .properties-header {
   height: 34px;
   flex-shrink: 0;
@@ -301,7 +420,7 @@ textarea {
   font-weight: 600;
 }
 
-.sidebar-content,
+.layer-panel-content,
 .properties-content {
   flex: 1;
   overflow-y: auto;
@@ -449,6 +568,8 @@ textarea {
   position: relative;
   overflow: hidden;
   user-select: none;
+  touch-action: none;
+  overscroll-behavior: none;
   cursor: default !important;
   /* 默认白色，避免浅色主题下 --canvas-bg 未及时设置时出现黑色闪烁。
    深色主题由 CanvasViewer 通过 inline style 覆盖为 #212121。 */
@@ -519,6 +640,74 @@ textarea {
   font-family: Consolas, "Cascadia Mono", monospace;
 }
 
+/* 模型空间与图纸空间底部切换栏 */
+.space-switch-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 34px;
+  padding: 4px 10px 3px;
+  box-sizing: border-box;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-top: 1px solid var(--border-color);
+  background: linear-gradient(180deg, var(--bg-secondary), var(--bg-tertiary));
+  scrollbar-width: thin;
+}
+
+.space-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 78px;
+  max-width: 180px;
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  border-radius: 4px 4px 0 0;
+  background-color: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.space-tab:hover {
+  color: var(--text-bright);
+  background-color: var(--bg-hover);
+}
+
+.space-tab.active {
+  color: var(--accent-blue);
+  background-color: var(--bg-primary);
+  border-color: var(--border-color);
+  border-bottom-color: var(--bg-primary);
+  font-weight: 600;
+}
+
+.space-tab-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.space-tab-count {
+  min-width: 18px;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 999px;
+  box-sizing: border-box;
+  background-color: var(--accent-blue-soft);
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.space-tab.active .space-tab-count {
+  color: var(--accent-blue);
+}
+
 
 .loading-overlay {
   position: absolute;
@@ -528,59 +717,88 @@ textarea {
   align-items: center;
   justify-content: center;
   pointer-events: none;
-  background-color: rgba(247, 248, 250, 0.72);
-  backdrop-filter: blur(2px);
+  background-color: rgba(247, 248, 250, 0.5);
+  backdrop-filter: blur(1.5px);
 }
 
 .theme-dark .loading-overlay {
-  background-color: rgba(16, 18, 22, 0.72);
+  background-color: rgba(16, 18, 22, 0.52);
 }
 
-.loading-inline {
-  width: min(360px, calc(100vw - 80px));
-  display: flex;
-  flex-direction: column;
+.loading-card {
+  width: min(340px, calc(100vw - 48px));
+  padding: 14px 16px 13px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background-color: color-mix(in srgb, var(--bg-elevated) 94%, transparent);
+  box-shadow: 0 16px 42px rgba(15, 23, 42, 0.18);
+  box-sizing: border-box;
+  color: var(--text-primary);
+}
+
+.loading-header {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
-  color: var(--text-primary);
-  text-align: center;
+  margin-bottom: 12px;
+}
+
+.loading-spinner {
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--border-color);
+  border-top-color: var(--accent-blue);
+  border-radius: 50%;
+  box-sizing: border-box;
+  animation: loading-spin 0.8s linear infinite;
+}
+
+.loading-text-block {
+  min-width: 0;
 }
 
 .loading-title {
-  font-size: 17px;
+  font-size: 14px;
   font-weight: 600;
+  line-height: 18px;
   color: var(--text-bright);
 }
 
 .loading-file {
-  width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 14px;
+  font-size: 12px;
+  line-height: 16px;
   color: var(--text-secondary);
 }
 
 .loading-progressbar {
-  width: min(320px, 100%);
-  height: 6px;
+  width: 100%;
+  height: 4px;
   overflow: hidden;
   border-radius: 999px;
   background-color: var(--bg-tertiary);
-  border: 1px solid var(--border-color);
 }
 
 .loading-progressbar-value {
   height: 100%;
   border-radius: inherit;
-  background-color: var(--accent-blue);
+  background: linear-gradient(90deg, var(--accent-blue), var(--accent-blue-hover));
   transition: width 0.16s ease-out;
 }
 
 .loading-progress-text {
+  min-width: 42px;
+  text-align: right;
   font-family: Consolas, "Cascadia Mono", monospace;
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-secondary);
+}
+
+@keyframes loading-spin {
+  to { transform: rotate(360deg); }
 }
 
 .toast-container {
@@ -654,12 +872,12 @@ textarea {
   z-index: 30;
   left: 50%;
   top: 44%;
-  width: min(560px, calc(100% - 56px));
+  width: min(520px, calc(100% - 56px));
   transform: translate(-50%, -50%);
   box-sizing: border-box;
-  padding: 20px 22px;
+  padding: 18px 18px 14px;
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-large);
+  border-radius: 10px;
   background: var(--bg-elevated);
   color: var(--text-primary);
   box-shadow: var(--shadow-panel);
@@ -679,10 +897,16 @@ textarea {
   word-break: break-word;
 }
 
+.viewer-error-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+}
+
 .viewer-error-button {
   height: 32px;
-  margin-top: 16px;
-  margin-right: 8px;
+  min-width: 76px;
   padding: 0 14px;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-small);
@@ -691,10 +915,22 @@ textarea {
   cursor: pointer;
 }
 
+.viewer-error-button.primary {
+  border-color: var(--accent-blue);
+  background: var(--accent-blue);
+  color: #ffffff;
+}
+
 .viewer-error-button:hover {
   border-color: var(--accent-blue);
   background: var(--accent-blue-soft);
   color: var(--text-bright);
+}
+
+.viewer-error-button.primary:hover {
+  border-color: var(--accent-blue-hover);
+  background: var(--accent-blue-hover);
+  color: #ffffff;
 }
 
 ::-webkit-scrollbar {
@@ -878,7 +1114,7 @@ textarea {
   flex: 1;
   position: relative;
   min-height: 0;
-  /* 与 canvas-container 一致：默认白色，深色主题由 JS 侧覆盖 */
+  /* 与画布容器一致：默认白色，深色主题由脚本侧覆盖。 */
   background-color: var(--canvas-bg, #ffffff);
 }
 
@@ -952,11 +1188,11 @@ textarea {
 }
 
 .menu-tab-strip .tab-item {
-  height: 100%;
+  height: calc(100% - 1px);
 }
 
 .menu-tab-strip .tab-scroll-button {
-  height: 100%;
+  height: calc(100% - 1px);
 }
 
 .menu-tab-strip .tab-context-menu {
@@ -972,7 +1208,7 @@ textarea {
 }
 
 /* -------------------------------------------------------------
- * 1. 图层可见性隐藏切换样式 (Layer Visibility Toggles)
+ * 1. 图层可见性切换样式
  * ------------------------------------------------------------- */
 .layer-visibility-toggle {
   display: flex;
@@ -1011,7 +1247,7 @@ textarea {
 }
 
 /* -------------------------------------------------------------
- * 2. 高端关于弹窗样式 - 磨砂玻璃 (Glassmorphism About Modal)
+ * 2. 关于弹窗样式
  * ------------------------------------------------------------- */
 .about-modal-overlay {
   position: absolute;
@@ -1157,7 +1393,7 @@ textarea {
 }
 
 /* -------------------------------------------------------------
- * 3. Custom Checkbox styles for CAD Layer Visiblity
+ * 3. CAD 图层可见性复选框样式
  * ------------------------------------------------------------- */
 .layer-checkbox-icon {
   width: 14px;
@@ -1170,193 +1406,560 @@ textarea {
   transform: scale(1.08);
 }
 
-/* -------------------------------------------------------------
- * 4. Responsive Mobile Design (<= 768px)
- *
- * 移动端采用专属外壳：全屏画布 + 左上角打开 FAB + 右上角浮动坐标
- * + 底部 Tab 栏(图层/属性/视图/关于) + 底部上滑 Sheet。
- * 桌面端的顶部菜单、侧栏、属性面板、状态栏在移动端全部隐藏，
- * 由 MobileShell 组件接管。
- * ------------------------------------------------------------- */
-
-/* 桌面端隐藏移动外壳元素（MobileShell 只在 isMobile 时渲染，这里做兜底） */
-.mobile-fab-open,
+/* 移动端基础元素默认隐藏，实际布局由右侧工具栏样式控制。 */
 .mobile-coord-chip,
-.mobile-tab-bar,
-.mobile-sheet,
-.mobile-sheet-backdrop {
+.mobile-right-toolbar,
+.mobile-side-panel,
+.mobile-side-backdrop {
+  display: none;
+}
+
+/* 画布右键菜单 */
+.canvas-context-menu {
+  --context-menu-width: 156px;
+  --context-menu-height: 174px;
+  position: absolute;
+  z-index: 1800;
+  min-width: var(--context-menu-width);
+  padding: 4px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-medium);
+  background-color: var(--bg-elevated);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-menu);
+  box-sizing: border-box;
+}
+
+.canvas-context-menu button {
+  width: 100%;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-small);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.canvas-context-menu button:hover:not(:disabled) {
+  background-color: var(--bg-hover);
+  color: var(--text-bright);
+}
+
+.canvas-context-menu button:disabled {
+  color: var(--text-muted);
+  cursor: default;
+  opacity: 0.52;
+}
+
+.canvas-context-divider {
+  height: 1px;
+  margin: 4px 3px;
+  background-color: var(--border-color);
+}
+
+/* 图纸文字搜索 */
+.text-search-panel {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 700;
+  width: min(360px, calc(100% - 20px));
+  color: var(--text-primary);
+  pointer-events: auto;
+}
+
+.text-search-row {
+  height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 5px 0 8px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-medium);
+  background-color: var(--bg-elevated);
+  box-shadow: var(--shadow-menu);
+  box-sizing: border-box;
+}
+
+.text-search-icon {
+  width: 16px;
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  font-size: 15px;
+  line-height: 1;
+  text-align: center;
+}
+
+.text-search-input {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  outline: none;
+  box-sizing: border-box;
+}
+
+.text-search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.text-search-count {
+  min-width: 42px;
+  color: var(--text-secondary);
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 12px;
+  text-align: center;
+}
+
+.text-search-nav,
+.text-search-close {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-small);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.text-search-nav:hover:not(:disabled),
+.text-search-close:hover {
+  background-color: var(--bg-hover);
+  border-color: var(--border-color);
+  color: var(--text-bright);
+}
+
+.text-search-close {
+  font-size: 17px;
+  line-height: 22px;
+}
+
+.text-search-nav:disabled {
+  color: var(--text-muted);
+  cursor: default;
+  opacity: 0.45;
+}
+
+.text-search-results {
+  max-height: min(320px, calc(100vh - 160px));
+  margin-top: 6px;
+  padding: 4px;
+  overflow: auto;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-medium);
+  background-color: var(--bg-elevated);
+  box-shadow: var(--shadow-menu);
+  box-sizing: border-box;
+}
+
+.text-search-empty {
+  padding: 8px 10px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.text-search-result {
+  width: 100%;
+  min-height: 36px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: var(--radius-small);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.text-search-result:hover,
+.text-search-result.active {
+  background-color: var(--bg-hover);
+}
+
+.text-search-result.active {
+  color: var(--text-bright);
+}
+
+.text-search-result-type {
+  max-width: 100%;
+  color: var(--text-secondary);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.text-search-result-text {
+  max-width: 100%;
+  color: var(--text-primary);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.is-mobile .text-search-panel {
+  top: 8px;
+  left: 8px;
+  width: calc(100% - 16px);
+}
+
+
+/* 移动端基础适配：安全区、触控目标、右键菜单和搜索面板。 */
+@media (max-width: 768px) {
+  html,
+  body,
+  #root {
+    height: 100dvh;
+    overscroll-behavior: none;
+  }
+
+  body {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .app-container.is-mobile {
+    width: 100vw;
+    height: 100dvh !important;
+    min-height: 100dvh;
+    overflow: hidden;
+  }
+
+  .app-container.is-mobile .viewer-container {
+    padding-bottom: 0;
+    box-sizing: border-box;
+  }
+
+  .app-container.is-mobile .canvas-container {
+    min-height: 0;
+  }
+
+  .app-container.is-mobile .menu-tab-row {
+    flex-shrink: 0;
+    max-height: 34px;
+    overflow: hidden;
+  }
+
+  .app-container.is-mobile .tabs-container,
+  .app-container.is-mobile .tabs-scroll-viewport,
+  .app-container.is-mobile .tab-item,
+  .app-container.is-mobile .tab-scroll-button {
+    height: 34px;
+    min-height: 34px;
+  }
+
+  .app-container.is-mobile .tab-item {
+    min-width: 90px;
+    max-width: 150px;
+    padding: 0 8px;
+  }
+
+  .mobile-tool-button,
+  .mobile-view-item {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .canvas-context-menu {
+    --context-menu-width: 160px;
+    --context-menu-height: 196px;
+    min-width: var(--context-menu-width);
+    padding: 6px;
+  }
+
+  .canvas-context-menu button {
+    height: 40px;
+    padding: 0 12px;
+    font-size: 14px;
+  }
+
+  .is-mobile .text-search-panel {
+    top: calc(max(12px, env(safe-area-inset-top, 0px)) + 46px);
+    left: max(12px, env(safe-area-inset-left, 0px));
+    right: calc(max(10px, env(safe-area-inset-right, 0px)) + 58px);
+    width: auto;
+    z-index: 1075;
+  }
+
+  .is-mobile .text-search-row {
+    height: 40px;
+    padding-left: 10px;
+    border-radius: 12px;
+  }
+
+  .is-mobile .text-search-input {
+    height: 34px;
+    font-size: 14px;
+  }
+
+  .is-mobile .text-search-nav,
+  .is-mobile .text-search-close {
+    width: 34px;
+    height: 34px;
+  }
+
+  .is-mobile .text-search-results {
+    max-height: min(42dvh, calc(100dvh - 210px));
+    border-radius: 12px;
+  }
+
+  .is-mobile .text-search-result {
+    min-height: 44px;
+    padding: 7px 10px;
+  }
+
+  .toast-container,
+  .app-toast-container {
+    top: calc(env(safe-area-inset-top, 0px) + 10px);
+    width: calc(100% - 24px);
+  }
+
+  .toast {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .about-modal-content,
+  .viewer-error-panel {
+    width: calc(100vw - 28px);
+    max-height: calc(100dvh - 48px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  }
+}
+
+@media (max-width: 420px) {
+  .mobile-coord-chip {
+    gap: 6px;
+    padding: 5px 8px;
+    font-size: 10px;
+  }
+}
+
+@media (max-width: 768px) and (orientation: landscape) {
+  .mobile-coord-chip {
+    top: max(10px, env(safe-area-inset-top, 0px));
+  }
+}
+
+/* -------------------------------------------------------------
+ * 移动端右侧工具栏重构：不再使用底部抽屉，桌面与移动端共用同一图标色彩体系。
+ * ------------------------------------------------------------- */
+.mobile-right-toolbar,
+.mobile-side-panel,
+.mobile-side-backdrop {
   display: none;
 }
 
 @media (max-width: 768px) {
-  .app-container.is-mobile .menu-tab-row {
-    height: auto;
-    min-height: 0;
+  .app-container.is-mobile .viewer-container {
+    padding-bottom: 0;
   }
 
-  .app-container.is-mobile .main-content {
-    border-top: 0;
+
+  .mobile-coord-chip {
+    top: max(12px, env(safe-area-inset-top, 0px));
+    left: max(12px, env(safe-area-inset-left, 0px));
+    right: auto;
+    max-width: calc(100vw - 92px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
   }
 
-  /* 左上角：打开文件 FAB */
-  .mobile-fab-open {
+  .mobile-right-toolbar {
     display: flex;
     position: absolute;
-    top: 12px;
-    left: 12px;
-    width: 44px;
-    height: 44px;
-    border-radius: 50%;
+    top: max(12px, env(safe-area-inset-top, 0px));
+    right: max(10px, env(safe-area-inset-right, 0px));
+    z-index: 1080;
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px;
+    border: 1px solid var(--border-color);
+    border-radius: 15px;
+    background-color: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
+    color: var(--text-secondary);
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.18);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+
+  .mobile-tool-button {
+    width: 40px;
+    height: 40px;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
-    background-color: var(--accent-blue);
-    color: #ffffff;
-    border: none;
-    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.28);
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 11px;
+    background: transparent;
+    color: var(--text-secondary);
     cursor: pointer;
-    z-index: 1020;
-    transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+    -webkit-tap-highlight-color: transparent;
   }
 
-  .mobile-fab-open:active {
-    transform: scale(0.9);
+  .mobile-tool-button svg,
+  .mobile-side-close svg,
+  .mobile-view-item svg {
+    display: block;
+    width: 22px;
+    height: 22px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.9;
+    stroke-linecap: round;
+    stroke-linejoin: round;
   }
 
-  /* 右上角：浮动坐标小标签 */
-  .mobile-coord-chip {
-    display: inline-flex;
-    position: absolute;
-    top: 14px;
-    right: 12px;
-    gap: 8px;
-    padding: 5px 10px;
-    border-radius: 14px;
-    background-color: rgba(255, 255, 255, 0.82);
-    color: var(--text-primary);
-    border: 1px solid var(--border-color);
-    font-size: 11px;
-    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-    backdrop-filter: blur(6px);
-    -webkit-backdrop-filter: blur(6px);
-    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.14);
-    z-index: 1020;
-    pointer-events: none;
-  }
-
-  .theme-dark .mobile-coord-chip {
-    background-color: rgba(42, 45, 51, 0.82);
-    color: var(--text-primary);
-    border-color: var(--border-color);
-  }
-
-  .mobile-coord-chip .coord-selected {
+  .mobile-tool-button:active:not(:disabled),
+  .mobile-tool-button.active {
+    background-color: var(--accent-blue-soft);
+    border-color: transparent;
     color: var(--accent-blue);
-    font-weight: 600;
   }
 
-  /* Sheet 遮罩 */
-  .mobile-sheet-backdrop {
+  .mobile-tool-button:disabled {
+    color: var(--text-muted);
+    cursor: default;
+    opacity: 0.45;
+  }
+
+  .mobile-tool-separator {
+    height: 1px;
+    margin: 3px 6px;
+    background-color: var(--border-color);
+  }
+
+  .mobile-side-backdrop {
     display: block;
     position: absolute;
     inset: 0;
-    background-color: rgba(15, 23, 42, 0.4);
-    backdrop-filter: blur(2px);
-    -webkit-backdrop-filter: blur(2px);
-    z-index: 1030;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.25s ease;
+    z-index: 1060;
+    background-color: rgba(15, 23, 42, 0.16);
   }
 
-  .mobile-sheet-backdrop.visible {
+  .mobile-side-panel {
+    display: flex;
+    flex-direction: column;
+    position: absolute;
+    top: max(12px, env(safe-area-inset-top, 0px));
+    right: calc(max(10px, env(safe-area-inset-right, 0px)) + 58px);
+    bottom: max(12px, env(safe-area-inset-bottom, 0px));
+    width: min(330px, calc(100vw - 88px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)));
+    z-index: 1070;
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    background-color: var(--bg-elevated);
+    color: var(--text-primary);
+    box-shadow: var(--shadow-panel);
+    transform: translateX(14px);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.16s ease, transform 0.16s ease;
+  }
+
+  .mobile-side-panel.open {
+    transform: translateX(0);
     opacity: 1;
     pointer-events: auto;
   }
 
-  /* 底部上滑 Sheet */
-  .mobile-sheet {
-    display: flex;
-    flex-direction: column;
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    height: 62vh;
-    max-height: 62vh;
-    background-color: var(--bg-elevated);
-    border-top-left-radius: 16px;
-    border-top-right-radius: 16px;
-    box-shadow: 0 -8px 30px rgba(15, 23, 42, 0.24);
-    z-index: 1040;
-    transform: translateY(100%);
-    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    overflow: hidden;
-  }
-
-  .mobile-sheet.open {
-    transform: translateY(0);
-  }
-
-  .mobile-sheet-handle {
-    flex-shrink: 0;
-    height: 26px;
+  .mobile-side-panel-header {
+    height: 42px;
     display: flex;
     align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+    padding: 0 8px 0 12px;
+    border-bottom: 1px solid var(--border-color);
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+    font-weight: 600;
+    box-sizing: border-box;
+  }
+
+  .mobile-side-close {
+    width: 32px;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
     justify-content: center;
-    cursor: grab;
-    touch-action: none;
+    padding: 0;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-secondary);
   }
 
-  .mobile-sheet-handle:active {
-    cursor: grabbing;
+  .mobile-side-close:active {
+    background-color: var(--bg-hover);
+    color: var(--text-bright);
   }
 
-  .mobile-sheet-grip {
-    width: 38px;
-    height: 5px;
-    border-radius: 3px;
-    background-color: var(--border-strong);
-  }
-
-  .mobile-sheet-content {
+  .mobile-side-panel-content {
     flex: 1;
-    overflow-y: auto;
+    min-height: 0;
+    overflow: auto;
     -webkit-overflow-scrolling: touch;
   }
 
-  /* Sheet 内复用桌面端 Sidebar / PropertiesPanel，覆盖固定宽度与边框 */
-  .mobile-sheet-content .sidebar,
-  .mobile-sheet-content .properties-panel {
+  .mobile-side-panel-content .layer-panel,
+  .mobile-side-panel-content .properties-panel {
     width: 100% !important;
     height: 100% !important;
-    border-right: 0 !important;
-    border-left: 0 !important;
+    border: 0 !important;
     background-color: transparent !important;
   }
 
-  /* 视图 Sheet 列表 */
+  .mobile-side-panel-content .layer-panel-header,
+  .mobile-side-panel-content .properties-header {
+    display: none;
+  }
+
+  .mobile-side-panel-content .layer-row {
+    min-height: 38px;
+    height: auto;
+    padding: 0 12px;
+  }
+
+  .mobile-side-panel-content .entity-row {
+    min-height: 36px;
+    height: auto;
+    padding-left: 36px;
+  }
+
   .mobile-view-list {
-    padding: 4px 8px 16px;
+    padding: 8px;
   }
 
   .mobile-view-item {
     width: 100%;
-    height: 46px;
+    min-height: 42px;
     display: flex;
     align-items: center;
-    padding: 0 16px;
+    gap: 10px;
+    padding: 0 10px;
     border: 0;
+    border-radius: 9px;
     background: transparent;
     color: var(--text-primary);
-    font-size: 15px;
-    font-family: inherit;
+    font-size: 14px;
     text-align: left;
-    border-radius: var(--radius-small);
-    cursor: pointer;
-  }
-
-  .mobile-view-item:active {
-    background-color: var(--bg-hover);
   }
 
   .mobile-view-item.checked {
@@ -1364,50 +1967,49 @@ textarea {
     font-weight: 600;
   }
 
-  .mobile-view-divider {
-    height: 1px;
-    margin: 4px 12px;
-    background-color: var(--border-color);
-  }
-
-  /* 底部 Tab 栏 */
-  .mobile-tab-bar {
-    display: flex;
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    height: 50px;
-    background-color: var(--bg-secondary);
-    border-top: 1px solid var(--border-color);
-    z-index: 1050;
-    box-sizing: border-box;
-    padding-bottom: env(safe-area-inset-bottom, 0);
-  }
-
-  .mobile-tab {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: 0;
-    background: transparent;
-    color: var(--text-secondary);
-    font-size: 13px;
-    font-family: inherit;
-    cursor: pointer;
-    transition: color 0.15s ease;
-  }
-
-  .mobile-tab.active {
-    color: var(--accent-blue);
-    font-weight: 600;
-  }
-
-  .mobile-tab:active {
+  .mobile-view-item:active {
     background-color: var(--bg-hover);
+  }
+
+
+  .is-mobile .text-search-panel {
+    top: calc(max(12px, env(safe-area-inset-top, 0px)) + 46px);
+    left: max(12px, env(safe-area-inset-left, 0px));
+    right: calc(max(10px, env(safe-area-inset-right, 0px)) + 58px);
+    width: auto;
+    z-index: 1075;
   }
 }
 
+@media (max-width: 768px) and (orientation: landscape) {
+  .mobile-right-toolbar {
+    top: max(8px, env(safe-area-inset-top, 0px));
+    flex-direction: column;
+  }
 
+  .mobile-side-panel {
+    top: max(8px, env(safe-area-inset-top, 0px));
+    bottom: max(8px, env(safe-area-inset-bottom, 0px));
+  }
 
+  .is-mobile .text-search-panel {
+    top: max(8px, env(safe-area-inset-top, 0px));
+    left: max(12px, env(safe-area-inset-left, 0px));
+    width: min(360px, calc(100vw - 96px));
+  }
+}
+
+.text-search-highlight {
+  display: inline;
+  padding: 0 0.5px;
+  border-radius: 1px;
+  background-color: transparent;
+  color: inherit;
+  box-shadow: inset 0 -0.28em 0 color-mix(in srgb, var(--accent-blue) 20%, transparent);
+}
+
+.text-search-result.active {
+  background-color: color-mix(in srgb, var(--accent-blue-soft) 38%, transparent);
+  outline: 1px solid color-mix(in srgb, var(--accent-blue) 24%, transparent);
+  outline-offset: -3px;
+}

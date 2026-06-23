@@ -1,12 +1,13 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import DxfViewer from '@/components/DxfViewer';
-import { SHORTCUT_CONFIG, VIEWER_DEFAULTS } from '@/config/viewerConfig';
-import { DxfTabSource } from '@/components/app/tabs/tabModel';
-import { useDxfTabs } from '@/components/app/tabs/useDxfTabs';
-import { UiTheme, DrawingColorMode } from '@/types';
+﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
+import DxfViewer from '@/components/viewer/DxfViewer';
+import { getSystemUiTheme, resolveUiTheme, SHORTCUT_CONFIG, VIEWER_DEFAULTS } from '@/config/viewerConfig';
+import { DxfTabSource } from '@/components/workspace/DxfTabs';
+import { useDxfTabs } from '@/components/workspace/DxfTabs';
+import { UiTheme, DrawingColorMode, ResolvedUiTheme } from '@/types';
 import { Language } from '@/config/i18n';
+import { readViewerUiSettings } from '@/components/viewer/viewerUiSettings';
 
-export interface AppShellProps {
+export interface DxfWorkspaceProps {
   editor?: boolean;
   initialFiles?: DxfTabSource[];
 }
@@ -17,7 +18,7 @@ interface TabContextMenuState {
   y: number;
 }
 
-function AppShell({ editor = true, initialFiles = [] }: AppShellProps) {
+function DxfWorkspace({ editor = true, initialFiles = [] }: DxfWorkspaceProps) {
   const tabsContainerRef = useRef<HTMLDivElement>(null);
   const globalFileInputRef = useRef<HTMLInputElement>(null);
   const [tabContextMenu, setTabContextMenu] = useState<TabContextMenuState | null>(null);
@@ -35,18 +36,24 @@ function AppShell({ editor = true, initialFiles = [] }: AppShellProps) {
     closeTabsToRight,
   } = useDxfTabs(editor, initialFiles);
 
-  const savedSettings = useMemo(() => {
-    try {
-      const raw = window.localStorage.getItem('dxfviewer.uiSettings.v1');
-      if (raw) return JSON.parse(raw);
-    } catch {}
-    return {};
-  }, []);
+  const savedSettings = useMemo(() => readViewerUiSettings(), []);
 
   const [uiTheme, setUiTheme] = useState<UiTheme>(savedSettings.uiTheme || VIEWER_DEFAULTS.uiTheme);
+  const [systemTheme, setSystemTheme] = useState<ResolvedUiTheme>(() => getSystemUiTheme());
   const [drawingColorMode, setDrawingColorMode] = useState<DrawingColorMode>(savedSettings.drawingColorMode || VIEWER_DEFAULTS.drawingColorMode);
   const [lang, setLang] = useState<Language>(savedSettings.language || VIEWER_DEFAULTS.language);
+  const effectiveUiTheme = resolveUiTheme(uiTheme, systemTheme);
 
+
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const updateSystemTheme = () => setSystemTheme(media.matches ? 'dark' : 'light');
+    updateSystemTheme();
+    media.addEventListener?.('change', updateSystemTheme);
+    return () => media.removeEventListener?.('change', updateSystemTheme);
+  }, []);
 
   const showAppToast = (message: string) => {
     setToastMessage(message);
@@ -217,10 +224,10 @@ function AppShell({ editor = true, initialFiles = [] }: AppShellProps) {
     if (files.length > 0) openFiles(files);
   };
 
-  const canvasBgColor = uiTheme === 'dark' ? '#212121' : '#FFFFFF';
+  const canvasBgColor = effectiveUiTheme === 'dark' ? '#212121' : '#FFFFFF';
 
   return (
-    <div className={`app-main-container ${uiTheme === 'dark' ? 'theme-dark' : ''}`} style={{ '--canvas-bg': canvasBgColor } as React.CSSProperties}>
+    <div className={`app-main-container ${effectiveUiTheme === 'dark' ? 'theme-dark' : ''}`} style={{ '--canvas-bg': canvasBgColor } as React.CSSProperties}>
       {toastMessage && (
         <div className="toast-container app-toast-container">
           <div className="toast error">
@@ -278,4 +285,4 @@ function AppShell({ editor = true, initialFiles = [] }: AppShellProps) {
   );
 }
 
-export default AppShell;
+export default DxfWorkspace;

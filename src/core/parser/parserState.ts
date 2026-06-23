@@ -1,8 +1,8 @@
-import { Point2D, DxfEntity, Point3D } from '@/types';
+﻿import { Point2D, DxfEntity } from '@/types';
 import { CAD_BY_LAYER_COLOR } from '@/config/cadConstants';
 
 /**
- * DXF 解析状态机类，负责逐行读取和 Peek 组码
+ * DXF 解析状态机类，负责逐行读取和预读组码。
  */
 export class DxfParserState {
   private text: string;
@@ -48,10 +48,10 @@ export class DxfParserState {
     if (valueStr === null) return null; 
 
     const code = parseInt(codeStr, 10);
-    // 处理如果文件损坏导致 parseInt 返回 NaN 的情况
+    // 处理文件损坏导致整数解析失败的情况。
     if (isNaN(code)) {
         // 如果遇到 NaN，文件结构可能已损坏。
-        // 跳过此 "code" 并返回 null 以打破解析循环。
+        // 跳过当前组码并返回空值，避免解析循环卡住。
         return null;
     }
 
@@ -150,6 +150,8 @@ export const applyCommonGroup = (common: any, code: number, value: string) => {
         case 440: common.transparency = parseInt(value, 10); break;
         case 60: common.visible = parseInt(value, 10) === 0; break;
         case 67: common.inPaperSpace = parseInt(value, 10) === 1; break;
+        case 330: if (!common.ownerHandle) common.ownerHandle = value; break;
+        case 410: common.layoutName = value; break;
         case 210: common.extrusion.x = parseFloat(value); break;
         case 220: common.extrusion.y = parseFloat(value); break;
         case 230: common.extrusion.z = parseFloat(value); break;

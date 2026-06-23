@@ -1,29 +1,35 @@
-// 库入口主动引入统一样式，库构建时会抽取为 dist/style.css。
+﻿// 库入口主动引入统一样式，构建时会抽取为样式文件。
 import './styles/index.css';
 
-export { default as DxfViewer } from '@/components/DxfViewer';
-export { default as AppShell } from '@/components/app/AppShell';
+import type { DxfWorkspaceProps } from '@/components/workspace/DxfWorkspace';
 
-// 向后兼容别名（标记为已弃用）
-/** @deprecated 请直接使用 `DxfViewer` */
-export { default as DxfViewerMain } from '@/components/DxfViewer';
-/** @deprecated 请直接使用 `AppShell` */
-export { default as DxfViewerApp } from '@/components/app/AppShell';
+export { default as DxfViewer } from '@/components/viewer/DxfViewer';
+export { default as DxfWorkspace } from '@/components/workspace/DxfWorkspace';
 
-export type { DxfViewerProps } from '@/components/DxfViewer';
-export type { AppShellProps } from '@/components/app/AppShell';
+// 保留旧版公开 API，避免外部示例和既有业务项目升级后失效。
+export { default as AppShell } from '@/components/workspace/DxfWorkspace';
+export { default as DxfViewerMain } from '@/components/viewer/DxfViewer';
+export { default as DxfViewerApp } from '@/components/workspace/DxfWorkspace';
+
+export type { DxfViewerProps } from '@/components/viewer/DxfViewer';
+export type { DxfWorkspaceProps } from '@/components/workspace/DxfWorkspace';
+export type { DxfTabSource } from '@/components/workspace/DxfTabs';
+export type AppShellProps = DxfWorkspaceProps;
 
 export { parseDxf } from '@/core/parser';
 
-export type { 
-  AnyEntity, 
-  ViewPort, 
-  DxfLayer, 
-  DxfBlock, 
-  DxfStyle, 
-  DxfLineType, 
-  Point2D,
+export type {
+  AnyEntity,
   CanvasTheme,
+  DxfBlock,
+  DxfData,
+  DxfLayer,
+  DxfLayout,
+  DxfLineType,
+  DxfStyle,
+  DrawingColorMode,
+  Point2D,
+  ResolvedUiTheme,
   UiTheme,
-  DrawingColorMode
+  ViewPort,
 } from '@/types';

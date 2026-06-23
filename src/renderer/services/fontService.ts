@@ -1,4 +1,4 @@
-import { CAD_DEFAULT_TEXT_STYLE } from '@/config/cadConstants';
+﻿import { CAD_DEFAULT_TEXT_STYLE } from '@/config/cadConstants';
 import { DxfStyle } from '@/types';
 
 /** CAD 字体回退栈，优先保证中文工程图可读性。 */
@@ -34,7 +34,7 @@ export const resolveCadTextFontProfile = (
     const hasShxFont = combined.includes('.shx') || combined.includes('tssd') || combined.includes('hztxt') || combined.includes('wcad') || combined.includes('simplex') || combined.includes('romans') || combined.includes('txt') || combined.includes('hz');
     const hasSystemFont = combined.includes('.ttf') || combined.includes('.otf') || combined.includes('arial') || combined.includes('simsun') || combined.includes('simhei') || combined.includes('yahei') || combined.includes('微软雅黑');
 
-    // STYLE 中带 SHX 或 BigFont 时，优先按 SHX 处理；不能因为文本里有中文就提前归类为系统中文字体。
+    // 样式中带形文件或大字体时，优先按形文件处理；不能因为文本里有中文就提前归类为系统中文字体。
     if (hasShxFont) {
         return (combined.includes('hztxt') || combined.includes('tssd') || combined.includes('wcad') || combined.includes('gbcbig') || combined.includes('hz'))
             ? 'engineeringShx'
@@ -90,7 +90,7 @@ export const mapCadFontToWebFont = (fontFileName: string | undefined, bigFontFil
         if (isChinese(f) || isChinese(bf)) {
             result = FONT_STACKS.CHINESE;
         } else {
-            // 保留 TTF/OTF 字体名，便于系统已安装字体命中。
+            // 保留真字体文件名，便于命中系统已安装字体。
             const extractName = (path: string) => {
                 const lastSlash = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
                 let name = path.substring(lastSlash + 1).replace(/\.(ttf|otf|shx)$/i, '');
@@ -113,7 +113,7 @@ export const mapCadFontToWebFont = (fontFileName: string | undefined, bigFontFil
     return result;
 };
 
-/** 根据 DXF STYLE 表解析文字绘制字体。 */
+/** 根据 DXF 样式表解析文字绘制字体。 */
 export const getStyleFontFamily = (styleName: string | undefined, styles: Record<string, DxfStyle> | undefined): string => {
     const fallback = FONT_STACKS.CHINESE;
     

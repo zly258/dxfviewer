@@ -1,4 +1,4 @@
-import { TEXT_RENDER_CONFIG } from '@/config/viewerConfig';
+﻿import { TEXT_RENDER_CONFIG } from '@/config/viewerConfig';
 import { CAD_DEFAULT_TEXT_HEIGHT, CAD_DEFAULT_TEXT_STYLE } from '@/config/cadConstants';
 import { DxfStyle, DxfText, EntityType, Point2D } from '@/types';
 import { resolveCadTextFontProfile } from '@/renderer/services/fontService';
@@ -23,7 +23,7 @@ export function cleanMText(text: string): string {
   result = result.replace(/\\\\\{/g, TEMP_LEFT_BRACE);
   result = result.replace(/\\\\\}/g, TEMP_RIGHT_BRACE);
 
-  // AutoCAD MTEXT 常用转义符。段落属性 \p...; 只移除格式，不作为换行；段落换行 \P 才转为换行。
+  // 多行文字常用转义符。段落属性 \p...; 只移除格式，不作为换行；段落换行 \P 才转为换行。
   result = result.replace(/\\U\\+([0-9A-Fa-f]{4})/g, decodeUnicodeEscape);
   result = result.replace(/%%[cC]/g, 'Ø');
   result = result.replace(/%%[dD]/g, '°');
@@ -93,7 +93,7 @@ export function getEffectiveTextWidthFactor(ent: DxfText, styles?: Record<string
   if (absFactor < TEXT_RENDER_CONFIG.minimumWidthFactor) {
     return factor >= 0 ? TEXT_RENDER_CONFIG.minimumWidthFactor : -TEXT_RENDER_CONFIG.minimumWidthFactor;
   }
-  // 上限钳制：防止损坏的 DXF 数据中 widthFactor 过大导致水平拉伸失控。
+  // 上限钳制：防止损坏的 DXF 数据中宽度系数过大导致水平拉伸失控。
   const maxFactor = TEXT_RENDER_CONFIG.maximumWidthFactor ?? 100;
   if (absFactor > maxFactor) {
     return factor >= 0 ? maxFactor : -maxFactor;
@@ -144,6 +144,7 @@ export function estimateCadLineWidth(line: string, textHeight: number, widthFact
   const padded = units * (1 + TEXT_RENDER_CONFIG.textWidthPaddingFactor);
   return Math.max(0, padded * textHeight * Math.abs(widthFactor));
 }
+
 
 export function getTextHorizontalCanvasAlign(hAlign?: number): CanvasTextAlign {
   switch (hAlign || 0) {

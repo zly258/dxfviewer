@@ -1,4 +1,4 @@
-import { Point2D, Point3D } from './core';
+﻿import { Point2D, Point3D } from './core';
 
 export enum EntityType {
   LINE = 'LINE',
@@ -31,7 +31,9 @@ export enum EntityType {
   BODY = 'BODY',
   SURFACE = 'SURFACE',
   HELIX = 'HELIX',
-  TOLERANCE = 'TOLERANCE'
+  TOLERANCE = 'TOLERANCE',
+  VIEWPORT = 'VIEWPORT',
+  SHAPE = 'SHAPE'
 }
 
 export interface DxfEntity {
@@ -47,6 +49,8 @@ export interface DxfEntity {
   transparency?: number;
   visible?: boolean;
   inPaperSpace?: boolean;
+  layoutName?: string;
+  ownerHandle?: string;
   extrusion?: Point3D;
   extents?: { min: Point2D, max: Point2D };
 }
@@ -58,7 +62,7 @@ export interface DxfPoint extends DxfEntity { type: EntityType.POINT; position: 
 export interface DxfCircle extends DxfEntity { type: EntityType.CIRCLE; center: Point2D; radius: number; }
 export interface DxfArc extends DxfEntity { type: EntityType.ARC; center: Point2D; radius: number; startAngle: number; endAngle: number; isCounterClockwise?: boolean; }
 export interface DxfPolyline extends DxfEntity { type: EntityType.LWPOLYLINE | EntityType.POLYLINE; points: Point2D[]; bulges?: number[]; closed: boolean; constantWidth?: number; }
-export interface DxfText extends DxfEntity { type: EntityType.TEXT | EntityType.MTEXT | EntityType.ATTRIB | EntityType.ATTDEF; position: Point2D; secondPosition?: Point2D; height: number; value: string; rotation?: number; hAlign?: number; vAlign?: number; widthFactor?: number; attachmentPoint?: number; textGenerationFlags?: number; drawingDirection?: number; lineSpacingStyle?: number; width?: number; actualWidth?: number; boxHeight?: number; bgFill?: boolean; bgColor?: number; styleName?: string; tag?: string; flags?: number; }
+export interface DxfText extends DxfEntity { type: EntityType.TEXT | EntityType.MTEXT | EntityType.ATTRIB | EntityType.ATTDEF; position: Point2D; secondPosition?: Point2D; height: number; value: string; rotation?: number; hAlign?: number; vAlign?: number; widthFactor?: number; attachmentPoint?: number; textGenerationFlags?: number; drawingDirection?: number; lineSpacingStyle?: number; fieldLength?: number; width?: number; actualWidth?: number; boxHeight?: number; bgFill?: boolean; bgColor?: number; styleName?: string; tag?: string; flags?: number; }
 export interface DxfEllipse extends DxfEntity { type: EntityType.ELLIPSE; center: Point2D; majorAxis: Point2D; ratio: number; startParam: number; endParam: number; }
 export interface DxfSpline extends DxfEntity { type: EntityType.SPLINE; controlPoints: Point2D[]; fitPoints?: Point2D[]; degree?: number; knots?: number[]; weights?: number[]; flags?: number; calculatedPoints?: Point2D[]; }
 export interface DxfSolid extends DxfEntity { type: EntityType.SOLID; points: Point2D[]; }
@@ -81,5 +85,7 @@ export interface DxfBody extends DxfEntity { type: EntityType.BODY; }
 export interface DxfSurface extends DxfEntity { type: EntityType.SURFACE; }
 export interface DxfHelix extends DxfEntity { type: EntityType.HELIX; axisVector: Point3D; startPoint: Point3D; radius: number; turns: number; pitch: number; handedness?: number; }
 export interface DxfTolerance extends DxfEntity { type: EntityType.TOLERANCE; position: Point3D; text: string; direction?: Point3D; }
+export interface DxfViewport extends DxfEntity { type: EntityType.VIEWPORT; center: Point2D; width: number; height: number; viewCenter?: Point2D; viewHeight?: number; twistAngle?: number; viewportId?: number; status?: number; }
+export interface DxfShape extends DxfEntity { type: EntityType.SHAPE; position: Point2D; name: string; size: number; rotation?: number; xScale?: number; oblique?: number; }
 
-export type AnyEntity = DxfLine | DxfRay | DxfXLine | DxfPoint | DxfCircle | DxfArc | DxfPolyline | DxfText | DxfEllipse | DxfSpline | DxfSolid | Dxf3DFace | DxfInsert | DxfDimension | DxfHatch | DxfRegion | DxfLeader | DxfMLeader | DxfMLine | DxfTable | DxfImage | DxfWipeout | Dxf3DSolid | DxfBody | DxfSurface | DxfHelix | DxfTolerance;
+export type AnyEntity = DxfLine | DxfRay | DxfXLine | DxfPoint | DxfCircle | DxfArc | DxfPolyline | DxfText | DxfEllipse | DxfSpline | DxfSolid | Dxf3DFace | DxfInsert | DxfDimension | DxfHatch | DxfRegion | DxfLeader | DxfMLeader | DxfMLine | DxfTable | DxfImage | DxfWipeout | Dxf3DSolid | DxfBody | DxfSurface | DxfHelix | DxfTolerance | DxfViewport | DxfShape;

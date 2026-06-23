@@ -1,6 +1,22 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { getFileIdentity } from '@/utils/fileUtils';
-import { createDxfTab, DxfTab, DxfTabSource } from './tabModel';
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createStableId, getFileIdentity, getFileNameFromUrl } from '@/utils/fileUtils';
+
+
+export interface DxfTab {
+  id: string;
+  name: string;
+  file?: File;
+  url?: string;
+}
+
+export type DxfTabSource = File | string;
+
+const createDxfTab = (source: DxfTabSource): DxfTab => {
+  if (typeof source === 'string') {
+    return { id: createStableId('dxf_tab'), name: getFileNameFromUrl(source), url: source };
+  }
+  return { id: createStableId('dxf_tab'), name: source.name, file: source };
+};
 
 const findNextActiveId = (tabs: DxfTab[], closeIndex: number): string => {
   const previousTab = tabs[Math.max(0, closeIndex - 1)];

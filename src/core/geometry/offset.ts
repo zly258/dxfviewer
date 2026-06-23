@@ -1,4 +1,4 @@
-import { AnyEntity, EntityType, Point2D } from '@/types';
+﻿import { AnyEntity, EntityType, Point2D } from '@/types';
 
 /** 将实体的所有坐标字段按给定偏移量进行平移。 */
 export const offsetEntity = (ent: AnyEntity, offset: Point2D): void => {
@@ -39,6 +39,7 @@ export const offsetEntity = (ent: AnyEntity, offset: Point2D): void => {
             if (ent.calculatedPoints) ent.calculatedPoints.forEach(p => { p.x -= ox; p.y -= oy; });
             break;
         case EntityType.POINT:
+        case EntityType.SHAPE:
         case EntityType.TEXT:
         case EntityType.MTEXT:
         case EntityType.ATTRIB:
@@ -55,6 +56,17 @@ export const offsetEntity = (ent: AnyEntity, offset: Point2D): void => {
             if (ent.type === EntityType.INSERT && ent.attributes) {
                 ent.attributes.forEach((attr: AnyEntity) => offsetEntity(attr, offset));
             }
+            break;
+        case EntityType.VIEWPORT:
+            ent.center.x -= ox; ent.center.y -= oy;
+            if (ent.viewCenter) { ent.viewCenter.x -= ox; ent.viewCenter.y -= oy; }
+            break;
+        case EntityType.IMAGE:
+        case EntityType.TOLERANCE:
+            ent.position.x -= ox; ent.position.y -= oy;
+            break;
+        case EntityType.WIPEOUT:
+            ent.points.forEach(point => { point.x -= ox; point.y -= oy; });
             break;
         case EntityType.RAY:
         case EntityType.XLINE:

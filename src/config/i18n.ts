@@ -1,15 +1,19 @@
-export type Language = 'en' | 'zh';
+﻿export type Language = 'en' | 'zh';
 
 export const UI_TRANSLATIONS: Record<Language, Record<string, string>> = {
   en: {
     view: 'View',
     fitView: 'Fit View',
+    previousView: 'Previous View',
+    nextView: 'Next View',
+    openFile: 'Open DXF File',
     about: 'About',
-    light: 'Light',
-    dark: 'Dark',
+    light: 'Light Theme',
+    dark: 'Dark Theme',
+    system: 'System',
     monochrome: 'Monochrome Mode',
-    layers: 'Layers',
-    properties: 'Properties',
+    layers: 'Layers Panel',
+    properties: 'Properties Panel',
     language: 'Language',
     on: 'On',
     off: 'Off',
@@ -55,17 +59,32 @@ export const UI_TRANSLATIONS: Record<Language, Record<string, string>> = {
     font: 'Font',
     styleName: 'Style Name',
     yes: 'Yes',
-    no: 'No'
+    no: 'No',
+    modelSpace: 'Model',
+    paperSpace: 'Layout',
+    currentSpace: 'Space',
+    viewportID: 'Viewport ID',
+    status: 'Status',
+    name: 'Name',
+    size: 'Size',
+    xScale: 'X Scale',
+    imageWidth: 'Image Width',
+    imageHeight: 'Image Height',
+    imageRef: 'Image Ref'
   },
   zh: {
     view: '视图',
     fitView: '充满视图',
+    previousView: '上一个视图',
+    nextView: '下一个视图',
+    openFile: '打开 DXF 文件',
     about: '关于',
-    light: '浅色',
-    dark: '深色',
+    light: '浅色主题',
+    dark: '深色主题',
+    system: '跟随系统',
     monochrome: '黑白模式',
-    layers: '图层',
-    properties: '属性',
+    layers: '图层面板',
+    properties: '属性面板',
     language: '语言',
     on: '开启',
     off: '关闭',
@@ -121,7 +140,18 @@ export const UI_TRANSLATIONS: Record<Language, Record<string, string>> = {
     font: '字体',
     styleName: '文字样式',
     yes: '是',
-    no: '否'
+    no: '否',
+    modelSpace: '模型',
+    paperSpace: '图纸',
+    currentSpace: '空间',
+    viewportID: '视口 ID',
+    status: '状态',
+    name: '名称',
+    size: '尺寸',
+    xScale: 'X 向比例',
+    imageWidth: '图像宽度',
+    imageHeight: '图像高度',
+    imageRef: '图像引用'
   }
 };
 
@@ -148,6 +178,11 @@ export const ENTITY_TYPE_NAMES: Record<Language, Record<string, string>> = {
     'ATTDEF': "ATTDEF",
     'ATTRIB': "ATTRIB",
     'ACAD_TABLE': "TABLE",
+    'VIEWPORT': "VIEWPORT",
+    'SHAPE': "SHAPE",
+    'IMAGE': "IMAGE",
+    'WIPEOUT': "WIPEOUT",
+    'TOLERANCE': "TOLERANCE",
   },
   zh: {
     'LINE': "直线 (LINE)",
@@ -171,5 +206,10 @@ export const ENTITY_TYPE_NAMES: Record<Language, Record<string, string>> = {
     'ATTDEF': "属性定义 (ATTDEF)",
     'ATTRIB': "属性 (ATTRIB)",
     'ACAD_TABLE': "表格 (TABLE)",
+    'VIEWPORT': "布局视口 (VIEWPORT)",
+    'SHAPE': "形 (SHAPE)",
+    'IMAGE': "图像 (IMAGE)",
+    'WIPEOUT': "遮罩 (WIPEOUT)",
+    'TOLERANCE': "形位公差 (TOLERANCE)",
   }
 };

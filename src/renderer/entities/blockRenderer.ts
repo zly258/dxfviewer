@@ -1,27 +1,18 @@
-import { 
+﻿import { 
   DxfInsert, 
   DxfTable, 
   DxfDimension, 
   DxfBlock, 
-  DxfLayer, 
-  CanvasTheme, 
   Point2D, 
   AnyEntity, 
   EntityType 
 } from '@/types';
 import { 
   TABLE_EXTENTS_CONFIG, 
-  TEXT_RENDER_CONFIG, 
-  LEADER_RENDER_CONFIG, 
-  CANVAS_THEME_COLORS 
+  TEXT_RENDER_CONFIG 
 } from '@/config/viewerConfig';
-import { 
-  CAD_DEFAULT_TEXT_HEIGHT, 
-  CAD_BY_LAYER_COLOR 
-} from '@/config/cadConstants';
+import { CAD_DEFAULT_TEXT_HEIGHT } from '@/config/cadConstants';
 import { cleanMText, cleanCadText } from '@/utils/textUtils';
-import { getAutoCadColor } from '@/utils/colorUtils';
-import { normalizeAcadTableGeometry } from '@/core/geometry/extents';
 
 export interface RenderTransform {
     project: (p: Point2D) => Point2D;
@@ -30,14 +21,13 @@ export interface RenderTransform {
 }
 
 /**
- * 绘制块插入 (INSERT) 或表格 (ACAD_TABLE)
+ * 绘制块插入或表格实体。
  */
 export const drawInsertOrTable = (
     ctx: CanvasRenderingContext2D,
     ent: DxfInsert | DxfTable,
     transform: RenderTransform,
     blocks: Record<string, DxfBlock>,
-    theme: CanvasTheme,
     color: string,
     isSelected: boolean,
     parentLayerName: string | undefined,
@@ -212,7 +202,6 @@ export const drawDimension = (
     ent: DxfDimension,
     transform: RenderTransform,
     blocks: Record<string, DxfBlock>,
-    theme: CanvasTheme,
     color: string,
     isSelected: boolean,
     parentLayerName: string | undefined,

@@ -1,5 +1,6 @@
-import { DxfStyle, DxfText, EntityType } from '@/types';
+﻿import { DxfStyle, DxfText, EntityType } from '@/types';
 import { TEXT_RENDER_CONFIG } from '@/config/viewerConfig';
+import { resolveCadTextFontProfile } from '@/renderer/services/fontService';
 import {
   cleanCadText,
   cleanMText,
@@ -15,8 +16,6 @@ import {
   splitCadFormattedLines,
   CadFormattedTextLine,
 } from '@/utils/textUtils';
-import { resolveCadTextFontProfile } from '@/renderer/services/fontService';
-import { getTextShxFontNames, measureShxTextRunSync } from '@/renderer/services/shxFontService';
 
 export interface CadTextLayoutInput {
   entity: DxfText;
@@ -164,15 +163,8 @@ const getMTextLineHeight = (visualScreenHeight: number, lineSpacingFactor: numbe
   return Math.max(rawLineHeight, minLineHeight);
 };
 
-const measureCadText = (
-  context: CanvasRenderingContext2D,
-  value: string,
-  shxFontNames: string[],
-  shxSize: number,
-): number => {
-  const fallbackWidth = (char: string) => measureCanvasText(context, char);
-  const shxMeasure = measureShxTextRunSync(value, shxFontNames, shxSize, fallbackWidth);
-  return shxMeasure?.width ?? measureCanvasText(context, value);
+const measureCadText = (context: CanvasRenderingContext2D, value: string): number => {
+  return measureCanvasText(context, value);
 };
 
 export const buildCadTextLayout = ({
@@ -192,8 +184,7 @@ export const buildCadTextLayout = ({
   const widthFactor = getEffectiveTextWidthFactor(entity, styles);
   const horizontalScale = widthFactor * getCadFontWidthCompensation(entity, styles);
   const generationScale = getTextGenerationScale(entity);
-  const shxFontNames = getTextShxFontNames(entity, styles);
-  const measureWidth = (value: string) => measureCadText(context, value, shxFontNames, visualScreenHeight);
+  const measureWidth = (value: string) => measureCadText(context, value);
 
   if (!isMText) {
     const align = getTextHorizontalCanvasAlign(entity.hAlign);

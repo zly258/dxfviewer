@@ -1,8 +1,7 @@
-import { 
+﻿import { 
   EntityType, 
   AnyEntity, 
   Point2D, 
-  Point3D, 
   DxfText, 
   DxfPolyline, 
   DxfSpline,
@@ -23,15 +22,13 @@ import {
   DxfParserState, 
   readVal, 
   readPoint, 
-  parsePoint, 
   parseCommon, 
   applyCommonGroup 
-} from './dxfParserState';
+} from './parserState';
 import { getOcsToWcsMatrix, applyOcs, getWcsRotation } from '@/core/geometry/ocs';
 import { sampleSplinePoints } from '@/core/geometry/curveSampling';
-import { sampleBulgeSegment } from '@/core/geometry/bulge';
 import { normalizeAcadTableGeometry } from '@/core/geometry/extents';
-import { CAD_BY_LAYER_COLOR, CAD_DEFAULT_TEXT_STYLE } from '@/config/cadConstants';
+import { CAD_DEFAULT_TEXT_STYLE } from '@/config/cadConstants';
 import { LEADER_RENDER_CONFIG } from '@/config/viewerConfig';
 
 /**
@@ -75,6 +72,8 @@ export const parseEntityDispatcher = (type: string, state: DxfParserState, block
         case 'WIPEOUT': return parseWipeout(state, common);
         case 'HELIX': return parseHelix(state, common);
         case 'TOLERANCE': return parseTolerance(state, common);
+        case 'VIEWPORT': return parseViewport(state, common);
+        case 'SHAPE': return parseShape(state, common);
         case '3DSOLID': return parse3DSolidOrBodyOrSurface(state, common, EntityType.SOLID3D);
         case 'BODY': return parse3DSolidOrBodyOrSurface(state, common, EntityType.BODY);
         case 'SURFACE': return parse3DSolidOrBodyOrSurface(state, common, EntityType.SURFACE);
@@ -369,12 +368,12 @@ const parseText = (state: DxfParserState, common: any, type: EntityType): DxfTex
                 else entity.widthFactor = parseFloat(g.value);
                 break;
             case 72:
-                if (type === EntityType.MTEXT) entity.drawingDirection = parseInt(g.value);
-                else entity.hAlign = parseInt(g.value);
+                if (type === EntityType.MTEXT) entity.drawingDirection = parseInt(g.value, 10);
+                else entity.hAlign = parseInt(g.value, 10);
                 break;
             case 73:
-                if (type === EntityType.MTEXT) entity.lineSpacingStyle = parseInt(g.value);
-                else entity.vAlign = parseInt(g.value);
+                if (type === EntityType.MTEXT) entity.lineSpacingStyle = parseInt(g.value, 10);
+                else entity.vAlign = parseInt(g.value, 10);
                 break;
             case 11:
                 if (type === EntityType.MTEXT) {
@@ -396,14 +395,14 @@ const parseText = (state: DxfParserState, common: any, type: EntityType): DxfTex
                 break;
             case 31: z2 = parseFloat(g.value); break;
             case 71:
-                if (type === EntityType.MTEXT) entity.attachmentPoint = parseInt(g.value);
-                else entity.textGenerationFlags = parseInt(g.value);
+                if (type === EntityType.MTEXT) entity.attachmentPoint = parseInt(g.value, 10);
+                else entity.textGenerationFlags = parseInt(g.value, 10);
                 break;
             case 42: if (type === EntityType.MTEXT) entity.actualWidth = parseFloat(g.value); break;
             case 43: entity.boxHeight = parseFloat(g.value); break;
             case 44: if (type === EntityType.MTEXT) entity.lineSpacingFactor = parseFloat(g.value); break;
             case 2: if (type === EntityType.ATTDEF || type === EntityType.ATTRIB) entity.tag = g.value; break;
-            case 70: if (type === EntityType.ATTDEF) entity.flags = parseInt(g.value); break;
+            case 70: if (type === EntityType.ATTDEF) entity.flags = parseInt(g.value, 10); break;
             case 63: if (type === EntityType.MTEXT) entity.bgColor = parseInt(g.value); break;
             case 90:
                 if (type === EntityType.MTEXT) {
@@ -748,46 +747,6 @@ const parseLeader = (state: DxfParserState, common: any): DxfLeader => {
         }
     }
     return entity;
-};
-
-const normalizeVector = (vector: Point2D | undefined, fallbackSign: number): Point2D => {
-    if (vector && Number.isFinite(vector.x) && Number.isFinite(vector.y)) {
-        const length = Math.hypot(vector.x, vector.y);
-        if (length > 1e-9) return { x: vector.x / length, y: vector.y / length };
-    }
-    return { x: fallbackSign >= 0 ? 1 : -1, y: 0 };
-};
-
-const getMLeaderTerminalPoint = (entity: DxfMLeader): Point2D | null => {
-    const firstLine = entity.leaderLines.find(line => line.length > 0);
-    if (!firstLine) return entity.textPosition || null;
-    const last = firstLine[firstLine.length - 1];
-    if (!entity.enableDogleg) return last;
-    const prev = firstLine.length > 1 ? firstLine[firstLine.length - 2] : null;
-    const fallbackSign = entity.textPosition
-        ? (entity.textPosition.x >= last.x ? 1 : -1)
-        : (prev && last.x < prev.x ? -1 : 1);
-    const direction = normalizeVector(entity.doglegVector, fallbackSign);
-    const length = Math.max(0, entity.doglegLength || LEADER_RENDER_CONFIG.defaultMLeaderDoglegLength);
-    return { x: last.x + direction.x * length, y: last.y + direction.y * length };
-};
-
-const getMLeaderTextPosition = (entity: DxfMLeader): Point2D | null => {
-    if (entity.textPosition) return entity.textPosition;
-    const terminal = getMLeaderTerminalPoint(entity);
-    if (!terminal) return null;
-    const direction = normalizeVector(entity.doglegVector, 1);
-    return {
-        x: terminal.x + direction.x * LEADER_RENDER_CONFIG.mleaderTextGapFactor,
-        y: terminal.y + direction.y * LEADER_RENDER_CONFIG.mleaderTextGapFactor,
-    };
-};
-
-const getMLeaderTextAttachment = (entity: DxfMLeader, textPosition: Point2D): number => {
-    if (entity.textAttachment && entity.textAttachment >= 1 && entity.textAttachment <= 9) return entity.textAttachment;
-    const terminal = getMLeaderTerminalPoint(entity);
-    if (!terminal) return 4;
-    return textPosition.x >= terminal.x ? 4 : 6;
 };
 
 const parseMLeader = (state: DxfParserState, common: any): DxfMLeader => {
@@ -1288,4 +1247,85 @@ const parse3DSolidOrBodyOrSurface = (state: DxfParserState, common: any, type: E
         ...common,
         type
     } as any;
+};
+
+
+/**
+ * 解析 VIEWPORT 实体。
+ * 纸张空间中常见的 VIEWPORT 作为矩形视口边框保留，用于布局空间预览和选择。
+ */
+const parseViewport = (state: DxfParserState, common: any): AnyEntity => {
+    const entity: any = {
+        ...common,
+        type: EntityType.VIEWPORT,
+        center: { x: 0, y: 0 },
+        width: 0,
+        height: 0,
+        viewCenter: { x: 0, y: 0 },
+        viewHeight: 0,
+        twistAngle: 0,
+        viewportId: 0,
+        status: 0,
+    };
+    let z = 0;
+    while (state.hasNext) {
+        const p = state.peek();
+        if (!p || p.code === 0) break;
+        const g = state.next()!;
+        applyCommonGroup(entity, g.code, g.value);
+        switch (g.code) {
+            case 10: entity.center.x = parseFloat(g.value); break;
+            case 20: entity.center.y = parseFloat(g.value); break;
+            case 30: z = parseFloat(g.value); break;
+            case 40: entity.height = parseFloat(g.value); break;
+            case 41: entity.width = parseFloat(g.value); break;
+            case 12: entity.viewCenter.x = parseFloat(g.value); break;
+            case 22: entity.viewCenter.y = parseFloat(g.value); break;
+            case 45: entity.viewHeight = parseFloat(g.value); break;
+            case 51: entity.twistAngle = parseFloat(g.value); break;
+            case 68: entity.status = parseInt(g.value, 10); break;
+            case 69: entity.viewportId = parseInt(g.value, 10); break;
+        }
+    }
+    const ocs = getOcsToWcsMatrix(entity.extrusion.x, entity.extrusion.y, entity.extrusion.z);
+    entity.center = applyOcs(entity.center, ocs, z);
+    return entity;
+};
+
+/**
+ * 解析 SHAPE 实体。
+ * SHAPE 依赖外部形文件，当前先保留名称、插入点、尺寸和旋转角度，并以轻量占位方式渲染。
+ */
+const parseShape = (state: DxfParserState, common: any): AnyEntity => {
+    const entity: any = {
+        ...common,
+        type: EntityType.SHAPE,
+        position: { x: 0, y: 0 },
+        name: '',
+        size: 1,
+        rotation: 0,
+        xScale: 1,
+        oblique: 0,
+    };
+    let z = 0;
+    while (state.hasNext) {
+        const p = state.peek();
+        if (!p || p.code === 0) break;
+        const g = state.next()!;
+        applyCommonGroup(entity, g.code, g.value);
+        switch (g.code) {
+            case 2: entity.name = g.value; break;
+            case 10: entity.position.x = parseFloat(g.value); break;
+            case 20: entity.position.y = parseFloat(g.value); break;
+            case 30: z = parseFloat(g.value); break;
+            case 40: entity.size = parseFloat(g.value); break;
+            case 41: entity.xScale = parseFloat(g.value); break;
+            case 50: entity.rotation = parseFloat(g.value); break;
+            case 51: entity.oblique = parseFloat(g.value); break;
+        }
+    }
+    const ocs = getOcsToWcsMatrix(entity.extrusion.x, entity.extrusion.y, entity.extrusion.z);
+    entity.position = applyOcs(entity.position, ocs, z);
+    entity.rotation = getWcsRotation(entity.rotation || 0, ocs);
+    return entity;
 };

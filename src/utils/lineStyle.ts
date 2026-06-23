@@ -1,4 +1,4 @@
-import { DxfEntity, DxfLayer, DxfLineType } from '@/types';
+﻿import { DxfEntity, DxfLayer, DxfLineType } from '@/types';
 import { LINE_RENDER_CONFIG } from '@/config/viewerConfig';
 
 export interface CadStrokeStyleInput {
