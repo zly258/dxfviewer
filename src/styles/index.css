@@ -2105,7 +2105,6 @@ textarea:focus-visible {
 
 .layer-search-box:focus-within {
   border-color: var(--accent-blue);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-blue) 15%, transparent);
 }
 
 .layer-search-icon {
@@ -2197,11 +2196,10 @@ textarea:focus-visible {
 
 .text-search-highlight {
   display: inline;
-  padding: 0 0.5px;
-  border-radius: 1px;
-  background-color: transparent;
+  padding: 0 1px;
+  border-radius: 2px;
+  background-color: color-mix(in srgb, var(--accent-blue) 16%, transparent);
   color: inherit;
-  box-shadow: inset 0 -0.28em 0 color-mix(in srgb, var(--accent-blue) 20%, transparent);
 }
 
 .text-search-result.active {
