@@ -1531,6 +1531,11 @@ textarea:focus-visible {
   box-sizing: border-box;
 }
 
+.text-search-input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
 .text-search-input::placeholder {
   color: var(--text-muted);
 }
@@ -2105,6 +2110,11 @@ textarea:focus-visible {
 
 .layer-search-box:focus-within {
   border-color: var(--accent-blue);
+}
+
+.layer-search-box .layer-search-input:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
 }
 
 .layer-search-icon {
