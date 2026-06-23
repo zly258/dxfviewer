@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { AnyEntity, EntityType, DxfStyle } from '@/types';
 import { getAutoCadColor } from '@/utils/colorUtils';
 import { Language, UI_TRANSLATIONS, ENTITY_TYPE_NAMES } from '@/config/i18n';
@@ -9,10 +9,10 @@ import { CAD_BY_BLOCK_COLOR, CAD_BY_LAYER_COLOR, CAD_DEFAULT_LAYER_COLOR, CAD_DE
  * 显示所选 DXF 实体的详细属性信息
  */
 interface PropertiesPanelProps {
-  entities: AnyEntity[]; // 所选实体列表
-  styles?: Record<string, DxfStyle>; // 样式表
-  offset?: { x: number, y: number }; // 世界坐标偏移（用于显示原始坐标）
-  lang: Language; // 当前语言
+  entities: AnyEntity[]; // 所选实体列表。
+  styles?: Record<string, DxfStyle>; // 样式表。
+  offset?: { x: number, y: number }; // 世界坐标偏移（用于显示原始坐标）。
+  lang: Language; // 当前语言。
   className?: string;
 }
 
@@ -22,8 +22,8 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, styles = {}
   
   /**
    * 渲染属性行
-   * @param label 属性名称（英文，将尝试自动翻译）
-   * @param value 属性值
+   * 参数 label：属性名称，将尝试自动翻译。
+   * 参数 value：属性值。
    */
   const renderPropertyRow = (label: string, value: React.ReactNode) => {
     // 尝试查找标签的翻译（将标签转换为小驼峰命名或直接匹配）
@@ -51,8 +51,8 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, styles = {}
   };
 
   /**
-   * 渲染 AutoCAD 颜色值
-   * 支持随层 (ByLayer)、随块 (ByBlock) 以及索引颜色的 HEX 预览
+   * 渲染 CAD 颜色值。
+   * 支持随层、随块以及索引颜色的十六进制预览。
    */
   const renderColorValue = (color: number | undefined) => {
     if (color === CAD_BY_LAYER_COLOR) return <span style={{ color: 'var(--text-secondary)' }}>随层 (ByLayer)</span>;
@@ -84,7 +84,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, styles = {}
 
   /**
    * 格式化坐标
-   * 考虑 worldOffset 以还原到 CAD 中的原始坐标
+   * 考虑世界坐标偏移，以还原到 CAD 中的原始坐标。
    */
   const formatCoord = (val: number, axis: 'x' | 'y') => {
     const originalVal = val + (offset ? (axis === 'x' ? offset.x : offset.y) : 0);
@@ -101,6 +101,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, styles = {}
           renderPropertyRow("Type", <span style={{ color: 'var(--accent-blue)', fontWeight: 'bold' }}>{typeDisplay}</span>),
           renderPropertyRow("Handle", formatHandle(ent.handle)),
           renderPropertyRow("Layer", ent.layer),
+          renderPropertyRow("Current Space", ent.layoutName || (ent.inPaperSpace ? 'Layout' : 'Model')),
           renderPropertyRow("Color", renderColorValue(ent.color)),
           renderPropertyRow("Linetype", ent.lineType || 'ByLayer'),
           renderPropertyRow("Linetype Scale", (ent.lineTypeScale !== undefined ? ent.lineTypeScale : 1.0).toFixed(2)),
@@ -231,6 +232,48 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, styles = {}
               specificRows = [
                   renderPropertyRow("Value", ent.measurement?.toFixed(4)),
                   renderPropertyRow("Text", ent.text || "自动 (Auto)"),
+              ];
+              break;
+           case EntityType.VIEWPORT:
+              specificRows = [
+                  renderPropertyRow("Center X", formatCoord(ent.center.x, 'x')),
+                  renderPropertyRow("Center Y", formatCoord(ent.center.y, 'y')),
+                  renderPropertyRow("Width", ent.width.toFixed(4)),
+                  renderPropertyRow("Height", ent.height.toFixed(4)),
+                  renderPropertyRow("Viewport ID", ent.viewportId ?? "N/A"),
+                  renderPropertyRow("Status", ent.status ?? "N/A"),
+              ];
+              break;
+           case EntityType.SHAPE:
+              specificRows = [
+                  renderPropertyRow("Name", ent.name),
+                  renderPropertyRow("Size", ent.size.toFixed(4)),
+                  renderPropertyRow("Pos X", formatCoord(ent.position.x, 'x')),
+                  renderPropertyRow("Pos Y", formatCoord(ent.position.y, 'y')),
+                  renderPropertyRow("Rotation", `${(ent.rotation || 0).toFixed(1)}°`),
+                  renderPropertyRow("X Scale", (ent.xScale || 1).toFixed(3)),
+              ];
+              break;
+           case EntityType.IMAGE:
+              specificRows = [
+                  renderPropertyRow("Pos X", formatCoord(ent.position.x, 'x')),
+                  renderPropertyRow("Pos Y", formatCoord(ent.position.y, 'y')),
+                  renderPropertyRow("Image Width", ent.imageSize.x.toFixed(3)),
+                  renderPropertyRow("Image Height", ent.imageSize.y.toFixed(3)),
+                  renderPropertyRow("Image Ref", ent.imageRef || ent.imagePath || "N/A"),
+              ];
+              break;
+           case EntityType.WIPEOUT:
+              specificRows = [
+                  renderPropertyRow("Vertices", ent.points.length),
+                  ...ent.points.slice(0, 8).map((point, i) => renderPropertyRow(`Vertex ${i + 1}`, `${formatCoord(point.x, 'x')}, ${formatCoord(point.y, 'y')}`)),
+              ];
+              break;
+           case EntityType.TOLERANCE:
+              specificRows = [
+                  renderPropertyRow("Content", ent.text || "N/A"),
+                  renderPropertyRow("Pos X", formatCoord(ent.position.x, 'x')), 
+                  renderPropertyRow("Pos Y", formatCoord(ent.position.y, 'y')),
               ];
               break;
       }

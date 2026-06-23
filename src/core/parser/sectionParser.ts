@@ -1,6 +1,6 @@
-import { DxfLayer, DxfStyle, DxfLineType, DxfBlock } from '@/types';
-import { DxfParserState } from './dxfParserState';
-import { parseEntityDispatcher } from './parseEntity';
+﻿import { DxfLayer, DxfStyle, DxfLineType, DxfBlock, DxfLayout } from '@/types';
+import { DxfParserState } from './parserState';
+import { parseEntityDispatcher } from './entityParser';
 
 /**
  * 解析图层 (LAYER) 属性
@@ -143,10 +143,14 @@ export const parseBlock = (state: DxfParserState, blockHandleMap?: Record<string
         const p = state.peek();
         if (!p || p.code === 0) break; 
         const g = state.next()!;
-        if (g.code === 2) block.name = g.value;
+        if (g.code === 2) {
+            block.name = g.value;
+            block.isModelSpace = g.value.toUpperCase() === '*MODEL_SPACE';
+            block.isPaperSpace = g.value.toUpperCase().startsWith('*PAPER_SPACE');
+        }
         if (g.code === 10) block.basePoint.x = parseFloat(g.value);
         if (g.code === 20) block.basePoint.y = parseFloat(g.value);
-        if (g.code === 5) block.handle = g.value; // 块句柄
+        if (g.code === 5) block.handle = g.value; // 块句柄。
     }
 
     while(state.hasNext) {
@@ -157,7 +161,7 @@ export const parseBlock = (state: DxfParserState, blockHandleMap?: Record<string
                 state.next();
                 break;
             }
-            state.next(); // 消耗实体类型组 (code 0)
+            state.next(); // 消耗实体类型组。
             const entity = parseEntityDispatcher(p.value, state, blockHandleMap);
             if (entity) block.entities.push(entity);
         } else {
@@ -165,4 +169,64 @@ export const parseBlock = (state: DxfParserState, blockHandleMap?: Record<string
         }
     }
     return block;
+};
+
+
+/**
+ * 解析对象段中的 LAYOUT 记录。
+ * LAYOUT 记录用于描述模型空间和多个纸张空间的名称、顺序和纸张范围。
+ */
+export const parseLayoutObject = (state: DxfParserState): DxfLayout | null => {
+    const layout: DxfLayout = {
+        id: '',
+        name: '',
+        displayName: '',
+        isModel: false,
+        entities: [],
+    };
+    let paperMinX: number | undefined;
+    let paperMinY: number | undefined;
+    let paperMaxX: number | undefined;
+    let paperMaxY: number | undefined;
+
+    while (state.hasNext) {
+        const p = state.peek();
+        if (!p || p.code === 0) break;
+        const g = state.next()!;
+        switch (g.code) {
+            case 5:
+                layout.id = g.value;
+                break;
+            case 1:
+                layout.name = g.value;
+                layout.displayName = g.value;
+                layout.isModel = g.value.toUpperCase() === 'MODEL';
+                break;
+            case 71:
+                layout.tabOrder = parseInt(g.value, 10);
+                break;
+            case 331:
+            case 340:
+                if (!layout.blockRecordHandle) layout.blockRecordHandle = g.value;
+                break;
+            case 10:
+                paperMinX = parseFloat(g.value);
+                break;
+            case 20:
+                paperMinY = parseFloat(g.value);
+                break;
+            case 11:
+                paperMaxX = parseFloat(g.value);
+                break;
+            case 21:
+                paperMaxY = parseFloat(g.value);
+                break;
+        }
+    }
+
+    if (!layout.name) return null;
+    if (paperMinX !== undefined && paperMinY !== undefined) layout.paperMin = { x: paperMinX, y: paperMinY };
+    if (paperMaxX !== undefined && paperMaxY !== undefined) layout.paperMax = { x: paperMaxX, y: paperMaxY };
+    if (!layout.displayName) layout.displayName = layout.name;
+    return layout;
 };

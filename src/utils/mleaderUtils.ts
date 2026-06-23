@@ -1,4 +1,4 @@
-import { DxfMLeader, Point2D } from '@/types';
+﻿import { DxfMLeader, Point2D } from '@/types';
 import { LEADER_RENDER_CONFIG } from '@/config/viewerConfig';
 
 /** 将二维向量归一化为单位长度，无效时使用备用方向符号。 */
@@ -37,7 +37,7 @@ export const getMLeaderTextPosition = (entity: DxfMLeader): Point2D | null => {
     };
 };
 
-/** 确定 MLeader 文字的 MTEXT 附着点（1–9）。 */
+/** 确定多重引线文字的多行文字附着点（1–9）。 */
 export const getMLeaderTextAttachment = (entity: DxfMLeader, textPosition: Point2D): number => {
     if (entity.textAttachment && entity.textAttachment >= 1 && entity.textAttachment <= 9) return entity.textAttachment;
     const terminal = getMLeaderTerminalPoint(entity);

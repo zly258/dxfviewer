@@ -1,4 +1,4 @@
-import { Point2D, Point3D } from '@/types';
+﻿import { Point2D, Point3D } from '@/types';
 
 export interface OcsMatrix {
   Ax: Point3D;
@@ -7,8 +7,8 @@ export interface OcsMatrix {
 }
 
 /**
- * 根据挤出方向法线向量计算 OCS→WCS 旋转矩阵。
- * 当法线已经是 WCS 对齐 (0,0,1) 时返回 `null`。
+ * 根据挤出方向法线向量计算对象坐标系到世界坐标系的旋转矩阵。
+ * 当法线已经与世界坐标系对齐时返回空值。
  */
 export const getOcsToWcsMatrix = (Nx: number, Ny: number, Nz: number): OcsMatrix | null => {
     const len = Math.sqrt(Nx * Nx + Ny * Ny + Nz * Nz);
@@ -40,7 +40,7 @@ export const getOcsToWcsMatrix = (Nx: number, Ny: number, Nz: number): OcsMatrix
     return { Ax, Ay, Az };
 };
 
-/** 将二维点从 OCS 坐标系转换到 WCS 坐标系。 */
+/** 将二维点从对象坐标系转换到世界坐标系。 */
 export const applyOcs = (p: { x: number; y: number }, matrix: OcsMatrix | null, elevation = 0): Point2D => {
     if (!matrix) return p;
     const x = p.x * matrix.Ax.x + p.y * matrix.Ay.x + elevation * matrix.Az.x;
@@ -48,7 +48,7 @@ export const applyOcs = (p: { x: number; y: number }, matrix: OcsMatrix | null, 
     return { x, y };
 };
 
-/** 将旋转角度（度）从 OCS 坐标系转换到 WCS 坐标系。 */
+/** 将旋转角度（度）从对象坐标系转换到世界坐标系。 */
 export const getWcsRotation = (rotation: number, ocs: OcsMatrix | null): number => {
     if (!ocs) return rotation;
     const rad = rotation * Math.PI / 180;

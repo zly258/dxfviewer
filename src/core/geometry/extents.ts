@@ -1,5 +1,5 @@
-import { AnyEntity, DxfBlock, DxfStyle, DxfText, DxfTable, EntityType, Point2D } from '@/types';
-import { EXTENTS_CONFIG, TABLE_EXTENTS_CONFIG, LEADER_RENDER_CONFIG, TEXT_RENDER_CONFIG } from '@/config/viewerConfig';
+﻿import { AnyEntity, DxfBlock, DxfStyle, DxfText, DxfTable, EntityType, Point2D } from '@/types';
+import { EXTENTS_CONFIG, TABLE_EXTENTS_CONFIG, LEADER_RENDER_CONFIG } from '@/config/viewerConfig';
 import { CAD_DEFAULT_TEXT_HEIGHT } from '@/config/cadConstants';
 import { sampleBulgeSegment } from './bulge';
 import { sampleEllipsePoints, sampleHatchLoop, sampleSplinePoints } from './curveSampling';
@@ -14,7 +14,7 @@ import {
     isTableWithDrawableBlock,
     isBlockInsertWithDrawableExtents,
 } from '@/utils/entityClassify';
-import { getMLeaderTerminalPoint, getMLeaderTextPosition, getMLeaderTextAttachment } from '@/utils/mleaderUtils';
+import { getMLeaderTextPosition, getMLeaderTextAttachment } from '@/utils/mleaderUtils';
 
 // ─── 包围盒更新器 ────────────────────────────────────────────────────
 
@@ -146,7 +146,7 @@ const normalizeTableDimensionArray = (
     return new Array(count).fill(fallback);
 };
 
-/** 规范化 ACAD_TABLE 的行列几何参数（行数/列数/行高/列宽）。 */
+/** 规范化表格实体的行列几何参数（行数/列数/行高/列宽）。 */
 export const normalizeAcadTableGeometry = (table: DxfTable): void => {
     const explicitColumns = clampTableCount(table.columnCount, 1, TABLE_EXTENTS_CONFIG.maxFallbackColumns);
     const cellCount = table.cells?.length || 0;
@@ -311,6 +311,19 @@ export const getEntityExtents = (
         case EntityType.POINT:
             bounds.update(ent.position.x, ent.position.y);
             break;
+        case EntityType.SHAPE: {
+            const size = Math.max(Math.abs(ent.size || 1), EXTENTS_CONFIG.minDrawableEntityExtent);
+            bounds.update(ent.position.x - size, ent.position.y - size);
+            bounds.update(ent.position.x + size, ent.position.y + size);
+            break;
+        }
+        case EntityType.VIEWPORT: {
+            const halfWidth = Math.abs(ent.width || 0) / 2;
+            const halfHeight = Math.abs(ent.height || 0) / 2;
+            bounds.update(ent.center.x - halfWidth, ent.center.y - halfHeight);
+            bounds.update(ent.center.x + halfWidth, ent.center.y + halfHeight);
+            break;
+        }
         case EntityType.TEXT:
         case EntityType.MTEXT:
         case EntityType.ATTRIB:
@@ -405,6 +418,23 @@ export const getEntityExtents = (
         }
         case EntityType.LEADER:
             ent.points.forEach(point => bounds.update(point.x, point.y));
+            break;
+        case EntityType.IMAGE: {
+            bounds.update(ent.position.x, ent.position.y);
+            const ux = ent.uVector || { x: 1, y: 0, z: 0 };
+            const vy = ent.vVector || { x: 0, y: 1, z: 0 };
+            const width = ent.imageSize.x;
+            const height = ent.imageSize.y;
+            bounds.update(ent.position.x + ux.x * width, ent.position.y + ux.y * width);
+            bounds.update(ent.position.x + vy.x * height, ent.position.y + vy.y * height);
+            bounds.update(ent.position.x + ux.x * width + vy.x * height, ent.position.y + ux.y * width + vy.y * height);
+            break;
+        }
+        case EntityType.WIPEOUT:
+            ent.points.forEach(point => bounds.update(point.x, point.y));
+            break;
+        case EntityType.TOLERANCE:
+            bounds.update(ent.position.x, ent.position.y);
             break;
         case EntityType.MLEADER:
             // 引线点

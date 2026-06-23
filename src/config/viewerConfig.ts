@@ -1,4 +1,4 @@
-import { DxfLayer, ViewPort, DxfStyle, CanvasTheme, DrawingColorMode } from '@/types';
+﻿import { DxfLayer, ViewPort, DxfStyle, CanvasTheme, DrawingColorMode, ResolvedUiTheme, UiTheme } from '@/types';
 import {
   CAD_DEFAULT_LAYER_COLOR,
   CAD_DEFAULT_LAYER_NAME,
@@ -14,25 +14,43 @@ export const DEFAULT_VIEWPORT: ViewPort = {
 
 export const VIEWER_DEFAULTS = {
   language: 'zh' as const,
-  uiTheme: 'light' as const,
+  uiTheme: 'system' as UiTheme,
   drawingColorMode: 'original' as DrawingColorMode,
   toastDurationMs: 5000,
   defaultLineTypeScale: CAD_DEFAULT_LINE_TYPE_SCALE,
+  // 视图停留超过该时间才写入历史，避免滚轮缩放和平移过程中频繁入栈。
+  viewHistoryIdleMs: 900,
+  // 限制视图历史数量，防止长时间浏览后状态无限增长。
+  viewHistoryMaxSize: 50,
+  viewHistoryPositionTolerance: 1e-8,
+  viewHistoryZoomTolerance: 1e-8,
 };
 
 /**
  * 画布背景色跟随 UI 主题：
  * - 浅色 UI  → 白色画布
  * - 深色 UI  → 深色画布
- * 场景背景不再单独暴露为 prop，统一由 uiTheme 决定。
+ * 场景背景不再单独暴露为属性，统一由界面主题决定。
  */
-export const canvasThemeFromUiTheme = (uiTheme: 'light' | 'dark'): CanvasTheme =>
+/** 获取当前系统外观。 */
+export const getSystemUiTheme = (): ResolvedUiTheme => {
+  if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: dark)').matches) {
+    return 'dark';
+  }
+  return 'light';
+};
+
+/** 将用户主题设置解析为最终的浅色/深色主题。 */
+export const resolveUiTheme = (uiTheme: UiTheme, systemTheme: ResolvedUiTheme = getSystemUiTheme()): ResolvedUiTheme =>
+  uiTheme === 'system' ? systemTheme : uiTheme;
+
+export const canvasThemeFromUiTheme = (uiTheme: ResolvedUiTheme): CanvasTheme =>
   uiTheme === 'dark' ? 'black' : 'white';
 
 export const LAYOUT_CONFIG = {
   minViewportWidth: 100,
   minViewportHeight: 100,
-  fallbackSidebarWidth: 256,
+  fallbackLayerPanelWidth: 256,
   fallbackPropertiesWidth: 320,
   fallbackToolbarHeight: 30,
   fallbackStatusBarHeight: 24,
@@ -109,19 +127,18 @@ export const DEFAULT_ENTITY_COLOR = '#FFFFFF';
 
 export const TEXT_RENDER_CONFIG = {
   minimumWidthFactor: 0.01,
-  // widthFactor 上限钳制，防止损坏的 DXF 数据导致水平拉伸失控。
+  // 宽度系数上限钳制，防止损坏的 DXF 数据导致水平拉伸失控。
   maximumWidthFactor: 100,
-  // 文字在屏幕上的视觉高度低于该值（像素）时，改用稳定的占位矩形渲染，
-  // 避免极小字号下 measureText / SHX 描边出现拉伸、错位、散射等失真。
-  // 提升至 14px：9px 阈值仍然太低，SHX 多段线在 10-13px 会产生散乱断裂的描边。
-  tinyTextPixelHeight: 14,
-  // ALIGNED/FIT 文字按目标宽度 / 测量宽度做缩放，当测量值在亚像素级别不可靠时
+  // 文字低于该屏幕高度时直接跳过绘制，不再使用填充占位块。
+  // 判定基于真实缩放后的像素高度，避免远距离视图出现固定大小的假文字。
+  minimumTextRenderPixelHeight: 0.35,
+  // 画布字体大小不允许为 0，极小字号仍保持数值稳定。
+  minimumCanvasFontPixelHeight: 0.1,
+  // 对齐和适配文字按目标宽度 / 测量宽度做缩放，当测量值在亚像素级别不可靠时
   // 可能产生极端拉伸（巨长文字）。此处对缩放比例做上下限钳制。
   // 收紧上限 40→10：40x 拉伸仍然过于极端，10x 足以覆盖合理的 FIT 文字场景。
   maximumTextFitScale: 10,
   minimumTextFitScale: 0.02,
-  // 占位矩形相对视觉高度的最大宽高比，防止布局计算异常时画出超长矩形。
-  tinyTextPlaceholderMaxAspect: 40,
   averageCharacterWidthFactor: 0.72,
   cjkCharacterWidthFactor: 1.0,
   latinCharacterWidthFactor: 0.58,
@@ -134,9 +151,6 @@ export const TEXT_RENDER_CONFIG = {
   mtextBackgroundPaddingFactor: 0.1,
   trueTypeFontHeightFactor: 1.28,
   shxFontHeightFactor: 1.0,
-  shxGlyphSizeFactor: 1.0,
-  shxGlyphSizeMinFactor: 0.75,
-  shxGlyphSizeMaxFactor: 1.15,
   trueTypeRenderWidthFactor: 1.0,
   shxRenderWidthFactor: 1.0,
   cjkRenderWidthFactor: 0.96,
@@ -146,6 +160,7 @@ export const TEXT_RENDER_CONFIG = {
   extentsTrueTypeWidthCompensation: 1.0,
   extentsShxWidthCompensation: 1.0,
   extentsEngineeringShxWidthCompensation: 1.0,
+  extentsCjkWidthCompensation: 1.0,
   minimumMeasuredTextWidth: 0.001,
   underlineTopBaselineFactor: 0.9,
   underlineMiddleBaselineFactor: 0.36,

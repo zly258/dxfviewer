@@ -1,8 +1,6 @@
-# DXF Viewer
+﻿# DXF Viewer
 
-中文 | [English](#english)
-
-一个基于 React + Canvas 2D 的 DXF 查看器组件，支持作为 npm 库接入，也提供独立示例项目用于发布 Live Demo。
+基于 React 和 HTML5 Canvas 的 DXF 文件查看组件。项目提供核心查看器、完整多 Tab 工作区和独立示例工程，适合嵌入业务系统或发布在线预览。
 
 在线预览地址：
 
@@ -10,19 +8,20 @@
 https://zly258.github.io/dxfviewer/
 ```
 
-## 功能特点
+## 功能
 
-- 基于 React + Canvas 2D 渲染 DXF 图纸
-- 支持作为 npm 库嵌入业务系统
-- 支持完整应用壳 `AppShell`
-- 支持核心查看器组件 `DxfViewer`
-- 支持图层面板、属性面板、菜单栏、文件标签页
-- 支持 TEXT / MTEXT 文本渲染
-- 支持 SHX 字体解析和 Canvas path 渲染
-- 支持 BigFont，例如 `Wcad.shx + HZtxt.shx`
-- 支持独立 CSS 样式文件
-- 支持库构建和 example 构建分离
-- 支持 GitHub Actions 发布 Live Demo
+- 模型空间与图纸空间解析：完整保留 `Model` 和任意数量的 `Layout`；桌面端底部只显示有实体的图纸空间，移动端在视图设置面板中切换，空图纸空间不可切换。
+- 多 Tab 工作区：`DxfWorkspace` 提供桌面端多文件查看能力，`DxfViewer` 可单独嵌入业务系统。
+- 移动端适配：小屏下使用全屏画布和统一右侧工具栏，打开文件、搜索、视图历史、充满视图、图层面板、属性面板、视图设置、关于全部集中在右侧；图纸空间切换也放入视图设置面板，不再使用底部抽屉或底部空间切换条。
+- 工具栏与视图历史：桌面端顶部使用简化的纯 SVG 图标工具栏，不显示文字按钮；支持打开、上一个视图、下一个视图、充满视图、搜索、视图设置和关于，并通过分隔符区分功能组。
+- 主题跟随系统：支持系统、浅色主题、深色主题三种 UI 主题；图纸颜色支持原色和黑白模式，主题、语言、黑白模式统一放在视图设置菜单中。
+- 常用实体渲染：支持线、射线、构造线、点、圆、圆弧、椭圆、多段线、样条、填充、文字、多行文字、属性、块参照、标注、引线、多重引线、表格、图片、遮罩、视口、形文件占位等。
+- 图层和属性面板：支持图层面板显示控制、实体选择、属性面板查看；图层显隐只触发重绘，不会自动执行充满视图。
+- 右键临时显示控制：画布右键菜单始终可打开；未选择实体时可执行全部显示，选择实体后可执行隐藏选中、隔离选中、关闭图层；移动端长按也会打开同一菜单，菜单位置自动约束在画布可见区域内。
+- 图纸文字搜索：搜索图标点击后显示搜索面板，面板可关闭；支持在当前模型空间或当前图纸空间搜索 TEXT、MTEXT、属性、标注、多重引线、表格、公差和块参照内文字，并可定位到匹配实体；匹配文本使用内缩式轻量高亮，避免覆盖过大。
+- 大坐标偏移：解析后自动计算稳定偏移，降低大坐标图纸在 Canvas 中的渲染误差。
+- SHX 字体名兼容：不依赖真实 `.shx` 字体文件，解析 STYLE 和 MTEXT 内联字体后映射到系统字体栈渲染。
+- CAD 文字对齐：恢复早期稳定的 `TEXT`、`ATTRIB`、`ATTDEF`、`MTEXT` 水平/垂直对齐逻辑；非 MTEXT 文字按 72/73 解析水平和垂直对齐，FIT/ALIGNED 继续使用第二对齐点。
 
 ## 安装
 
@@ -30,705 +29,160 @@ https://zly258.github.io/dxfviewer/
 npm install @zhangly1403/dxfviewer
 ```
 
+React 和 React DOM 为 peer dependencies，宿主项目需要自行安装：
+
+```bash
+npm install react react-dom
+```
+
 ## 引入样式
 
-库样式统一输出为一个独立 CSS 文件，使用方需要在应用入口引入一次：
-
 ```ts
 import '@zhangly1403/dxfviewer/style.css';
 ```
 
-这样可以避免把所有样式注入到单个 JS 大文件中，也方便业务系统自行处理 CSS。
-
-## 使用完整查看器
-
-适合直接嵌入一个完整 DXF 查看界面，包含菜单栏、文件标签、图层面板、画布、属性面板等。
-
-```tsx
-import { AppShell } from '@zhangly1403/dxfviewer';
-import '@zhangly1403/dxfviewer/style.css';
-
-export default function App() {
-  return (
-    <div style={{ width: '100vw', height: '100vh' }}>
-      <AppShell />
-    </div>
-  );
-}
-```
-
-## 使用核心查看器组件
-
-适合业务系统自己管理文件、标签页和外层布局，只把 DXF 查看区域嵌入页面中。
+## 使用核心查看器
 
 ```tsx
 import { DxfViewer } from '@zhangly1403/dxfviewer';
 import '@zhangly1403/dxfviewer/style.css';
 
-export default function App() {
+export default function Page() {
   return (
     <div style={{ width: '100vw', height: '100vh' }}>
-      <DxfViewer
-        initFile="/demo/test.dxf"
-        fileName="test.dxf"
-        lang="zh"
-        showOpenMenu={false}
-        onLoad={(data) => console.log('DXF 加载成功', data)}
-        onError={(error) => console.error('DXF 加载失败', error)}
-      />
+      <DxfViewer initFile="/demo.dxf" fileName="demo.dxf" />
     </div>
   );
 }
 ```
 
-## 直接打开 File 对象
+## 使用多 Tab 工作区
 
 ```tsx
-import { useState } from 'react';
-import { DxfViewer } from '@zhangly1403/dxfviewer';
+import { DxfWorkspace } from '@zhangly1403/dxfviewer';
 import '@zhangly1403/dxfviewer/style.css';
 
 export default function App() {
-  const [file, setFile] = useState<File | undefined>();
-
-  return (
-    <div style={{ width: '100vw', height: '100vh' }}>
-      <input
-        type="file"
-        accept=".dxf"
-        onChange={(event) => setFile(event.target.files?.[0])}
-      />
-      <DxfViewer initFile={file} fileName={file?.name} />
-    </div>
-  );
+  return <DxfWorkspace />;
 }
 ```
 
-## 导出内容
+## API
 
-```ts
-import {
-  AppShell,
-  DxfViewer,
-  DxfViewerApp,
-  DxfViewerMain,
-  type AppShellProps,
-  type DxfViewerProps,
-} from '@zhangly1403/dxfviewer';
-```
+### 导出项
 
-| 导出项 | 说明 |
+| 名称 | 说明 |
 | --- | --- |
-| `DxfViewer` | 核心查看器组件，适合嵌入业务系统 |
-| `DxfViewerMain` | `DxfViewer` 的兼容别名 |
-| `AppShell` | 完整应用壳，包含标签页和全局打开文件能力 |
-| `DxfViewerApp` | `AppShell` 的兼容别名 |
+| `DxfViewer` | 核心 DXF 查看组件，适合嵌入业务系统。 |
+| `DxfWorkspace` | 带多 Tab、菜单栏、文件打开能力的完整工作区。 |
+| `parseDxf` | DXF 文本解析函数，返回图层、块、实体、布局等结构化数据。 |
+| `DxfViewerProps` | `DxfViewer` 属性类型。 |
+| `DxfWorkspaceProps` | `DxfWorkspace` 属性类型。 |
+| `DxfTabSource` | 多 Tab 初始文件来源类型。 |
 
-## DxfViewer Props
+为兼容旧版本，原有公开导出仍然保留；新代码建议使用上表中的名称。
 
-| 属性名 | 类型 | 默认值 | 说明 |
+### DxfViewerProps
+
+| 属性 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
-| `initFile` | `string \| File` | `undefined` | 初始加载的 DXF 文件 URL 或 File 对象 |
-| `fileName` | `string` | `undefined` | 当前文件名，用于 loading、提示等显示 |
-| `defaultLanguage` | `'en' \| 'zh'` | `'zh'` | 默认界面语言，非受控 |
-| `lang` | `'en' \| 'zh'` | `undefined` | 当前界面语言，受控 |
-| `onLanguageChange` | `(lang: Language) => void` | `undefined` | 语言切换回调 |
-| `showOpenMenu` | `boolean` | `true` | 是否显示打开文件入口 |
-| `tabStrip` | `React.ReactNode` | `undefined` | 外部传入的标签栏区域 |
-| `uiTheme` | `'light' \| 'dark'` | `undefined` | 当前 UI 主题，受控（画布背景跟随该主题：浅色→白底，深色→黑底） |
-| `onUiThemeChange` | `(theme: UiTheme) => void` | `undefined` | UI 主题切换回调 |
-| `drawingColorMode` | `'original' \| 'monochrome'` | `undefined` | 图纸色彩模式，受控 |
-| `onDrawingColorModeChange` | `(mode: DrawingColorMode) => void` | `undefined` | 图纸色彩模式切换回调 |
-| `onLoad` | `(data: any) => void` | `undefined` | DXF 加载成功回调 |
-| `onError` | `(err: Error) => void` | `undefined` | DXF 加载或解析失败回调 |
-| `onOpenFiles` | `(files: File[]) => void` | `undefined` | 外部接管打开文件时使用 |
-| `onOpenFailed` | `(message: string) => void` | `undefined` | 打开失败回调，适合外层关闭失败标签页 |
+| `initFile` | `string \| File` | - | 初始 DXF 文件，可以是 URL 或 `File`。 |
+| `fileName` | `string` | - | 文件名显示。 |
+| `showOpenMenu` | `boolean` | `true` | 是否显示打开文件入口。 |
+| `tabStrip` | `React.ReactNode` | - | 外部多 Tab 容器传入的标签栏区域。 |
+| `onError` | `(err: Error) => void` | - | 加载、解码、解析错误回调。 |
+| `onLoad` | `(data: DxfData) => void` | - | 解析完成回调。 |
+| `onOpenFiles` | `(files: File[]) => void` | - | 外层接管文件打开时使用。 |
+| `onOpenFailed` | `(message: string) => void` | - | 文件打开失败回调。 |
+| `defaultLanguage` | `'zh' \| 'en'` | `'zh'` | 默认语言。 |
+| `lang` | `'zh' \| 'en'` | - | 受控语言。 |
+| `onLanguageChange` | `(lang) => void` | - | 语言变化回调。 |
+| `uiTheme` | `'system' \| 'light' \| 'dark'` | `'system'` | 受控 UI 主题。 |
+| `onUiThemeChange` | `(theme) => void` | - | UI 主题变化回调。 |
+| `drawingColorMode` | `'original' \| 'monochrome'` | `'original'` | 图纸颜色模式。 |
+| `onDrawingColorModeChange` | `(mode) => void` | - | 图纸颜色模式变化回调。 |
 
-说明：
+### DxfWorkspaceProps
 
-- 画布背景不再单独暴露，统一跟随 `uiTheme`：浅色主题为白底画布，深色主题为黑底画布。
-- 界面语言、UI 主题、图纸色彩模式、图层面板与属性面板的显隐状态会在非受控模式下持久化到 `localStorage`。
+| 属性 | 类型 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `editor` | `boolean` | `true` | 是否显示文件打开、关闭标签等编辑入口。 |
+| `initialFiles` | `DxfTabSource[]` | `[]` | 初始打开的 DXF 文件列表。 |
 
-
-## SHX 字体目录
-
-项目不会内置商业字体文件。使用方需要把合法来源的 `.shx` 字体放到站点静态目录：
-
-```text
-public/fonts/shx/
-```
-
-示例：
-
-```text
-public/fonts/shx/Wcad.shx
-public/fonts/shx/HZtxt.SHX
-public/fonts/shx/TSSDENG.SHX
-public/fonts/shx/TSSDCHN.SHX
-public/fonts/shx/romans.shx
-public/fonts/shx/romans2.shx
-public/fonts/shx/SIMPLEX1.SHX
-```
-
-查看器会优先按 DXF 样式中的 `fontFileName`、`bigFontFileName` 加载 SHX。字体不存在或字形缺失时，会自动回退到系统字体。
-
-典型字体组合：
-
-```text
-Wcad.shx + HZtxt.SHX
-TSSDENG.SHX + TSSDCHN.SHX
-romans.shx
-simplex.shx
-```
-
-说明：
-
-- 英文字体通常来自 `fontFileName`
-- 中文大字体通常来自 `bigFontFileName`
-- 例如 `Wcad.shx + HZtxt.SHX` 表示英文字体使用 `Wcad.shx`，中文使用 `HZtxt.SHX`
-- 项目不需要 `manifest.json`
-- 字体文件名大小写建议与 DXF 中保持一致
-
-## 本仓库构建
-
-### 构建库
+## 开发
 
 ```bash
+npm ci
+npm run typecheck
 npm run build
 ```
 
-输出：
+启动示例工程：
 
-```text
-dist/dxfviewer.js
-dist/style.css
-dist/index.d.ts
-dist/chunks/vendor-shx-*.js
-dist/chunks/viewer-loader-*.js
-dist/chunks/viewer-render-*.js
-dist/chunks/viewer-ui-*.js
+```bash
+npm run dev
 ```
 
-构建策略：
-
-```text
-React / ReactDOM 作为 peerDependencies 外部化，不打入库产物
-@mlightcad/shx-parser 单独拆分为 vendor-shx chunk
-DXF 加载解析拆分为 viewer-loader chunk
-Canvas / TEXT / MTEXT / SHX 渲染拆分为 viewer-render chunk
-React 面板和应用壳拆分为 viewer-ui chunk
-CSS 统一输出为 dist/style.css
-```
-
-这样可以避免把查看器、解析器、SHX 解析和样式全部塞进一个大 JS 文件。
-
-### 构建示例项目
+构建示例工程：
 
 ```bash
 npm run build:example
 ```
 
-执行顺序：
-
-```text
-先构建根项目 dist
-再构建 dxfviewer-example
-```
-
-示例项目不是直接引用 `src` 源码，而是通过真实库入口消费根项目打包后的产物。
-
-```text
-dxfviewer-example
-  ├─ package.json 使用 "@zhangly1403/dxfviewer": "file:.."
-  ├─ import { AppShell } from '@zhangly1403/dxfviewer'
-  ├─ import '@zhangly1403/dxfviewer/style.css'
-  └─ 构建时实际使用 ../dist/dxfviewer.js 和 ../dist/style.css
-```
-
-这样可以验证 npm 用户真实使用到的库产物，而不是开发源码。
-
-### 同时构建库和示例
+构建库和示例工程：
 
 ```bash
 npm run build:all
 ```
 
-### 本地运行示例
-
-```bash
-npm run dev:example
-```
-
-### 预览示例构建产物
-
-```bash
-npm run preview:example
-```
-
-## GitHub Actions / Live Demo
-
-仓库只保留一个工作流：
+## 项目结构
 
 ```text
-.github/workflows/pages.yml
+src/
+  components/
+    viewer/                DXF 查看器、图层面板、属性面板、工具栏和移动端控制
+    workspace/             多 Tab 工作区与 Tab 状态逻辑
+  config/                  常量、主题和文案配置
+  core/
+    geometry/              几何采样、包围盒、偏移和 OCS 转换
+    parser/                DXF 解析状态机、段解析和实体解析
+    text/                  CAD 文本布局
+  renderer/
+    entities/              各类实体的 Canvas 绘制逻辑
+    services/              渲染服务和字体服务
+  styles/                  统一样式
+  types/                   公共类型定义
+  utils/                   颜色、线型、字体、文本搜索和实体辅助函数
 ```
 
-工作流执行：
+## 构建输出
 
-```bash
-npm ci
-npm run build:all
-```
-
-然后发布下面目录到 GitHub Pages：
+构建后输出到 `dist/`：
 
 ```text
-dxfviewer-example/dist
+dist/
+  dxfviewer.js
+  style.css
+  index.d.ts
+  chunks/
 ```
 
-发布规则：
-
-```text
-pull_request：只做构建校验，不发布 Pages
-main / master：构建并发布 Live Demo
-workflow_dispatch：支持手动触发发布
-```
-
-## GitHub Actions 网络源说明
-
-如果 Actions 中出现类似错误：
-
-```text
-npm error network request to https://packages.applied-caas-gateway1.internal.api.openai.org/...
-npm error code ETIMEDOUT
-```
-
-说明 CI 环境继承了错误的 npm registry 或代理配置。仓库根目录应提供 `.npmrc`，并在 `.github/workflows/pages.yml` 中显式固定 npm 官方源：
-
-```ini
-registry=https://registry.npmjs.org/
-fund=false
-audit=false
-progress=false
-fetch-retries=5
-fetch-retry-factor=2
-fetch-retry-mintimeout=20000
-fetch-retry-maxtimeout=120000
-```
-
-Actions 中建议使用：
-
-```bash
-npm ci --registry=https://registry.npmjs.org/ --prefer-offline=false --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000
-```
-
-这样可以避免 CI 请求到不可访问的私有地址。
-
-## 样式和包体积约定
-
-```text
-src/styles/index.css      库唯一样式入口
-dist/style.css            库发布样式文件
-dxfviewer-example         真实消费端示例，不直接引用 src 源码
-.github/workflows/pages.yml  唯一 GitHub Actions 工作流
-```
-
-库产物保持 ES Module 输出，并通过 Rollup `manualChunks` 拆分模块。示例项目按真实使用方式消费 `dist` 产物，用于验证 npm 包导出、样式导出和 GitHub Pages Live Demo 发布。
-
-## 目录结构
-
-```text
-dxfviewer/
-  src/
-    index.ts
-    styles/
-      index.css
-    viewer/
-    components/
-
-  public/
-    fonts/
-      shx/
-
-  dist/
-    dxfviewer.js
-    style.css
-    index.d.ts
-    chunks/
-
-  dxfviewer-example/
-    src/
-    package.json
-    vite.config.ts
-
-  .github/
-    workflows/
-      pages.yml
-```
-
----
-
-# English
-
-A DXF viewer component based on React and Canvas 2D. It can be used as an npm library and also includes a standalone example project for publishing a Live Demo.
-
-Live demo:
-
-```text
-https://zly258.github.io/dxfviewer/
-```
-
-## Features
-
-- React + Canvas 2D based DXF rendering
-- Can be embedded as an npm library
-- Provides a full application shell: `AppShell`
-- Provides a core viewer component: `DxfViewer`
-- Supports layer panel, property panel, menu bar, file tabs and canvas viewport
-- Supports TEXT and MTEXT rendering
-- Supports SHX font parsing and Canvas path rendering
-- Supports BigFont, for example `Wcad.shx + HZtxt.shx`
-- Outputs CSS as a standalone file
-- Separates library build and example build
-- Supports GitHub Actions deployment to GitHub Pages
-
-## Installation
-
-```bash
-npm install @zhangly1403/dxfviewer
-```
-
-## Import Styles
-
-The library style is emitted as a standalone CSS file. Import it once in your application entry:
-
-```ts
-import '@zhangly1403/dxfviewer/style.css';
-```
-
-This avoids injecting all styles into a single large JavaScript file and allows your application bundler to handle CSS normally.
-
-## Use the Full Viewer
-
-Use `AppShell` if you want a complete DXF viewer UI, including menu bar, file tabs, layer panel, canvas and property panel.
-
-```tsx
-import { AppShell } from '@zhangly1403/dxfviewer';
-import '@zhangly1403/dxfviewer/style.css';
-
-export default function App() {
-  return (
-    <div style={{ width: '100vw', height: '100vh' }}>
-      <AppShell />
-    </div>
-  );
-}
-```
-
-## Use the Core Viewer Component
-
-Use `DxfViewer` if your business application manages files, tabs and outer layout by itself.
-
-```tsx
-import { DxfViewer } from '@zhangly1403/dxfviewer';
-import '@zhangly1403/dxfviewer/style.css';
-
-export default function App() {
-  return (
-    <div style={{ width: '100vw', height: '100vh' }}>
-      <DxfViewer
-        initFile="/demo/test.dxf"
-        fileName="test.dxf"
-        lang="en"
-        showOpenMenu={false}
-        onLoad={(data) => console.log('DXF loaded', data)}
-        onError={(error) => console.error('Failed to load DXF', error)}
-      />
-    </div>
-  );
-}
-```
-
-## Open a File Object
-
-```tsx
-import { useState } from 'react';
-import { DxfViewer } from '@zhangly1403/dxfviewer';
-import '@zhangly1403/dxfviewer/style.css';
-
-export default function App() {
-  const [file, setFile] = useState<File | undefined>();
-
-  return (
-    <div style={{ width: '100vw', height: '100vh' }}>
-      <input
-        type="file"
-        accept=".dxf"
-        onChange={(event) => setFile(event.target.files?.[0])}
-      />
-      <DxfViewer initFile={file} fileName={file?.name} />
-    </div>
-  );
-}
-```
-
-## Exports
-
-```ts
-import {
-  AppShell,
-  DxfViewer,
-  DxfViewerApp,
-  DxfViewerMain,
-  type AppShellProps,
-  type DxfViewerProps,
-} from '@zhangly1403/dxfviewer';
-```
-
-| Export | Description |
-| --- | --- |
-| `DxfViewer` | Core viewer component, suitable for embedding into business systems |
-| `DxfViewerMain` | Compatibility alias of `DxfViewer` |
-| `AppShell` | Full application shell with tabs and global file opening |
-| `DxfViewerApp` | Compatibility alias of `AppShell` |
-
-## DxfViewer Props
-
-| Prop | Type | Default | Description |
-| --- | --- | --- | --- |
-| `initFile` | `string \| File` | `undefined` | Initial DXF file URL or File object |
-| `fileName` | `string` | `undefined` | Current file name, used in loading and messages |
-| `defaultLanguage` | `'en' \| 'zh'` | `'zh'` | Default UI language, uncontrolled |
-| `lang` | `'en' \| 'zh'` | `undefined` | Current UI language, controlled |
-| `onLanguageChange` | `(lang: Language) => void` | `undefined` | Language change callback |
-| `showOpenMenu` | `boolean` | `true` | Whether to show the open file entry |
-| `tabStrip` | `React.ReactNode` | `undefined` | External tab strip area |
-| `uiTheme` | `'light' \| 'dark'` | `undefined` | Current UI theme, controlled (canvas background follows this theme: light → white, dark → black) |
-| `onUiThemeChange` | `(theme: UiTheme) => void` | `undefined` | UI theme change callback |
-| `drawingColorMode` | `'original' \| 'monochrome'` | `undefined` | Drawing color mode, controlled |
-| `onDrawingColorModeChange` | `(mode: DrawingColorMode) => void` | `undefined` | Drawing color mode change callback |
-| `onLoad` | `(data: any) => void` | `undefined` | Called when DXF is loaded successfully |
-| `onError` | `(err: Error) => void` | `undefined` | Called when DXF loading or parsing fails |
-| `onOpenFiles` | `(files: File[]) => void` | `undefined` | Used when file opening is handled by the outer application |
-| `onOpenFailed` | `(message: string) => void` | `undefined` | Called when opening fails, useful for closing failed tabs |
-
-Notes:
-
-- The canvas background is no longer exposed separately; it follows `uiTheme`: light theme yields a white canvas, dark theme yields a black canvas.
-- UI language, UI theme, drawing color mode, and the visibility of the layer and properties panels are persisted to `localStorage` when running in uncontrolled mode.
-
-## SHX Font Directory
-
-Commercial font files are not bundled. Put legally obtained `.shx` files in your site static directory:
-
-```text
-public/fonts/shx/
-```
-
-Example:
-
-```text
-public/fonts/shx/Wcad.shx
-public/fonts/shx/HZtxt.SHX
-public/fonts/shx/TSSDENG.SHX
-public/fonts/shx/TSSDCHN.SHX
-public/fonts/shx/romans.shx
-public/fonts/shx/romans2.shx
-public/fonts/shx/SIMPLEX1.SHX
-```
-
-The viewer loads SHX files by `fontFileName` and `bigFontFileName` from the DXF text style. If the font file does not exist or a glyph is missing, it falls back to system fonts.
-
-Common font combinations:
-
-```text
-Wcad.shx + HZtxt.SHX
-TSSDENG.SHX + TSSDCHN.SHX
-romans.shx
-simplex.shx
-```
-
-Notes:
-
-- English letters usually come from `fontFileName`
-- Chinese characters usually come from `bigFontFileName`
-- `Wcad.shx + HZtxt.SHX` means English uses `Wcad.shx` and Chinese uses `HZtxt.SHX`
-- `manifest.json` is not required
-- It is recommended to keep file name casing consistent with the DXF file
-
-## Build
-
-### Build the Library
-
-```bash
-npm run build
-```
-
-Output:
-
-```text
-dist/dxfviewer.js
-dist/style.css
-dist/index.d.ts
-dist/chunks/vendor-shx-*.js
-dist/chunks/viewer-loader-*.js
-dist/chunks/viewer-render-*.js
-dist/chunks/viewer-ui-*.js
-```
-
-Build strategy:
-
-```text
-React / ReactDOM are externalized as peerDependencies
-@mlightcad/shx-parser is split into the vendor-shx chunk
-DXF loading and parsing are split into the viewer-loader chunk
-Canvas / TEXT / MTEXT / SHX rendering is split into the viewer-render chunk
-React panels and app shell are split into the viewer-ui chunk
-CSS is emitted as dist/style.css
-```
-
-This avoids putting the viewer, parser, SHX parser and styles into a single large JavaScript file.
-
-### Build the Example Project
-
-```bash
-npm run build:example
-```
-
-Execution order:
-
-```text
-Build root project dist first
-Then build dxfviewer-example
-```
-
-The example project does not import source files from `src`. It consumes the built library output as a real package user would do.
-
-```text
-dxfviewer-example
-  ├─ package.json uses "@zhangly1403/dxfviewer": "file:.."
-  ├─ import { AppShell } from '@zhangly1403/dxfviewer'
-  ├─ import '@zhangly1403/dxfviewer/style.css'
-  └─ resolves to ../dist/dxfviewer.js and ../dist/style.css during build
-```
-
-### Build Library and Example
-
-```bash
-npm run build:all
-```
-
-### Run Example Locally
-
-```bash
-npm run dev:example
-```
-
-### Preview Example Build
-
-```bash
-npm run preview:example
-```
-
-## GitHub Actions / Live Demo
-
-Only one workflow is kept:
-
-```text
-.github/workflows/pages.yml
-```
-
-The workflow runs:
-
-```bash
-npm ci
-npm run build:all
-```
-
-Then publishes the following directory to GitHub Pages:
-
-```text
-dxfviewer-example/dist
-```
-
-Publishing rules:
-
-```text
-pull_request: build check only, no Pages deployment
-main / master: build and publish Live Demo
-workflow_dispatch: manual deployment
-```
-
-## GitHub Actions Registry Notes
-
-If GitHub Actions reports an error like this:
-
-```text
-npm error network request to https://packages.applied-caas-gateway1.internal.api.openai.org/...
-npm error code ETIMEDOUT
-```
-
-It means the CI environment inherited an incorrect npm registry or proxy configuration. Add `.npmrc` in the repository root and explicitly use the official npm registry in `.github/workflows/pages.yml`.
-
-Recommended `.npmrc`:
-
-```ini
-registry=https://registry.npmjs.org/
-fund=false
-audit=false
-progress=false
-fetch-retries=5
-fetch-retry-factor=2
-fetch-retry-mintimeout=20000
-fetch-retry-maxtimeout=120000
-```
-
-Recommended install command in Actions:
-
-```bash
-npm ci --registry=https://registry.npmjs.org/ --prefer-offline=false --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000
-```
-
-This prevents CI from requesting unavailable private registry addresses.
-
-## Style and Bundle Size Conventions
-
-```text
-src/styles/index.css      The only library style entry
-dist/style.css            Published style file
-dxfviewer-example         Real consumer example, does not import src directly
-.github/workflows/pages.yml  The only GitHub Actions workflow
-```
-
-The library keeps ES Module output and uses Rollup `manualChunks` to split modules. The example project consumes the built `dist` output to verify package exports, style exports and GitHub Pages Live Demo deployment.
-
-## Project Structure
-
-```text
-dxfviewer/
-  src/
-    index.ts
-    styles/
-      index.css
-    viewer/
-    components/
-
-  public/
-    fonts/
-      shx/
-
-  dist/
-    dxfviewer.js
-    style.css
-    index.d.ts
-    chunks/
-
-  dxfviewer-example/
-    src/
-    package.json
-    vite.config.ts
-
-  .github/
-    workflows/
-      pages.yml
-```
+`dist/` 为发布产物，源码开发以 `src/` 为准。
+
+## 代码整理原则
+
+- 组件文件按业务边界划分，避免一个小控件一个文件的过度拆分。
+- 查看器反馈类组件集中在 `ViewerFeedback.tsx`，状态栏与空间切换集中在 `ViewerStatus.tsx`，Tab 类型与状态逻辑集中在 `DxfTabs.ts`。
+- 命名优先表达业务含义，例如 `LayerPanel`、`ViewerToolbar`、`viewerUiSettings`，避免使用临时或泛化命名。
+- 注释用于解释 DXF 语义、坐标转换、渲染补偿和交互边界，统一使用中文。
+
+## 说明
+
+- 当前项目只提供 DXF 查看、解析和渲染能力，不承诺 DXF 写出、编辑、捕捉绘制等 CAD 编辑能力。当前空间没有可显示实体时不再弹出提示，避免关闭图层或临时隐藏后干扰操作。
+- 组件不引入第三方 UI 库，界面样式由 `src/styles/index.css` 统一维护；移动端只保留右侧工具栏和右侧面板，不再保留旧底部抽屉样式。
+- 文本渲染不再加载 SHX 字形文件，缺少字体文件时也不会出现异步重绘错位。Loading 使用轻量居中卡片和细进度条，不遮挡过多界面。消息提示采用紧凑弹窗样式，操作按钮统一放在右下角。
+- 文字对齐恢复早期稳定逻辑：非 MTEXT 文字统一按 72/73 组码解析水平和垂直对齐，不再额外叠加 74 优先或 \Q 段落对齐扩展。
+- 视图历史在平移或缩放停留约 900ms 后记录，最多保留 50 条；执行上一个/下一个视图时不会重复入栈。
+- 隐藏选中和隔离选中属于实体级临时显示状态；关闭图层属于图层级显示状态；全部显示会同时清空这些临时状态。右键选中新实体时，菜单会使用本次右键命中的实体作为操作对象，避免选择状态异步造成操作失效；右键空白处也会显示菜单。
+- `dxfviewer-example` 为真实示例工作区，构建和发布脚本保持保留。
+- 源码和 README 统一使用 UTF-8 with BOM 编码。

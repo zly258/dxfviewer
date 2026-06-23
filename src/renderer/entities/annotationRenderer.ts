@@ -1,4 +1,4 @@
-import { 
+﻿import { 
   DxfHatch, 
   DxfLeader, 
   DxfMLeader, 
@@ -9,24 +9,19 @@ import {
   Point2D, 
   CanvasTheme, 
   AnyEntity, 
-  EntityType, 
-  DxfStyle 
+  EntityType 
 } from '@/types';
 import { 
   LEADER_RENDER_CONFIG, 
   CANVAS_THEME_COLORS 
 } from '@/config/viewerConfig';
-import { 
-  CAD_DEFAULT_TEXT_HEIGHT, 
-  CAD_BY_LAYER_COLOR 
-} from '@/config/cadConstants';
+import { CAD_DEFAULT_TEXT_HEIGHT } from '@/config/cadConstants';
 import { sampleHatchLoop } from '@/core/geometry/curveSampling';
 import { 
   getMLeaderTerminalPoint, 
   getMLeaderTextPosition, 
   getMLeaderTextAttachment 
 } from '@/utils/mleaderUtils';
-import { drawPolyline } from './geometryRenderer';
 
 export interface RenderTransform {
     project: (p: Point2D) => Point2D;
@@ -110,7 +105,7 @@ export const drawHatch = (ctx: CanvasRenderingContext2D, ent: DxfHatch, transfor
 };
 
 /**
- * 绘制二维实心/三维面图元 (SOLID / 3DFACE)
+ * 绘制二维实心填充或三维面图元。
  */
 export const drawSolid = (ctx: CanvasRenderingContext2D, ent: AnyEntity, transform: RenderTransform, type: string) => {
     const pts = (ent as any).points as Point2D[];

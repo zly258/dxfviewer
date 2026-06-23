@@ -1,5 +1,6 @@
-export type CanvasTheme = 'black' | 'white';
-export type UiTheme = 'light' | 'dark';
+﻿export type CanvasTheme = 'black' | 'white';
+export type UiTheme = 'system' | 'light' | 'dark';
+export type ResolvedUiTheme = 'light' | 'dark';
 export type DrawingColorMode = 'original' | 'monochrome';
 
 export interface Point2D {

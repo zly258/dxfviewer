@@ -1,4 +1,4 @@
-import { AnyEntity, DxfBlock, DxfText, EntityType } from '@/types';
+﻿import { AnyEntity, DxfBlock, DxfText, EntityType } from '@/types';
 import { TEXT_RENDER_CONFIG } from '@/config/viewerConfig';
 
 /** 判断 ATTRIB/ATTDEF 是否为占位符属性文字（位于原点且高度异常大）。 */

@@ -1,11 +1,17 @@
-import React, { useEffect, useRef, useState } from 'react';
+﻿import React, { useEffect, useRef, useState } from 'react';
 import { Language, UI_TRANSLATIONS } from '@/config/i18n';
 import { DrawingColorMode, UiTheme } from '@/types';
+import ViewerIcon, { ViewerIconName } from '@/components/viewer/ViewerIcon';
 
-
-interface ToolBarProps {
+interface ViewerToolbarProps {
   onImport: (files: File[]) => void;
   onFitView: () => void;
+  onPreviousView: () => void;
+  onNextView: () => void;
+  onToggleSearch: () => void;
+  isSearchActive: boolean;
+  canGoPreviousView: boolean;
+  canGoNextView: boolean;
   showOpen?: boolean;
   uiTheme: UiTheme;
   onSetUiTheme: (theme: UiTheme) => void;
@@ -13,8 +19,8 @@ interface ToolBarProps {
   onSetDrawingColorMode: (mode: DrawingColorMode) => void;
   lang: Language;
   onSetLang: (lang: Language) => void;
-  showSidebar: boolean;
-  onToggleSidebar: () => void;
+  showLayerPanel: boolean;
+  onToggleLayerPanel: () => void;
   showProperties: boolean;
   onToggleProperties: () => void;
   onShowAbout?: () => void;
@@ -22,9 +28,16 @@ interface ToolBarProps {
 
 type MenuKey = 'view';
 
-const ToolBar: React.FC<ToolBarProps> = ({
+/** 顶部工具栏只保留常用文件、视图、搜索、设置和关于入口，主题/语言/黑白模式放入视图菜单。 */
+const ViewerToolbar: React.FC<ViewerToolbarProps> = ({
   onImport,
   onFitView,
+  onPreviousView,
+  onNextView,
+  onToggleSearch,
+  isSearchActive,
+  canGoPreviousView,
+  canGoNextView,
   showOpen = true,
   uiTheme,
   onSetUiTheme,
@@ -32,8 +45,8 @@ const ToolBar: React.FC<ToolBarProps> = ({
   onSetDrawingColorMode,
   lang,
   onSetLang,
-  showSidebar,
-  onToggleSidebar,
+  showLayerPanel,
+  onToggleLayerPanel,
   showProperties,
   onToggleProperties,
   onShowAbout
@@ -55,17 +68,12 @@ const ToolBar: React.FC<ToolBarProps> = ({
     setActiveMenu(activeMenu === menu ? null : menu);
   };
 
-  const switchMenuOnHover = (menu: MenuKey) => {
-    if (activeMenu && activeMenu !== menu) setActiveMenu(menu);
-  };
-
   const closeMenuAndRun = (handler: () => void) => {
     setActiveMenu(null);
     handler();
   };
 
-  const openFileDialog = (event: React.MouseEvent) => {
-    event.stopPropagation();
+  const openFileDialog = () => {
     fileInputRef.current?.click();
     setActiveMenu(null);
   };
@@ -76,8 +84,28 @@ const ToolBar: React.FC<ToolBarProps> = ({
     if (files.length > 0) onImport(files);
   };
 
+  const renderToolButton = (
+    icon: ViewerIconName,
+    label: string,
+    onClick: () => void,
+    disabled = false,
+    active = false,
+  ) => (
+    <button
+      type="button"
+      className={`toolbar-button toolbar-icon-button ${active ? 'active' : ''}`}
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+      aria-pressed={active}
+      disabled={disabled}
+    >
+      <span className="toolbar-icon" aria-hidden="true"><ViewerIcon name={icon} /></span>
+    </button>
+  );
+
   return (
-    <div className="toolbar" role="menubar" aria-label={isZh ? '主菜单' : 'Main Menu'}>
+    <div className="toolbar" role="toolbar" aria-label={isZh ? '查看器工具栏' : 'Viewer toolbar'}>
       <input
         ref={fileInputRef}
         type="file"
@@ -87,30 +115,36 @@ const ToolBar: React.FC<ToolBarProps> = ({
         className="hidden-file-input"
       />
 
-      {showOpen && (
-        <div
-          className="menu-item"
-          role="menuitem"
-          onClick={openFileDialog}
-          title={isZh ? '打开 DXF 文件' : 'Open DXF file'}
-        >
-          <span>{isZh ? '打开' : 'Open'}</span>
-        </div>
-      )}
+      {showOpen && renderToolButton('open', t.openFile, openFileDialog)}
+      {showOpen && <div className="toolbar-separator" role="separator" />}
 
-      <div
-        className={`menu-item ${activeMenu === 'view' ? 'active' : ''}`}
-        role="menuitem"
-        onClick={(event) => toggleMenu(event, 'view')}
-        onMouseEnter={() => switchMenuOnHover('view')}
-      >
-        <span>{t.view}</span>
+      {renderToolButton('previous', t.previousView, onPreviousView, !canGoPreviousView)}
+      {renderToolButton('next', t.nextView, onNextView, !canGoNextView)}
+      {renderToolButton('fit', t.fitView, onFitView)}
+
+      <div className="toolbar-separator" role="separator" />
+
+      {renderToolButton('search', isZh ? '搜索文字' : 'Search text', onToggleSearch, false, isSearchActive)}
+
+      <div className="toolbar-separator" role="separator" />
+
+      <div className={`toolbar-menu ${activeMenu === 'view' ? 'active' : ''}`}>
+        <button
+          type="button"
+          className="toolbar-button toolbar-icon-button"
+          onClick={(event) => toggleMenu(event, 'view')}
+          title={t.view}
+          aria-label={t.view}
+          aria-haspopup="menu"
+          aria-expanded={activeMenu === 'view'}
+        >
+          <span className="toolbar-icon" aria-hidden="true"><ViewerIcon name="view" /></span>
+        </button>
         {activeMenu === 'view' && (
           <div className="dropdown-menu" role="menu" onClick={(event) => event.stopPropagation()}>
-            <button type="button" onClick={() => closeMenuAndRun(onFitView)} className="dropdown-item">
-              <span>{t.fitView}</span>
+            <button type="button" onClick={() => closeMenuAndRun(() => onSetUiTheme('system'))} className={`dropdown-item ${uiTheme === 'system' ? 'checked' : ''}`}>
+              <span>{t.system}</span>
             </button>
-            <div className="divider" />
             <button type="button" onClick={() => closeMenuAndRun(() => onSetUiTheme('light'))} className={`dropdown-item ${uiTheme === 'light' ? 'checked' : ''}`}>
               <span>{t.light}</span>
             </button>
@@ -126,7 +160,7 @@ const ToolBar: React.FC<ToolBarProps> = ({
               <span>{t.monochrome}</span>
             </button>
             <div className="divider" />
-            <button type="button" onClick={() => closeMenuAndRun(onToggleSidebar)} className={`dropdown-item ${showSidebar ? 'checked' : ''}`}>
+            <button type="button" onClick={() => closeMenuAndRun(onToggleLayerPanel)} className={`dropdown-item ${showLayerPanel ? 'checked' : ''}`}>
               <span>{t.layers}</span>
             </button>
             <button type="button" onClick={() => closeMenuAndRun(onToggleProperties)} className={`dropdown-item ${showProperties ? 'checked' : ''}`}>
@@ -141,16 +175,13 @@ const ToolBar: React.FC<ToolBarProps> = ({
       </div>
 
       {onShowAbout && (
-        <div
-          className="menu-item"
-          role="menuitem"
-          onClick={(event) => closeMenuAndRun(onShowAbout)}
-        >
-          <span>{t.about}</span>
-        </div>
+        <>
+          <div className="toolbar-separator" role="separator" />
+          {renderToolButton('about', t.about, () => closeMenuAndRun(onShowAbout))}
+        </>
       )}
     </div>
   );
 };
 
-export default ToolBar;
+export default ViewerToolbar;

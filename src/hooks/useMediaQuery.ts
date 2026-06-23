@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 
 /**
  * 监听 CSS 媒体查询，返回当前是否匹配。
- * SSR 安全：window 不存在时返回 false。
+ * 服务端渲染安全：window 不存在时返回 false。
  */
 export function useMediaQuery(query: string): boolean {
   const [matches, setMatches] = useState<boolean>(() => {

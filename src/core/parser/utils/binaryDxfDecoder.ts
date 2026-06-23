@@ -1,4 +1,4 @@
-import { TEXT_DECODER_CONFIG } from '@/config/viewerConfig';
+﻿import { TEXT_DECODER_CONFIG } from '@/config/viewerConfig';
 
 const BINARY_DXF_HEADER = 'AutoCAD Binary DXF\r\n\x1A\0';
 const BINARY_DXF_HEADER_BYTES = new Uint8Array([...BINARY_DXF_HEADER].map(ch => ch.charCodeAt(0)));

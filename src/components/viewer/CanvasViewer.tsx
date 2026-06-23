@@ -1,9 +1,8 @@
-import React, { useRef, useState, WheelEvent, MouseEvent, useEffect, useLayoutEffect } from 'react';
+﻿import React, { useRef, useState, WheelEvent, MouseEvent, useEffect, useLayoutEffect } from 'react';
 import { AnyEntity, ViewPort, DxfLayer, DxfBlock, DxfStyle, DxfLineType, Point2D, CanvasTheme, DrawingColorMode } from '@/types';
 import { renderEntitiesToCanvas, hitTest, hitTestBox } from '@/renderer/services/canvasRenderService';
 import { Language } from '@/config/i18n';
 import { SELECTION_CONFIG, SHORTCUT_CONFIG, VIEWER_DEFAULTS } from '@/config/viewerConfig';
-import { subscribeShxFontChanged } from '@/renderer/services/shxFontService';
 
 /**
  * Canvas 渲染核心组件
@@ -24,10 +23,14 @@ interface CanvasViewerProps {
   ltScale?: number; // 全局线型比例
   theme: CanvasTheme; // 画布背景主题
   drawingColorMode: DrawingColorMode;
-  lang: Language; // 当前语言
+  lang: Language; // 当前语言。
   onMouseMoveWorld?: (x: number, y: number) => void; // 鼠标移动时的世界坐标回调
   onRenderError?: (message: string | null) => void; // 渲染异常回调
   hiddenLayers?: Set<string>; // 隐藏图层集合
+  onShowAll?: () => void; // 显示全部实体与图层
+  onHideSelected?: (ids?: Set<string>) => void; // 隐藏当前选择
+  onIsolateSelected?: (ids?: Set<string>) => void; // 隔离当前选择
+  onHideSelectedLayers?: (ids?: Set<string>) => void; // 关闭当前选择所在图层
 }
 
 const CanvasViewer: React.FC<CanvasViewerProps> = ({ 
@@ -45,9 +48,14 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
     ltScale = VIEWER_DEFAULTS.defaultLineTypeScale, 
     theme,
     drawingColorMode,
+    lang,
     onMouseMoveWorld,
     onRenderError,
-    hiddenLayers = new Set()
+    hiddenLayers = new Set(),
+    onShowAll,
+    onHideSelected,
+    onIsolateSelected,
+    onHideSelectedLayers
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -58,15 +66,14 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const lastTouchRef = useRef<{ x: number; y: number; dist: number } | null>(null);
   const isTouchPanningRef = useRef<boolean>(false);
+  const longPressTimerRef = useRef<number | undefined>(undefined);
   
   const [isPanning, setIsPanning] = useState(false);
   const [isBoxSelecting, setIsBoxSelecting] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; selectionIds: Set<string> } | null>(null);
+  const contextMenuRef = useRef<typeof contextMenu>(null);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [currentMousePos, setCurrentMousePos] = useState({ x: 0, y: 0 });
-  const [fontVersion, setFontVersion] = useState(0);
-  
-
-
   // 从屏幕坐标计算世界坐标（以中心为原点）
   const screenToWorld = (sx: number, sy: number) => {
      const canvas = canvasRef.current;
@@ -91,12 +98,90 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
   };
 
   const renderRef = useRef<number | undefined>(undefined);
+  const contextMenuLabels = lang === 'zh'
+    ? { showAll: '全部显示', hideSelected: '隐藏选中', isolateSelected: '隔离选中', hideLayer: '关闭图层' }
+    : { showAll: 'Show All', hideSelected: 'Hide Selected', isolateSelected: 'Isolate Selected', hideLayer: 'Turn Layer Off' };
+  const hasContextSelection = contextMenu ? contextMenu.selectionIds.size > 0 : false;
 
+  contextMenuRef.current = contextMenu;
 
-  // SHX 字体是异步读取的，字体加载完成后需要主动重绘当前画布。
+  const getPickableEntities = () => entities.filter(entity => entity.visible !== false && !hiddenLayers.has(entity.layer));
+
+  const closeContextMenu = () => setContextMenu(null);
+
+  const clearLongPressTimer = () => {
+    if (longPressTimerRef.current !== undefined) {
+      window.clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = undefined;
+    }
+  };
+
+  /** 将菜单约束在画布可见区域内，避免移动端和右下角右键时错位或溢出。 */
+  const clampContextMenuPosition = (x: number, y: number) => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return { x, y };
+    const isMobileViewport = typeof window !== 'undefined' && window.matchMedia?.('(max-width: 768px)').matches;
+    const menuWidth = isMobileViewport ? 160 : 156;
+    const menuHeight = isMobileViewport ? 196 : 174;
+    const padding = isMobileViewport ? 10 : 6;
+    return {
+      x: safeClamp(x, padding, Math.max(padding, rect.width - menuWidth - padding)),
+      y: safeClamp(y, padding, Math.max(padding, rect.height - menuHeight - padding)),
+    };
+  };
+
+  /** 根据浏览器 client 坐标打开上下文菜单，内部统一转换为画布局部坐标。 */
+  const openContextMenuAtClient = (clientX: number, clientY: number) => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const mouseX = clientX - rect.left;
+    const mouseY = clientY - rect.top;
+    const wPos = screenToWorld(mouseX, mouseY);
+    const currentViewPort = viewPortRef.current;
+    const safeZoom = Math.max(Math.abs(currentViewPort.zoom), Number.MIN_VALUE);
+    const worldPerPixel = 1 / safeZoom;
+    const threshold = Math.max(SELECTION_CONFIG.geometryHitTolerancePixels * worldPerPixel, SELECTION_CONFIG.minimumHitToleranceWorld);
+    const hitId = hitTest(wPos.x, wPos.y, threshold, getPickableEntities(), blocks, layers, styles);
+    const position = clampContextMenuPosition(mouseX, mouseY);
+
+    if (hitId && !selectedEntityIds.has(hitId)) {
+      const nextSelection = new Set([hitId]);
+      onSelectIds(nextSelection);
+      setContextMenu({ ...position, selectionIds: nextSelection });
+      return;
+    }
+
+    if (hitId || selectedEntityIds.size > 0) {
+      setContextMenu({ ...position, selectionIds: new Set(selectedEntityIds) });
+      return;
+    }
+
+    setContextMenu({ ...position, selectionIds: new Set() });
+  };
+
+  /** 防止右键菜单内部鼠标事件冒泡到画布，避免菜单在按钮 click 前被关闭。 */
+  const stopContextMenuPointerEvent = (event: React.MouseEvent) => {
+    event.stopPropagation();
+  };
+
+  const suppressNativeContextMenu = (event: React.MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
   useEffect(() => {
-    return subscribeShxFontChanged(() => setFontVersion(version => version + 1));
-  }, []);
+    if (!contextMenu) return;
+    const close = () => closeContextMenu();
+    window.addEventListener('click', close);
+    window.addEventListener('keydown', close);
+    window.addEventListener('wheel', close, { passive: true });
+    return () => {
+      window.removeEventListener('click', close);
+      window.removeEventListener('keydown', close);
+      window.removeEventListener('wheel', close);
+    };
+  }, [contextMenu]);
+
 
   useLayoutEffect(() => {
      const render = () => {
@@ -142,7 +227,7 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
      return () => {
         if (renderRef.current) cancelAnimationFrame(renderRef.current);
      };
-  }, [entities, layers, blocks, styles, lineTypes, ltScale, viewPort, selectedEntityIds, worldOffset, theme, drawingColorMode, onRenderError, fontVersion, hiddenLayers, currentMousePos]);
+  }, [entities, layers, blocks, styles, lineTypes, ltScale, viewPort, selectedEntityIds, worldOffset, theme, drawingColorMode, onRenderError, hiddenLayers, currentMousePos]);
 
   // 处理滚轮和触控事件
   useEffect(() => {
@@ -185,7 +270,14 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
         touchStartRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
         lastTouchRef.current = { x: touch.clientX, y: touch.clientY, dist: 0 };
         isTouchPanningRef.current = false;
+        clearLongPressTimer();
+        longPressTimerRef.current = window.setTimeout(() => {
+          if (!isTouchPanningRef.current && touchStartRef.current) {
+            openContextMenuAtClient(touchStartRef.current.x, touchStartRef.current.y);
+          }
+        }, 560);
       } else if (e.touches.length === 2) {
+        clearLongPressTimer();
         const t1 = e.touches[0];
         const t2 = e.touches[1];
         const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
@@ -207,6 +299,7 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
         if (!isTouchPanningRef.current && touchStartRef.current) {
           const moveDist = Math.hypot(touch.clientX - touchStartRef.current.x, touch.clientY - touchStartRef.current.y);
           if (moveDist > 6) {
+            clearLongPressTimer();
             isTouchPanningRef.current = true;
           }
         }
@@ -269,7 +362,8 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
     };
 
     const onTouchEnd = (e: TouchEvent) => {
-      if (!isTouchPanningRef.current && touchStartRef.current && e.touches.length === 0) {
+      clearLongPressTimer();
+      if (!isTouchPanningRef.current && touchStartRef.current && e.touches.length === 0 && !contextMenuRef.current) {
         const duration = Date.now() - touchStartRef.current.time;
         if (duration < 300) {
           const rect = container.getBoundingClientRect();
@@ -288,7 +382,7 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
               thresholdCap
           );
           
-          const hitId = hitTest(wPos.x, wPos.y, threshold, entities, blocks, layers, styles);
+          const hitId = hitTest(wPos.x, wPos.y, threshold, getPickableEntities(), blocks, layers, styles);
           
           if (hitId) {
             onSelectIds(new Set([hitId]));
@@ -313,10 +407,18 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
       container.removeEventListener('touchstart', onTouchStart);
       container.removeEventListener('touchmove', onTouchMove);
       container.removeEventListener('touchend', onTouchEnd);
+      clearLongPressTimer();
     };
-  }, [onViewPortChange, entities, blocks, layers, styles, onSelectIds]);
+  }, [onViewPortChange, entities, blocks, layers, styles, hiddenLayers, onSelectIds]);
+
+  const handleContextMenu = (e: MouseEvent) => {
+    e.preventDefault();
+    clearLongPressTimer();
+    openContextMenuAtClient(e.clientX, e.clientY);
+  };
 
   const handleMouseDown = (e: MouseEvent) => {
+    closeContextMenu();
     const rect = containerRef.current?.getBoundingClientRect();
     if (!rect) return;
     const mouseX = e.clientX - rect.left;
@@ -401,7 +503,7 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
              Math.max(SELECTION_CONFIG.geometryHitTolerancePixels * worldPerPixel, SELECTION_CONFIG.minimumHitToleranceWorld),
              thresholdCap
          );
-         const hitId = hitTest(wPos.x, wPos.y, threshold, entities, blocks, layers, styles);
+         const hitId = hitTest(wPos.x, wPos.y, threshold, getPickableEntities(), blocks, layers, styles);
          
          if (hitId) {
              const newSet = new Set(e.ctrlKey || e.shiftKey ? selectedEntityIds : []);
@@ -417,13 +519,13 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
          const endW = wPos;
          
          // CAD 风格选择：
-         // 从左向右 (endW.x > startW.x): 包含选择 (Window Selection) - 仅选中完全在框内的实体
-         // 从右向左 (endW.x < startW.x): 交叉选择 (Crossing Selection) - 选中框内或相交的实体
+         // 从左向右框选：包含选择，仅选中完全在框内的实体。
+         // 从右向左框选：交叉选择，选中框内或相交的实体。
          const isCrossing = wPos.x < screenToWorld(dragStart.x, dragStart.y).x;
 
          const boxIds = hitTestBox(
              { x1: startW.x, y1: startW.y, x2: endW.x, y2: endW.y },
-             entities,
+             getPickableEntities(),
              layers,
              blocks,
              isCrossing // 传递选择模式
@@ -442,8 +544,8 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
     }
   };
 
-  // 根据 theme 计算 --canvas-bg 的实际色值，通过 inline style 写入容器，
-  // 确保 CSS fallback 和主题切换瞬间不会出现黑色闪烁。
+  // 根据主题计算画布背景色，并通过内联样式写入容器，
+  // 确保样式兜底值和主题切换瞬间不会出现黑色闪烁。
   const canvasBgColor = theme === 'white' ? '#FFFFFF' : '#212121';
 
   return (
@@ -453,6 +555,7 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
+      onContextMenu={handleContextMenu}
       onMouseLeave={() => {
         setIsPanning(false);
         setIsBoxSelecting(false);
@@ -475,6 +578,23 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
             pointerEvents: 'none'
           }}
         />
+      )}
+
+      {contextMenu && (
+        <div
+          className="canvas-context-menu"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onMouseDown={stopContextMenuPointerEvent}
+          onMouseUp={stopContextMenuPointerEvent}
+          onContextMenu={suppressNativeContextMenu}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <button type="button" onClick={() => { closeContextMenu(); onShowAll?.(); }}>{contextMenuLabels.showAll}</button>
+          <div className="canvas-context-divider" />
+          <button type="button" disabled={!hasContextSelection} onClick={() => { const ids = new Set(contextMenu.selectionIds); closeContextMenu(); onHideSelected?.(ids); }}>{contextMenuLabels.hideSelected}</button>
+          <button type="button" disabled={!hasContextSelection} onClick={() => { const ids = new Set(contextMenu.selectionIds); closeContextMenu(); onIsolateSelected?.(ids); }}>{contextMenuLabels.isolateSelected}</button>
+          <button type="button" disabled={!hasContextSelection} onClick={() => { const ids = new Set(contextMenu.selectionIds); closeContextMenu(); onHideSelectedLayers?.(ids); }}>{contextMenuLabels.hideLayer}</button>
+        </div>
       )}
 
 

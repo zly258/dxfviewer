@@ -1,4 +1,4 @@
-import { Point2D } from './core';
+﻿import { Point2D } from './core';
 import { AnyEntity } from './entity';
 
 export interface DxfBlock {
@@ -7,6 +7,9 @@ export interface DxfBlock {
   basePoint: Point2D;
   entities: AnyEntity[];
   extents?: { min: Point2D, max: Point2D };
+  isModelSpace?: boolean;
+  isPaperSpace?: boolean;
+  layoutName?: string;
 }
 
 export interface DxfLayer {
@@ -34,6 +37,21 @@ export interface DxfLineType {
   totalLength: number;
 }
 
+
+export interface DxfLayout {
+  id: string;
+  name: string;
+  displayName: string;
+  isModel: boolean;
+  entities: AnyEntity[];
+  tabOrder?: number;
+  blockName?: string;
+  blockRecordHandle?: string;
+  paperMin?: Point2D;
+  paperMax?: Point2D;
+  extents?: { center: Point2D, width: number, height: number, min: Point2D, max: Point2D };
+}
+
 export interface DxfHeader {
     extMin: Point2D;
     extMax: Point2D;
@@ -45,6 +63,9 @@ export interface DxfHeader {
 export interface DxfData {
   header?: DxfHeader;
   entities: AnyEntity[];
+  allEntities?: AnyEntity[];
+  layouts: DxfLayout[];
+  activeLayoutName: string;
   layers: Record<string, DxfLayer>;
   blocks: Record<string, DxfBlock>;
   styles: Record<string, DxfStyle>;

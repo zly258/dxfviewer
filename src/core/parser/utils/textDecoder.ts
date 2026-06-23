@@ -1,4 +1,4 @@
-import { TEXT_DECODER_CONFIG } from '@/config/viewerConfig';
+﻿import { TEXT_DECODER_CONFIG } from '@/config/viewerConfig';
 import { decodeBinaryDxfBuffer, isBinaryDxfBuffer } from './binaryDxfDecoder';
 
 export type DxfDecodeResult = {
