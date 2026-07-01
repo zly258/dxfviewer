@@ -8,9 +8,10 @@
   AnyEntity,
   EntityType,
   DxfLayout,
+  DxfImageDef,
 } from '@/types';
 import { DxfParserState, parsePoint } from './parserState';
-import { parseTable, parseBlock, parseLayoutObject } from './sectionParser';
+import { parseTable, parseBlock, parseLayoutObject, parseImageDefObject } from './sectionParser';
 import { parseEntityDispatcher } from './entityParser';
 import { offsetEntity } from '@/core/geometry/offset';
 import { calculateExtents, getEntityExtents, precomputeBlockExtents } from '@/core/geometry/extents';
@@ -215,6 +216,7 @@ export const parseDxf = async (dxfString: string, onProgress?: (percent: number)
   const lineTypes: Record<string, DxfLineType> = {};
   const blockHandleMap: Record<string, string> = {};
   const layoutRecords: DxfLayout[] = [];
+  const imageDefs: Record<string, DxfImageDef> = {};
   let header: DxfHeader | undefined;
 
   layers[CAD_DEFAULT_LAYER_NAME] = { name: CAD_DEFAULT_LAYER_NAME, color: CAD_DEFAULT_LAYER_COLOR, isVisible: true };
@@ -284,6 +286,9 @@ export const parseDxf = async (dxfString: string, onProgress?: (percent: number)
       if (group.code === 0 && group.value === 'LAYOUT') {
         const layout = parseLayoutObject(state);
         if (layout) layoutRecords.push(layout);
+      } else if (group.code === 0 && group.value === 'IMAGEDEF') {
+        const imageDef = parseImageDefObject(state);
+        if (imageDef) imageDefs[imageDef.handle] = imageDef;
       }
     }
   }
@@ -291,6 +296,16 @@ export const parseDxf = async (dxfString: string, onProgress?: (percent: number)
   if (onProgress) onProgress(100);
 
   precomputeBlockExtents(blocks, styles);
+
+  allEntities.forEach(entity => {
+    if (entity.type !== EntityType.IMAGE || !entity.imageRef) return;
+    const imageDef = imageDefs[entity.imageRef];
+    if (!imageDef) return;
+    if (imageDef.filePath) entity.imagePath = imageDef.filePath;
+    if ((!entity.imageSize.x || !entity.imageSize.y) && imageDef.imageSize) {
+      entity.imageSize = imageDef.imageSize;
+    }
+  });
 
   const offset = calculateStableOffset(allEntities, blocks, styles);
 
@@ -319,6 +334,7 @@ export const parseDxf = async (dxfString: string, onProgress?: (percent: number)
     blocks,
     styles,
     lineTypes,
+    imageDefs,
     offset,
     extents,
   };

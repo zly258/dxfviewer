@@ -18,6 +18,14 @@ import {
 import { resolveEntityColor } from '@/utils/entityColor';
 import { resolveCadStrokeStyle } from '@/utils/lineStyle';
 import { sampleSplinePoints } from '@/core/geometry/curveSampling';
+import {
+    composePointTransform,
+    createBlockPointTransform,
+    createDimensionPointTransform,
+    isDimensionBlockLocal,
+    PointTransform,
+    transformExtentsByPointTransform,
+} from '@/core/geometry/transform';
 
 // 导入图元具体的 Canvas 绘制函数
 import { 
@@ -108,7 +116,7 @@ export const renderEntitiesToCanvas = (
         depth: number = 0, 
         noMTextWrap: boolean = false
     ) => {
-        if (ent.visible === false || depth > 20) return;
+        if (ent.visible === false || depth > SELECTION_CONFIG.maxNestedEntityDepth) return;
 
         // 可见区域裁剪剔除
         if (depth === 0 && ent.extents) {
@@ -288,19 +296,11 @@ export const hitTest = (
     layers: Record<string, DxfLayer>, 
     _styles: Record<string, DxfStyle>
 ): string | null => {
-    // 块名称到使用它们的标注实体的映射，用于优先选择标注
-    const blockToDimensionMap = new Map<string, string>();
-    entities.forEach(ent => {
-        if (ent.type === EntityType.DIMENSION && ent.blockName) {
-            blockToDimensionMap.set(ent.blockName, ent.id);
-        }
-    });
-
     /**
      * 递归检查单个实体，返回到该实体的最短几何距离
      */
-    const checkEntityDistance = (ent: AnyEntity, tx?: (p: Point2D) => Point2D, depth: number = 0): number => {
-        if (ent.visible === false || depth > 20) return Infinity;
+    const checkEntityDistance = (ent: AnyEntity, tx?: PointTransform, depth: number = 0): number => {
+        if (ent.visible === false || depth > SELECTION_CONFIG.maxNestedEntityDepth) return Infinity;
 
         const layer = layers[ent.layer];
         if (layer && layer.isVisible === false) return Infinity;
@@ -318,19 +318,10 @@ export const hitTest = (
             let { min, max } = ent.extents;
 
             if (tx) {
-                const corners = [
-                    p({ x: min.x, y: min.y }),
-                    p({ x: max.x, y: min.y }),
-                    p({ x: max.x, y: max.y }),
-                    p({ x: min.x, y: max.y })
-                ];
-                let bMinX = Infinity, bMinY = Infinity, bMaxX = -Infinity, bMaxY = -Infinity;
-                corners.forEach(c => {
-                    if (c.x < bMinX) bMinX = c.x; if (c.x > bMaxX) bMaxX = c.x;
-                    if (c.y < bMinY) bMinY = c.y; if (c.y > bMaxY) bMaxY = c.y;
-                });
-                min = { x: bMinX, y: bMinY };
-                max = { x: bMaxX, y: bMaxY };
+                const transformed = transformExtentsByPointTransform({ min, max }, tx);
+                if (!transformed) return Infinity;
+                min = transformed.min;
+                max = transformed.max;
             }
 
             const margin = effectiveThreshold * 1.2;
@@ -361,12 +352,21 @@ export const hitTest = (
             minDist = distanceToLine(x, y, s.x, s.y, e.x, e.y);
         } else if (ent.type === EntityType.RAY) {
             const s = p(ent.basePoint);
-            const e = { x: s.x + ent.direction.x * 1000000, y: s.y + ent.direction.y * 1000000 };
+            const e = {
+                x: s.x + ent.direction.x * SELECTION_CONFIG.infiniteLineHitTestLength,
+                y: s.y + ent.direction.y * SELECTION_CONFIG.infiniteLineHitTestLength,
+            };
             minDist = distanceToLine(x, y, s.x, s.y, e.x, e.y);
         } else if (ent.type === EntityType.XLINE) {
             const s = p(ent.basePoint);
-            const p1 = { x: s.x - ent.direction.x * 1000000, y: s.y - ent.direction.y * 1000000 };
-            const p2 = { x: s.x + ent.direction.x * 1000000, y: s.y + ent.direction.y * 1000000 };
+            const p1 = {
+                x: s.x - ent.direction.x * SELECTION_CONFIG.infiniteLineHitTestLength,
+                y: s.y - ent.direction.y * SELECTION_CONFIG.infiniteLineHitTestLength,
+            };
+            const p2 = {
+                x: s.x + ent.direction.x * SELECTION_CONFIG.infiniteLineHitTestLength,
+                y: s.y + ent.direction.y * SELECTION_CONFIG.infiniteLineHitTestLength,
+            };
             minDist = distanceToLine(x, y, p1.x, p1.y, p2.x, p2.y);
         } else if (ent.type === EntityType.CIRCLE) {
             const c = p(ent.center);
@@ -450,7 +450,13 @@ export const hitTest = (
                 }
             }
         } else if (ent.type === EntityType.SPLINE) {
-             const points = sampleSplinePoints(ent.controlPoints || [], ent.degree || 3, ent.knots, ent.weights, 20);
+             const points = sampleSplinePoints(
+                ent.controlPoints || [],
+                ent.degree || 3,
+                ent.knots,
+                ent.weights,
+                SELECTION_CONFIG.splineHitTestSegments,
+             );
              for (let j = 0; j < points.length - 1; j++) {
                 const p1 = p(points[j]), p2 = p(points[j+1]);
                 minDist = Math.min(minDist, distanceToLine(x, y, p1.x, p1.y, p2.x, p2.y));
@@ -498,19 +504,10 @@ export const hitTest = (
             const block = blocks[ent.blockName];
             if (block) {
                 const scale = ent.scale || { x: 1, y: 1, z: 1 };
-                const rotation = (ent.rotation || 0) * Math.PI / 180;
-                const cos = Math.cos(rotation), sin = Math.sin(rotation);
-                
-                const newTx = (pt: Point2D) => {
-                    const bx = pt.x - block.basePoint.x;
-                    const by = pt.y - block.basePoint.y;
-                    const sx = bx * scale.x;
-                    const sy = by * scale.y;
-                    return {
-                        x: ent.position.x + sx * cos - sy * sin,
-                        y: ent.position.y + sx * sin + sy * cos
-                    };
-                };
+                const newTx = composePointTransform(
+                    createBlockPointTransform(block, ent.position, scale, ent.rotation || 0),
+                    tx,
+                );
                 
                 for (const child of block.entities) {
                     const d = checkEntityDistance(child, newTx, depth + 1);
@@ -527,19 +524,10 @@ export const hitTest = (
             const block = blocks[ent.blockName];
             if (block) {
                 const dp = (ent as any).definitionPoint || { x: 0, y: 0 };
-                let treatAsLocal = false;
-                if (block.extents) {
-                    const bw = block.extents.max.x - block.extents.min.x;
-                    const bh = block.extents.max.y - block.extents.min.y;
-                    const size = Math.max(Math.abs(bw), Math.abs(bh), 1);
-                    const bc = { x: (block.extents.min.x + block.extents.max.x) / 2, y: (block.extents.min.y + block.extents.max.y) / 2 };
-                    const distance = Math.hypot(bc.x - dp.x, bc.y - dp.y);
-                    treatAsLocal = distance > size * 5;
-                }
-
-                const newTx = treatAsLocal
-                    ? (pt: Point2D) => ({ x: dp.x + (pt.x - block.basePoint.x), y: dp.y + (pt.y - block.basePoint.y) })
-                    : (pt: Point2D) => pt;
+                const newTx = composePointTransform(
+                    createDimensionPointTransform(block, dp, isDimensionBlockLocal(block, dp, 5)),
+                    tx,
+                );
 
                 for (const child of block.entities) {
                     const d = checkEntityDistance(child, newTx, depth + 1);
@@ -600,27 +588,12 @@ export const hitTestBox = (
     const overlaps = (ext: { min: Point2D, max: Point2D }) => !(ext.max.x < minX || ext.min.x > maxX || ext.max.y < minY || ext.min.y > maxY);
     const contained = (ext: { min: Point2D, max: Point2D }) => ext.min.x >= minX && ext.max.x <= maxX && ext.min.y >= minY && ext.max.y <= maxY;
     
-    const transformExtents = (ext: { min: Point2D, max: Point2D }, tx: (p: Point2D) => Point2D) => {
-        const corners = [
-            tx({ x: ext.min.x, y: ext.min.y }),
-            tx({ x: ext.max.x, y: ext.min.y }),
-            tx({ x: ext.max.x, y: ext.max.y }),
-            tx({ x: ext.min.x, y: ext.max.y })
-        ];
-        let bMinX = Infinity, bMinY = Infinity, bMaxX = -Infinity, bMaxY = -Infinity;
-        corners.forEach(c => {
-            if (c.x < bMinX) bMinX = c.x; if (c.x > bMaxX) bMaxX = c.x;
-            if (c.y < bMinY) bMinY = c.y; if (c.y > bMaxY) bMaxY = c.y;
-        });
-        return { min: { x: bMinX, y: bMinY }, max: { x: bMaxX, y: bMaxY } };
-    };
-
-    const checkEntityBox = (ent: AnyEntity, tx?: (p: Point2D) => Point2D, depth: number = 0): boolean => {
-        if (ent.visible === false || depth > 20) return isCrossing ? false : true;
+    const checkEntityBox = (ent: AnyEntity, tx?: PointTransform, depth: number = 0): boolean => {
+        if (ent.visible === false || depth > SELECTION_CONFIG.maxNestedEntityDepth) return isCrossing ? false : true;
         const layer = layers[ent.layer];
         if (layer && layer.isVisible === false) return isCrossing ? false : true;
 
-        const ext = ent.extents ? (tx ? transformExtents(ent.extents, tx) : ent.extents) : null;
+        const ext = ent.extents ? (tx ? transformExtentsByPointTransform(ent.extents, tx) : ent.extents) : null;
         if (ext) {
             if (isCrossing) {
                 if (!overlaps(ext)) return false;
@@ -637,16 +610,10 @@ export const hitTestBox = (
             const block = blocks[ent.blockName];
             if (!block) return ext ? (isCrossing ? overlaps(ext) : contained(ext)) : false;
             const scale = (ent as any).scale || { x: 1, y: 1, z: 1 };
-            const rotation = ((ent as any).rotation || 0) * Math.PI / 180;
-            const cos = Math.cos(rotation), sin = Math.sin(rotation);
-            const baseTx = (pt: Point2D) => {
-                const bx = pt.x - block.basePoint.x;
-                const by = pt.y - block.basePoint.y;
-                const sx = bx * scale.x;
-                const sy = by * scale.y;
-                const world = { x: (ent as any).position.x + sx * cos - sy * sin, y: (ent as any).position.y + sx * sin + sy * cos };
-                return tx ? tx(world) : world;
-            };
+            const baseTx = composePointTransform(
+                createBlockPointTransform(block, (ent as any).position, scale, (ent as any).rotation || 0),
+                tx,
+            );
             if (isCrossing) {
                 for (const child of block.entities) {
                     if (checkEntityBox(child, baseTx, depth + 1)) return true;
@@ -673,21 +640,10 @@ export const hitTestBox = (
             const block = blocks[ent.blockName];
             if (!block) return ext ? (isCrossing ? overlaps(ext) : contained(ext)) : false;
             const dp = (ent as any).definitionPoint || { x: 0, y: 0 };
-            let treatAsLocal = false;
-            if (block.extents) {
-                const bw = block.extents.max.x - block.extents.min.x;
-                const bh = block.extents.max.y - block.extents.min.y;
-                const size = Math.max(Math.abs(bw), Math.abs(bh), 1);
-                const bc = { x: (block.extents.min.x + block.extents.max.x) / 2, y: (block.extents.min.y + block.extents.max.y) / 2 };
-                const distance = Math.hypot(bc.x - dp.x, bc.y - dp.y);
-                treatAsLocal = distance > size * 5;
-            }
-            const baseTx = treatAsLocal
-                ? (pt: Point2D) => {
-                    const world = { x: dp.x + (pt.x - block.basePoint.x), y: dp.y + (pt.y - block.basePoint.y) };
-                    return tx ? tx(world) : world;
-                }
-                : (pt: Point2D) => (tx ? tx(pt) : pt);
+            const baseTx = composePointTransform(
+                createDimensionPointTransform(block, dp, isDimensionBlockLocal(block, dp, 5)),
+                tx,
+            );
 
             if (isCrossing) {
                 for (const child of block.entities) {

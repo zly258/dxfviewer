@@ -13,7 +13,7 @@
 } from '@/types';
 import { 
   LEADER_RENDER_CONFIG, 
-  CANVAS_THEME_COLORS 
+  CANVAS_THEME_COLORS,
 } from '@/config/viewerConfig';
 import { CAD_DEFAULT_TEXT_HEIGHT } from '@/config/cadConstants';
 import { sampleHatchLoop } from '@/core/geometry/curveSampling';
@@ -92,7 +92,7 @@ export const drawHatch = (ctx: CanvasRenderingContext2D, ent: DxfHatch, transfor
     
     if (ent.solid) {
         ctx.fillStyle = color;
-        ctx.fill('evenodd');
+        ctx.fill();
     } else {
         const pattern = createHatchPattern(ctx, color);
         if (pattern) {

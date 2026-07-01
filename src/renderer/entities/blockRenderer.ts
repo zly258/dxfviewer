@@ -13,6 +13,11 @@ import {
 } from '@/config/viewerConfig';
 import { CAD_DEFAULT_TEXT_HEIGHT } from '@/config/cadConstants';
 import { cleanMText, cleanCadText } from '@/utils/textUtils';
+import {
+    createBlockPointTransform,
+    createDimensionPointTransform,
+    isDimensionBlockLocal,
+} from '@/core/geometry/transform';
 
 export interface RenderTransform {
     project: (p: Point2D) => Point2D;
@@ -153,25 +158,14 @@ export const drawInsertOrTable = (
     }
 
     const scale = ent.scale || { x: 1, y: 1, z: 1 };
-    const rotation = (ent.rotation || 0) * Math.PI / 180;
-    const cosR = Math.cos(rotation);
-    const sinR = Math.sin(rotation);
+    const rotationDegrees = ent.rotation || 0;
+    const blockToWorld = createBlockPointTransform(block, ent.position, scale, rotationDegrees);
     
     // 创建嵌套变换
     const nestedTransform: RenderTransform = {
-        project: (p: Point2D) => {
-            const px = p.x - block.basePoint.x;
-            const py = p.y - block.basePoint.y;
-            const sx = px * scale.x;
-            const sy = py * scale.y;
-            const rx = sx * cosR - sy * sinR;
-            const ry = sx * sinR + sy * cosR;
-            const tx = rx + ent.position.x;
-            const ty = ry + ent.position.y;
-            return transform.project({ x: tx, y: ty });
-        },
+        project: (p: Point2D) => transform.project(blockToWorld(p)),
         scale: transform.scale * Math.abs(scale.x),
-        rotation: transform.rotation + rotation
+        rotation: transform.rotation + rotationDegrees * Math.PI / 180
     };
 
     const layerName = (ent.layer === '0' && parentLayerName) ? parentLayerName : ent.layer;
@@ -257,31 +251,17 @@ export const drawDimension = (
     }
 
     const dp = ent.definitionPoint;
-    let treatAsLocal = false;
-    if (block.extents) {
-        const bw = block.extents.max.x - block.extents.min.x;
-        const bh = block.extents.max.y - block.extents.min.y;
-        const size = Math.max(Math.abs(bw), Math.abs(bh), 1);
-        const bc = { x: (block.extents.min.x + block.extents.max.x) / 2, y: (block.extents.min.y + block.extents.max.y) / 2 };
-        const distance = Math.hypot(bc.x - dp.x, bc.y - dp.y);
-        treatAsLocal = distance > size * 5;
-    }
+    const dimensionToWorld = createDimensionPointTransform(
+        block,
+        dp,
+        isDimensionBlockLocal(block, dp, 5),
+    );
 
-    const nestedTransform: RenderTransform = treatAsLocal
-        ? {
-            project: (p: Point2D) => {
-                const px = p.x - block.basePoint.x;
-                const py = p.y - block.basePoint.y;
-                return transform.project({ x: dp.x + px, y: dp.y + py });
-            },
-            scale: transform.scale,
-            rotation: transform.rotation
-        }
-        : {
-            project: (p: Point2D) => transform.project(p),
-            scale: transform.scale,
-            rotation: transform.rotation
-        };
+    const nestedTransform: RenderTransform = {
+        project: (p: Point2D) => transform.project(dimensionToWorld(p)),
+        scale: transform.scale,
+        rotation: transform.rotation
+    };
 
     block.entities.forEach(child => drawEntityCallback(child, nestedTransform, layerName, color, isSelected, depth + 1, noMTextWrap));
 };

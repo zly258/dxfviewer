@@ -1,9 +1,9 @@
 ﻿import { AnyEntity, DxfBlock, DxfStyle, DxfText, DxfTable, EntityType, Point2D } from '@/types';
 import { EXTENTS_CONFIG, TABLE_EXTENTS_CONFIG, LEADER_RENDER_CONFIG } from '@/config/viewerConfig';
-import { CAD_DEFAULT_TEXT_HEIGHT } from '@/config/cadConstants';
 import { sampleBulgeSegment } from './bulge';
 import { sampleEllipsePoints, sampleHatchLoop, sampleSplinePoints } from './curveSampling';
 import { getCadTextExtents, pointsToExtents, cleanMText } from '@/utils/textUtils';
+import { isDimensionBlockLocal, transformExtentsCorners, transformPoint } from './transform';
 import {
     isPlaceholderAttributeText,
     isTextLikeEntity,
@@ -49,37 +49,6 @@ export const createBoundsUpdater = () => {
     };
 
     return { update, updateExtents, finish };
-};
-
-// ─── 坐标变换辅助函数 ───────────────────────────────────────────────
-
-/** 对点进行缩放+旋转+平移变换（用于块插入的坐标计算）。 */
-export const transformPoint = (point: Point2D, position: Point2D, scale: { x: number; y: number; z?: number }, rotationDegrees: number): Point2D => {
-    const rotation = rotationDegrees * Math.PI / 180;
-    const sx = point.x * scale.x;
-    const sy = point.y * scale.y;
-    const cos = Math.cos(rotation);
-    const sin = Math.sin(rotation);
-    return {
-        x: position.x + sx * cos - sy * sin,
-        y: position.y + sx * sin + sy * cos,
-    };
-};
-
-/** 将块的包围盒四角变换到世界坐标系后，计算新的轴对齐包围盒。 */
-export const transformExtentsCorners = (
-    extents: { min: Point2D; max: Point2D },
-    basePoint: Point2D,
-    position: Point2D,
-    scale: { x: number; y: number; z?: number },
-    rotationDegrees: number,
-): { min: Point2D; max: Point2D } | null => {
-    return pointsToExtents([
-        { x: extents.min.x - basePoint.x, y: extents.min.y - basePoint.y },
-        { x: extents.max.x - basePoint.x, y: extents.min.y - basePoint.y },
-        { x: extents.min.x - basePoint.x, y: extents.max.y - basePoint.y },
-        { x: extents.max.x - basePoint.x, y: extents.max.y - basePoint.y },
-    ].map(point => transformPoint(point, position, scale, rotationDegrees)));
 };
 
 // ─── 弧段极值计算 ─────────────────────────────────────────────────
@@ -219,16 +188,7 @@ const getDimensionBlockExtents = (ent: AnyEntity, blocks: Record<string, DxfBloc
     if (!block?.extents) return null;
 
     const definitionPoint = ent.definitionPoint;
-    const blockWidth = block.extents.max.x - block.extents.min.x;
-    const blockHeight = block.extents.max.y - block.extents.min.y;
-    const blockSize = Math.max(Math.abs(blockWidth), Math.abs(blockHeight), 1);
-    const blockCenter = {
-        x: (block.extents.min.x + block.extents.max.x) / 2,
-        y: (block.extents.min.y + block.extents.max.y) / 2,
-    };
-    // 判断标注块是否使用局部坐标系（块中心与定义点距离很远）
-    const distance = Math.hypot(blockCenter.x - definitionPoint.x, blockCenter.y - definitionPoint.y);
-    const isLocalBlock = distance > blockSize * EXTENTS_CONFIG.dimensionLocalBlockDistanceFactor;
+    const isLocalBlock = isDimensionBlockLocal(block, definitionPoint, EXTENTS_CONFIG.dimensionLocalBlockDistanceFactor);
 
     if (!isLocalBlock) return block.extents;
 
@@ -662,147 +622,4 @@ export const calculateExtents = (entities: AnyEntity[], blocks: Record<string, D
     const nearbyAnnotations = annotationExtents.filter(ext => isAnnotationExtentsNearGeometry(ext, primaryBounds));
     const nearbyFallback = fallbackExtents.filter(ext => isAnnotationExtentsNearGeometry(ext, primaryBounds));
     return mergeExtentsList(filterOutlierExtents([...stablePrimaryExtents, ...nearbyFallback, ...nearbyAnnotations]));
-};
-
-/**
- * 智能图纸范围计算：在实体数量较多时使用统计方法过滤极端离群值，
- * 通过中位数绝对偏差（MAD）和百分位数来确定"主体部分"。
- */
-export const calculateSmartExtents = (entities: AnyEntity[], blocks: Record<string, DxfBlock>, styles?: Record<string, DxfStyle>): { center: Point2D; width: number; height: number; min: Point2D; max: Point2D } => {
-    const validExtents: { min: Point2D; max: Point2D; center: Point2D }[] = [];
-
-    const hasOtherGeometry = hasNonPointGeometryForExtents(entities, blocks);
-    entities.forEach(ent => {
-        if (!shouldUseEntityForDrawingExtents(ent, hasOtherGeometry, blocks)) return;
-        const ext = getEntityExtents(ent, blocks, styles);
-        if (ext) {
-            const isValid = (v: number) => isFinite(v) && Math.abs(v) < EXTENTS_CONFIG.maxFiniteExtent;
-            if (isValid(ext.min.x) && isValid(ext.max.x) && isValid(ext.min.y) && isValid(ext.max.y)) {
-                validExtents.push({
-                    min: ext.min, max: ext.max,
-                    center: { x: (ext.min.x + ext.max.x) / 2, y: (ext.min.y + ext.max.y) / 2 },
-                });
-                ent.extents = ext;
-            }
-        }
-    });
-
-    if (validExtents.length === 0) {
-        return { center: { x: 0, y: 0 }, width: 0, height: 0, min: { x: 0, y: 0 }, max: { x: 0, y: 0 } };
-    }
-
-    if (validExtents.length <= 2) {
-        return calculateExtents(entities, blocks, styles);
-    }
-
-    // 完整包围盒
-    let fullMinX = Infinity, fullMinY = Infinity, fullMaxX = -Infinity, fullMaxY = -Infinity;
-    validExtents.forEach(ext => {
-        fullMinX = Math.min(fullMinX, ext.min.x);
-        fullMaxX = Math.max(fullMaxX, ext.max.x);
-        fullMinY = Math.min(fullMinY, ext.min.y);
-        fullMaxY = Math.max(fullMaxY, ext.max.y);
-    });
-
-    // 基于统计方法过滤离群值
-    const centersX = validExtents.map(e => e.center.x).sort((a, b) => a - b);
-    const centersY = validExtents.map(e => e.center.y).sort((a, b) => a - b);
-
-    const n = centersX.length;
-    const medianX = n % 2 === 0 ? (centersX[n / 2 - 1] + centersX[n / 2]) / 2 : centersX[Math.floor(n / 2)];
-    const medianY = n % 2 === 0 ? (centersY[n / 2 - 1] + centersY[n / 2]) / 2 : centersY[Math.floor(n / 2)];
-
-    const distToMedian = validExtents
-        .map(e => Math.hypot(e.center.x - medianX, e.center.y - medianY))
-        .sort((a, b) => a - b);
-    const medDist = distToMedian.length % 2 === 0
-        ? (distToMedian[distToMedian.length / 2 - 1] + distToMedian[distToMedian.length / 2]) / 2
-        : distToMedian[Math.floor(distToMedian.length / 2)];
-    const absDev = distToMedian.map(d => Math.abs(d - medDist)).sort((a, b) => a - b);
-    const mad = absDev.length % 2 === 0
-        ? (absDev[absDev.length / 2 - 1] + absDev[absDev.length / 2]) / 2
-        : absDev[Math.floor(absDev.length / 2)];
-    const distThreshold = mad > 0 ? (medDist + mad * 8) : (medDist * 3 + 1);
-
-    // 根据实体数量调整修剪百分比
-    const trim = n < 40 ? 0.15 : 0.05;
-    const lowIdx = Math.max(0, Math.floor(n * trim));
-    const highIdx = Math.min(n - 1, Math.ceil(n * (1 - trim)) - 1);
-
-    const p5X = centersX[lowIdx];
-    const p95X = centersX[highIdx];
-    const p5Y = centersY[lowIdx];
-    const p95Y = centersY[highIdx];
-
-    const pWidth = p95X - p5X;
-    const pHeight = p95Y - p5Y;
-    const fWidth = fullMaxX - fullMinX;
-    const fHeight = fullMaxY - fullMinY;
-
-    let finalMinX = fullMinX, finalMaxX = fullMaxX, finalMinY = fullMinY, finalMaxY = fullMaxY;
-
-    // 使用 MAD 阈值进行稳健估计
-    const robust = (() => {
-        let rMinX = Infinity, rMinY = Infinity, rMaxX = -Infinity, rMaxY = -Infinity;
-        validExtents.forEach(ext => {
-            const d = Math.hypot(ext.center.x - medianX, ext.center.y - medianY);
-            if (d <= distThreshold) {
-                rMinX = Math.min(rMinX, ext.min.x);
-                rMaxX = Math.max(rMaxX, ext.max.x);
-                rMinY = Math.min(rMinY, ext.min.y);
-                rMaxY = Math.max(rMaxY, ext.max.y);
-            }
-        });
-        if (rMinX === Infinity) return null;
-        return { minX: rMinX, maxX: rMaxX, minY: rMinY, maxY: rMaxY };
-    })();
-
-    if (robust) {
-        const rWidth = robust.maxX - robust.minX;
-        const rHeight = robust.maxY - robust.minY;
-        if ((isFinite(rWidth) && rWidth > 0 && fWidth > rWidth * CAD_DEFAULT_TEXT_HEIGHT) ||
-            (isFinite(rHeight) && rHeight > 0 && fHeight > rHeight * CAD_DEFAULT_TEXT_HEIGHT)) {
-            finalMinX = robust.minX;
-            finalMaxX = robust.maxX;
-            finalMinY = robust.minY;
-            finalMaxY = robust.maxY;
-        }
-    }
-
-    // 如果完整范围显著大于百分位范围，则专注于"主体部分"
-    if (fWidth > pWidth * 10 || fHeight > pHeight * 10) {
-        // 过滤掉不在 p5-p95 框内合理距离范围内的实体
-        const marginX = Math.max(pWidth * 0.5, fWidth * 0.01);
-        const marginY = Math.max(pHeight * 0.5, fHeight * 0.01);
-
-        finalMinX = Infinity; finalMaxX = -Infinity;
-        finalMinY = Infinity; finalMaxY = -Infinity;
-
-        validExtents.forEach(ext => {
-            // 如果实体距离核心区域较近，则将其包含在拟合计算中
-            if (ext.center.x >= p5X - marginX && ext.center.x <= p95X + marginX &&
-                ext.center.y >= p5Y - marginY && ext.center.y <= p95Y + marginY) {
-                finalMinX = Math.min(finalMinX, ext.min.x);
-                finalMaxX = Math.max(finalMaxX, ext.max.x);
-                finalMinY = Math.min(finalMinY, ext.min.y);
-                finalMaxY = Math.max(finalMaxY, ext.max.y);
-            }
-        });
-
-        // 安全机制：如果过滤后没有任何内容，则恢复为完整范围
-        if (finalMinX === Infinity) {
-            finalMinX = fullMinX; finalMaxX = fullMaxX;
-            finalMinY = fullMinY; finalMaxY = fullMaxY;
-        }
-    }
-
-    const width = finalMaxX - finalMinX;
-    const height = finalMaxY - finalMinY;
-
-    return {
-        center: { x: finalMinX + width / 2, y: finalMinY + height / 2 },
-        width, height,
-        min: { x: finalMinX, y: finalMinY },
-        max: { x: finalMaxX, y: finalMaxY },
-    };
 };

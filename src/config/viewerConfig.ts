@@ -109,6 +109,9 @@ export const SELECTION_CONFIG = {
   windowSelectionBorder: 'rgba(0, 100, 255, 0.5)',
   crossingSelectionFill: 'rgba(0, 255, 100, 0.1)',
   crossingSelectionBorder: 'rgba(0, 255, 100, 0.5)',
+  maxNestedEntityDepth: 20,
+  infiniteLineHitTestLength: 1000000,
+  splineHitTestSegments: 20,
 };
 
 export const DEFAULT_LAYER: DxfLayer = {

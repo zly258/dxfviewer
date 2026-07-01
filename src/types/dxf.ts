@@ -37,6 +37,14 @@ export interface DxfLineType {
   totalLength: number;
 }
 
+export interface DxfImageDef {
+  handle: string;
+  filePath: string;
+  imageSize?: Point2D;
+  pixelSize?: Point2D;
+  loaded?: boolean;
+  resolutionUnits?: number;
+}
 
 export interface DxfLayout {
   id: string;
@@ -70,6 +78,7 @@ export interface DxfData {
   blocks: Record<string, DxfBlock>;
   styles: Record<string, DxfStyle>;
   lineTypes: Record<string, DxfLineType>;
+  imageDefs?: Record<string, DxfImageDef>;
   offset?: Point2D;
   extents?: { center: Point2D, width: number, height: number, min: Point2D, max: Point2D };
 }

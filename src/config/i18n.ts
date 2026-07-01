@@ -197,6 +197,7 @@ export const ENTITY_TYPE_NAMES: Record<Language, Record<string, string>> = {
     'IMAGE': "IMAGE",
     'WIPEOUT': "WIPEOUT",
     'TOLERANCE': "TOLERANCE",
+    'REGION': "REGION",
   },
   zh: {
     'LINE': "直线 (LINE)",
@@ -225,5 +226,6 @@ export const ENTITY_TYPE_NAMES: Record<Language, Record<string, string>> = {
     'IMAGE': "图像 (IMAGE)",
     'WIPEOUT': "遮罩 (WIPEOUT)",
     'TOLERANCE': "形位公差 (TOLERANCE)",
+    'REGION': "面域 (REGION)",
   }
 };

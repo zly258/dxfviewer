@@ -24,6 +24,42 @@ const normalizeSweepEnd = (start: number, end: number, ccw = true): number => {
   return normalizedEnd;
 };
 
+const distance = (a: Point2D, b: Point2D): number => Math.hypot(a.x - b.x, a.y - b.y);
+
+const median = (values: number[]): number => {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+};
+
+const removeIsolatedHatchOutliers = (points: Point2D[]): Point2D[] => {
+  const finitePoints = points.filter(isFinitePoint);
+  if (finitePoints.length < 6) return finitePoints;
+
+  const segmentLengths: number[] = [];
+  for (let index = 0; index < finitePoints.length; index++) {
+    const current = finitePoints[index];
+    const next = finitePoints[(index + 1) % finitePoints.length];
+    const length = distance(current, next);
+    if (Number.isFinite(length) && length > 1e-9) segmentLengths.push(length);
+  }
+
+  const typicalLength = median(segmentLengths);
+  if (!Number.isFinite(typicalLength) || typicalLength <= 1e-9) return finitePoints;
+
+  return finitePoints.filter((current, index) => {
+    const previous = finitePoints[(index - 1 + finitePoints.length) % finitePoints.length];
+    const next = finitePoints[(index + 1) % finitePoints.length];
+    const prevDistance = distance(previous, current);
+    const nextDistance = distance(current, next);
+    const bridgeDistance = distance(previous, next);
+    const isLongSpike = prevDistance > typicalLength * 20 && nextDistance > typicalLength * 20;
+    const bridgeStaysLocal = bridgeDistance < Math.max(prevDistance, nextDistance) * 0.35;
+    return !(isLongSpike && bridgeStaysLocal);
+  });
+};
+
 export function sampleArcPoints(
   center: Point2D,
   radius: number,
@@ -205,7 +241,7 @@ export function sampleHatchLoop(loop: HatchLoop): Point2D[] {
       if (i === 0) result.push(...sampled);
       else result.push(...sampled.slice(1));
     }
-    return result;
+    return removeIsolatedHatchOutliers(result);
   }
 
   const result: Point2D[] = [];
@@ -215,5 +251,5 @@ export function sampleHatchLoop(loop: HatchLoop): Point2D[] {
     if (index === 0 || result.length === 0) result.push(...points);
     else result.push(...points.slice(1));
   });
-  return result;
+  return removeIsolatedHatchOutliers(result);
 }

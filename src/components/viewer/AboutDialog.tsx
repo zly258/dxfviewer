@@ -1,5 +1,7 @@
 ﻿import { Language } from '@/config/i18n';
 
+import ViewerIcon from '@/components/viewer/ViewerIcon';
+
 interface AboutDialogProps {
   lang: Language;
   onClose: () => void;
@@ -11,7 +13,9 @@ function AboutDialog({ lang, onClose }: AboutDialogProps) {
       <div className="about-modal-content" onClick={(event) => event.stopPropagation()}>
         <div className="about-modal-header">
           <span className="about-modal-title">{lang === 'zh' ? '关于 DXF Viewer' : 'About DXF Viewer'}</span>
-          <span className="about-modal-close" onClick={onClose}>×</span>
+          <span className="about-modal-close" onClick={onClose} aria-label={lang === 'zh' ? '关闭' : 'Close'}>
+            <ViewerIcon name="close" />
+          </span>
         </div>
         <div className="about-modal-body">
           <div className="about-logo">CAD</div>
