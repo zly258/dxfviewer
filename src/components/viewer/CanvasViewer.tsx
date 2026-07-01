@@ -2,7 +2,7 @@
 import { AnyEntity, ViewPort, DxfLayer, DxfBlock, DxfStyle, DxfLineType, Point2D, CanvasTheme, DrawingColorMode } from '@/types';
 import { renderEntitiesToCanvas, hitTest, hitTestBox } from '@/renderer/services/canvasRenderService';
 import { Language } from '@/config/i18n';
-import { SELECTION_CONFIG, SHORTCUT_CONFIG, VIEWER_DEFAULTS } from '@/config/viewerConfig';
+import { CANVAS_THEME_COLORS, SELECTION_CONFIG, SHORTCUT_CONFIG, VIEWER_DEFAULTS } from '@/config/viewerConfig';
 
 /**
  * Canvas 渲染核心组件
@@ -215,7 +215,7 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
 
         } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
-            ctx.fillStyle = theme === 'white' ? '#FFFFFF' : '#212121';
+            ctx.fillStyle = CANVAS_THEME_COLORS[theme];
             ctx.fillRect(0, 0, rect.width, rect.height);
             onRenderError?.(message);
         }
@@ -546,7 +546,7 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
 
   // 根据主题计算画布背景色，并通过内联样式写入容器，
   // 确保样式兜底值和主题切换瞬间不会出现黑色闪烁。
-  const canvasBgColor = theme === 'white' ? '#FFFFFF' : '#212121';
+  const canvasBgColor = CANVAS_THEME_COLORS[theme];
 
   return (
     <div

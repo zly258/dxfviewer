@@ -2,6 +2,7 @@ import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { AnyEntity, EntityType, DxfLayer } from '@/types';
 import { getAutoCadColor } from '@/utils/colorUtils';
 import { Language, UI_TRANSLATIONS, ENTITY_TYPE_NAMES } from '@/config/i18n';
+import ViewerIcon from '@/components/viewer/ViewerIcon';
 
 interface LayerPanelProps {
   layers: Record<string, DxfLayer>;
@@ -171,48 +172,10 @@ const LayerPanel: React.FC<LayerPanelProps> = ({
   // 获取图层颜色十六进制
   const getLayerColorHex = (layer: DxfLayer) => getAutoCadColor(layer.color);
 
-  const CheckboxIcon = ({ checked }: { checked: boolean }) => (
-    <svg viewBox="0 0 24 24" className="layer-checkbox-icon" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-      {checked ? (
-        <>
-          <rect x="3" y="3" width="18" height="18" rx="3" fill="var(--accent-blue)" stroke="var(--accent-blue)"></rect>
-          <polyline points="7 12 10 15 17 8" stroke="#ffffff" strokeWidth="3"></polyline>
-        </>
-      ) : (
-        <rect x="3" y="3" width="18" height="18" rx="3" stroke="var(--border-strong)"></rect>
-      )}
-    </svg>
-  );
-
-  const ChevronIcon = ({ expanded }: { expanded: boolean }) => (
-    <svg 
-      className={`chevron ${expanded ? 'expanded' : ''}`} 
-      viewBox="0 0 24 24" 
-      fill="none" 
-      stroke="currentColor" 
-      strokeWidth="3" 
-      strokeLinecap="round" 
-      strokeLinejoin="round"
-    >
-      <polyline points="9 18 15 12 9 6"></polyline>
-    </svg>
-  );
-
-  // 排序图标
-  const SortIcon = ({ active, dir }: { active: boolean; dir: SortDir }) => (
-    <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"
-      style={{ opacity: active ? 1 : 0.45, transition: 'opacity 0.15s' }}>
-      {dir === 'asc' || !active ? (
-        <>
-          <polyline points="4 10 8 6 12 10" />
-        </>
-      ) : (
-        <>
-          <polyline points="4 6 8 10 12 6" />
-        </>
-      )}
-    </svg>
-  );
+  const renderSortIndicator = (key: SortKey) => {
+    if (sortKey !== key) return null;
+    return <ViewerIcon className="layer-tool-sort-indicator" name={sortDir === 'asc' ? 'sortAsc' : 'sortDesc'} />;
+  };
 
   const layerCount = Object.keys(layers).length;
   const filteredCount = flatList.filter(i => i.type === 'layer').length;
@@ -229,10 +192,7 @@ const LayerPanel: React.FC<LayerPanelProps> = ({
       {/* 搜索 & 工具栏 */}
       <div className="layer-toolbar">
         <div className="layer-search-box">
-          <svg className="layer-search-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="6.5" cy="6.5" r="4" />
-            <line x1="10" y1="10" x2="13.5" y2="13.5" />
-          </svg>
+          <ViewerIcon className="layer-search-icon" name="search" />
           <input
             ref={searchInputRef}
             className="layer-search-input"
@@ -249,7 +209,7 @@ const LayerPanel: React.FC<LayerPanelProps> = ({
               tabIndex={-1}
               title="Clear"
             >
-              ×
+              <ViewerIcon name="close" />
             </button>
           )}
         </div>
@@ -261,11 +221,7 @@ const LayerPanel: React.FC<LayerPanelProps> = ({
             title={t.layerFilterEmpty || 'Hide empty layers'}
             onClick={() => setHideEmptyLayers(v => !v)}
           >
-            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="2" y="4" width="5" height="8" rx="1" />
-              <rect x="9" y="4" width="5" height="8" rx="1" opacity={hideEmptyLayers ? "0.35" : "1"} />
-              {hideEmptyLayers && <line x1="10" y1="3" x2="14" y2="13" strokeWidth="1.5" stroke="currentColor" />}
-            </svg>
+            <ViewerIcon name="filterEmpty" />
           </button>
 
           {/* 按名称排序 */}
@@ -274,12 +230,8 @@ const LayerPanel: React.FC<LayerPanelProps> = ({
             title={t.layerSortName || 'Sort by name'}
             onClick={() => handleSortToggle('name')}
           >
-            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="3" y1="4" x2="9" y2="4" />
-              <line x1="3" y1="8" x2="7" y2="8" />
-              <line x1="3" y1="12" x2="5.5" y2="12" />
-              {sortKey === 'name' && <SortIcon active={true} dir={sortDir} />}
-            </svg>
+            <ViewerIcon name="sortName" />
+            {renderSortIndicator('name')}
           </button>
 
           {/* 按数量排序 */}
@@ -288,12 +240,8 @@ const LayerPanel: React.FC<LayerPanelProps> = ({
             title={t.layerSortCount || 'Sort by count'}
             onClick={() => handleSortToggle('count')}
           >
-            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="3" y1="4" x2="13" y2="4" />
-              <line x1="3" y1="8" x2="10" y2="8" />
-              <line x1="3" y1="12" x2="7" y2="12" />
-              {sortKey === 'count' && <SortIcon active={true} dir={sortDir} />}
-            </svg>
+            <ViewerIcon name="sortCount" />
+            {renderSortIndicator('count')}
           </button>
         </div>
       </div>
@@ -322,7 +270,7 @@ const LayerPanel: React.FC<LayerPanelProps> = ({
                                 className={`layer-row ${isHidden ? 'layer-hidden' : ''}`}
                                 onClick={() => toggleLayer(item.name)}
                             >
-                                <ChevronIcon expanded={item.expanded} />
+                                <ViewerIcon className={`chevron ${item.expanded ? 'expanded' : ''}`} name="chevronRight" />
                                 <div 
                                     className="layer-visibility-toggle"
                                     onClick={(e) => {
@@ -331,7 +279,7 @@ const LayerPanel: React.FC<LayerPanelProps> = ({
                                     }}
                                     title={isHidden ? (lang === 'zh' ? '显示图层' : 'Show layer') : (lang === 'zh' ? '隐藏图层' : 'Hide layer')}
                                 >
-                                    <CheckboxIcon checked={!isHidden} />
+                                    <ViewerIcon className="layer-checkbox-icon" name={isHidden ? 'checkboxEmpty' : 'checkboxChecked'} />
                                 </div>
                                 <div className="layer-icon" style={{ backgroundColor: colorHex }}></div>
                                 <span className="layer-name">{item.name}</span>

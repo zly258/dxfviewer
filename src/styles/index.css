@@ -33,6 +33,12 @@
   --radius-large: 8px;
 
   --toolbar-height: 44px;
+  --icon-size: 18px;
+  --icon-size-small: 14px;
+  --icon-stroke: 1.9;
+  --icon-button-size: 30px;
+  --icon-button-gap: 2px;
+  --icon-button-radius: var(--radius-small);
   --layer-panel-width: 270px;
   --properties-width: 330px;
   --status-bar-height: 28px;
@@ -97,6 +103,32 @@ textarea {
 
 button {
   color: inherit;
+}
+
+svg {
+  display: block;
+}
+
+.toolbar-icon svg,
+.text-search-icon,
+.text-search-nav svg,
+.layer-search-icon,
+.layer-tool-btn svg,
+.tab-scroll-button svg,
+.mobile-tool-button svg,
+.mobile-side-close svg,
+.mobile-view-item svg,
+.tab-close svg,
+.toast-close svg,
+.about-modal-close svg,
+.text-search-close svg,
+.layer-search-clear svg,
+.layer-checkbox-icon,
+.chevron {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 button:focus-visible,
@@ -167,8 +199,8 @@ textarea:focus-visible {
   display: flex;
   align-items: center;
   flex-shrink: 0;
-  gap: 3px;
-  padding: 0 8px;
+  gap: var(--icon-button-gap);
+  padding: 0 6px;
   background-color: var(--bg-secondary);
   box-sizing: border-box;
   user-select: none;
@@ -176,27 +208,27 @@ textarea:focus-visible {
 }
 
 .toolbar-button {
-  height: 34px;
-  min-width: 36px;
+  height: var(--icon-button-size);
+  min-width: var(--icon-button-size);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 0 9px;
+  gap: 4px;
+  padding: 0 7px;
   border: 1px solid transparent;
   border-radius: var(--radius-small);
   background: transparent;
   color: var(--text-secondary);
   font-family: inherit;
   font-size: 13px;
-  line-height: 32px;
+  line-height: calc(var(--icon-button-size) - 2px);
   cursor: pointer;
   box-sizing: border-box;
   transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
 .toolbar-icon-button {
-  width: 36px;
+  width: var(--icon-button-size);
   padding: 0;
 }
 
@@ -222,8 +254,8 @@ textarea:focus-visible {
 }
 
 .toolbar-icon {
-  width: 22px;
-  height: 22px;
+  width: var(--icon-size);
+  height: var(--icon-size);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -231,25 +263,20 @@ textarea:focus-visible {
 }
 
 .toolbar-icon svg {
-  width: 22px;
-  height: 22px;
-  display: block;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.9;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+  width: var(--icon-size);
+  height: var(--icon-size);
+  stroke-width: var(--icon-stroke);
 }
 
 .toolbar-menu {
   position: relative;
-  height: 36px;
+  height: var(--icon-button-size);
 }
 
 .toolbar-separator {
   width: 1px;
-  height: 24px;
-  margin: 0 7px;
+  height: 22px;
+  margin: 0 4px;
   background-color: var(--border-color);
   flex-shrink: 0;
 }
@@ -407,6 +434,18 @@ textarea:focus-visible {
   border-left: 1px solid var(--border-color);
 }
 
+.side-panel-shell {
+  display: flex;
+  flex-shrink: 0;
+  height: 100%;
+}
+
+.side-panel-frame {
+  flex-shrink: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
 .layer-panel-header,
 .properties-header {
   height: 34px;
@@ -502,6 +541,7 @@ textarea:focus-visible {
   height: 12px;
   margin-right: 5px;
   color: var(--text-secondary);
+  stroke-width: 3;
   transition: transform 0.12s ease;
 }
 
@@ -573,6 +613,51 @@ textarea:focus-visible {
   word-break: break-word;
 }
 
+.property-muted {
+  color: var(--text-secondary);
+}
+
+.property-type-value {
+  color: var(--accent-blue);
+  font-weight: 700;
+}
+
+.property-color-index {
+  color: var(--text-secondary);
+  font-size: 10px;
+}
+
+.property-section-row {
+  background-color: var(--bg-secondary);
+}
+
+.property-section-cell {
+  padding: 4px 8px;
+  color: var(--text-bright);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.property-empty-state {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  color: var(--text-muted);
+}
+
+.property-empty-title {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.property-empty-subtitle {
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
 .color-preview-container {
   display: flex;
   align-items: center;
@@ -596,8 +681,7 @@ textarea:focus-visible {
   touch-action: none;
   overscroll-behavior: none;
   cursor: default !important;
-  /* 默认白色，避免浅色主题下 --canvas-bg 未及时设置时出现黑色闪烁。
-   深色主题由 CanvasViewer 通过 inline style 覆盖为 #212121。 */
+  /* 默认白色，避免浅色主题下 --canvas-bg 未及时设置时出现黑色闪烁。 */
   background-color: var(--canvas-bg, #ffffff);
 }
 
@@ -878,8 +962,6 @@ textarea:focus-visible {
   border-radius: var(--radius-small);
   color: var(--text-secondary);
   cursor: pointer;
-  font-size: 18px;
-  line-height: 1;
 }
 
 .toast-close:hover {
@@ -988,7 +1070,7 @@ textarea:focus-visible {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background-color: var(--bg-primary, #f0f0f0);
+  background-color: var(--bg-primary);
   overflow: hidden;
 }
 
@@ -996,9 +1078,9 @@ textarea:focus-visible {
   display: flex;
   align-items: center;
   min-height: 32px;
-  background-color: var(--bg-secondary, #f3f3f3);
-  color: var(--text-primary, #333333);
-  border-bottom: 1px solid var(--border-color, #cccccc);
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-color);
   user-select: none;
   white-space: nowrap;
   position: relative;
@@ -1018,8 +1100,8 @@ textarea:focus-visible {
 }
 
 .theme-dark .tabs-container {
-  background-color: var(--bg-secondary, #252526);
-  color: var(--text-primary, #cccccc);
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
 }
 
 .tabs-scroll-viewport::-webkit-scrollbar {
@@ -1033,8 +1115,8 @@ textarea:focus-visible {
   max-width: 220px;
   height: 32px;
   padding: 0 10px 0 12px;
-  background-color: var(--bg-tertiary, #eeeeee);
-  border-right: 1px solid var(--border-color, #cccccc);
+  background-color: var(--bg-tertiary);
+  border-right: 1px solid var(--border-color);
   border-top: 2px solid transparent;
   box-sizing: border-box;
   cursor: pointer;
@@ -1042,26 +1124,26 @@ textarea:focus-visible {
 }
 
 .tab-item:hover {
-  background-color: var(--bg-hover, #e5e5e5);
+  background-color: var(--bg-hover);
 }
 
 .tab-item.active {
-  background-color: var(--bg-primary, #ffffff);
-  color: var(--text-bright, #000000);
-  border-top-color: var(--accent-blue, #007acc);
+  background-color: var(--bg-primary);
+  color: var(--text-bright);
+  border-top-color: var(--accent-blue);
 }
 
 .theme-dark .tab-item {
-  background-color: var(--bg-tertiary, #2d2d2d);
+  background-color: var(--bg-tertiary);
 }
 
 .theme-dark .tab-item:hover {
-  background-color: var(--bg-hover, #37373d);
+  background-color: var(--bg-hover);
 }
 
 .theme-dark .tab-item.active {
-  background-color: var(--bg-primary, #1e1e1e);
-  color: var(--text-bright, #ffffff);
+  background-color: var(--bg-primary);
+  color: var(--text-bright);
 }
 
 .tab-name {
@@ -1098,16 +1180,16 @@ textarea:focus-visible {
   position: fixed;
   min-width: 148px;
   padding: 4px 0;
-  background-color: var(--bg-primary, #ffffff);
-  color: var(--text-primary, #333333);
-  border: 1px solid var(--border-color, #cccccc);
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
   z-index: 3000;
 }
 
 .theme-dark .tab-context-menu {
-  background-color: var(--bg-secondary, #252526);
-  color: var(--text-primary, #cccccc);
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.42);
 }
 
@@ -1125,14 +1207,14 @@ textarea:focus-visible {
 }
 
 .tab-context-menu button:hover {
-  background-color: var(--accent-blue, #007acc);
+  background-color: var(--accent-blue);
   color: #ffffff;
 }
 
 .tab-context-divider {
   height: 1px;
   margin: 4px 0;
-  background-color: var(--border-color, #cccccc);
+  background-color: var(--border-color);
 }
 
 .tabs-content {
@@ -1168,12 +1250,12 @@ textarea:focus-visible {
 }
 
 .tab-scroll-button {
-  width: 26px;
+  width: 24px;
   height: 32px;
   border: 0;
-  border-right: 1px solid var(--border-color, #cccccc);
-  background: var(--bg-secondary, #f3f3f3);
-  color: var(--text-secondary, #666666);
+  border-right: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
   cursor: pointer;
   flex-shrink: 0;
   display: flex;
@@ -1183,22 +1265,28 @@ textarea:focus-visible {
 
 .tab-scroll-button:last-child {
   border-right: 0;
-  border-left: 1px solid var(--border-color, #cccccc);
+  border-left: 1px solid var(--border-color);
+}
+
+.tab-scroll-button svg {
+  width: var(--icon-size-small);
+  height: var(--icon-size-small);
+  stroke-width: 2.2;
 }
 
 .tab-scroll-button:hover {
-  background: var(--bg-hover, #e5e5e5);
-  color: var(--text-primary, #333333);
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 .theme-dark .tab-scroll-button {
-  background: var(--bg-secondary, #252526);
-  color: var(--text-secondary, #969696);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
 }
 
 .theme-dark .tab-scroll-button:hover {
-  background: var(--bg-hover, #37373d);
-  color: var(--text-bright, #ffffff);
+  background: var(--bg-hover);
+  color: var(--text-bright);
 }
 
 .menu-tab-strip .tabs-container {
@@ -1323,10 +1411,13 @@ textarea:focus-visible {
 }
 
 .about-modal-close {
-  font-size: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
   color: var(--text-secondary);
   cursor: pointer;
-  line-height: 1;
   transition: color 0.15s ease;
 }
 
@@ -1349,7 +1440,7 @@ textarea:focus-visible {
   width: 60px;
   height: 60px;
   border-radius: 14px;
-  background: linear-gradient(135deg, #1677ff, #0050b3);
+  background: linear-gradient(135deg, var(--accent-blue), var(--accent-blue-hover));
   color: #ffffff;
   font-weight: 800;
   font-size: 18px;
@@ -1511,12 +1602,11 @@ textarea:focus-visible {
 }
 
 .text-search-icon {
-  width: 16px;
+  width: var(--icon-size-small);
+  height: var(--icon-size-small);
   flex-shrink: 0;
   color: var(--text-secondary);
-  font-size: 15px;
-  line-height: 1;
-  text-align: center;
+  stroke-width: var(--icon-stroke);
 }
 
 .text-search-input {
@@ -1550,8 +1640,8 @@ textarea:focus-visible {
 
 .text-search-nav,
 .text-search-close {
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
@@ -1569,11 +1659,6 @@ textarea:focus-visible {
   background-color: var(--bg-hover);
   border-color: var(--border-color);
   color: var(--text-bright);
-}
-
-.text-search-close {
-  font-size: 17px;
-  line-height: 22px;
 }
 
 .text-search-nav:disabled {
@@ -1845,14 +1930,9 @@ textarea:focus-visible {
   .mobile-tool-button svg,
   .mobile-side-close svg,
   .mobile-view-item svg {
-    display: block;
-    width: 22px;
-    height: 22px;
-    fill: none;
-    stroke: currentColor;
-    stroke-width: 1.9;
-    stroke-linecap: round;
-    stroke-linejoin: round;
+    width: var(--icon-size);
+    height: var(--icon-size);
+    stroke-width: var(--icon-stroke);
   }
 
   .mobile-tool-button:active:not(:disabled),
@@ -2086,8 +2166,8 @@ textarea:focus-visible {
 .layer-toolbar {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 5px 8px;
+  gap: var(--icon-button-gap);
+  padding: 5px 6px;
   border-bottom: 1px solid var(--border-color);
   background-color: var(--bg-secondary);
   flex-shrink: 0;
@@ -2099,8 +2179,8 @@ textarea:focus-visible {
   height: 26px;
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 0 6px;
+  gap: 4px;
+  padding: 0 5px;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-small);
   background-color: var(--bg-primary);
@@ -2118,10 +2198,11 @@ textarea:focus-visible {
 }
 
 .layer-search-icon {
-  width: 12px;
-  height: 12px;
+  width: var(--icon-size-small);
+  height: var(--icon-size-small);
   flex-shrink: 0;
   color: var(--text-muted);
+  stroke-width: var(--icon-stroke);
 }
 
 .layer-search-input {
@@ -2142,8 +2223,8 @@ textarea:focus-visible {
 
 .layer-search-clear {
   flex-shrink: 0;
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2152,10 +2233,25 @@ textarea:focus-visible {
   border-radius: 50%;
   background: var(--bg-tertiary);
   color: var(--text-muted);
-  font-size: 13px;
-  line-height: 1;
   cursor: pointer;
   transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+.text-search-nav svg {
+  width: var(--icon-size-small);
+  height: var(--icon-size-small);
+  stroke-width: 2.2;
+}
+
+.tab-close svg,
+.toast-close svg,
+.about-modal-close svg,
+.text-search-close svg,
+.layer-search-clear svg {
+  width: var(--icon-size-small);
+  height: var(--icon-size-small);
+  flex-shrink: 0;
+  stroke-width: 2.3;
 }
 
 .layer-search-clear:hover {
@@ -2166,24 +2262,40 @@ textarea:focus-visible {
 .layer-toolbar-actions {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: var(--icon-button-gap);
   flex-shrink: 0;
 }
 
 .layer-tool-btn {
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  position: relative;
   padding: 0;
   border: 1px solid transparent;
-  border-radius: var(--radius-small);
+  border-radius: var(--icon-button-radius);
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
   transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
   flex-shrink: 0;
+}
+
+.layer-tool-btn svg {
+  width: var(--icon-size-small);
+  height: var(--icon-size-small);
+  stroke-width: var(--icon-stroke);
+}
+
+.layer-tool-sort-indicator {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  width: 9px !important;
+  height: 9px !important;
+  stroke-width: 2.2;
 }
 
 .layer-tool-btn:hover {

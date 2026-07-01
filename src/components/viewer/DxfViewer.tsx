@@ -12,7 +12,7 @@ import { useIsMobile } from '@/hooks/useMediaQuery';
 import { parseDxf } from '@/core/parser/dxfParser';
 import { calculateExtents } from '@/core/geometry/extents';
 import { AnyEntity, ViewPort, DxfLayer, DxfBlock, EntityType, DxfStyle, DxfLineType, Point2D, CanvasTheme, DrawingColorMode, UiTheme, DxfLayout, ResolvedUiTheme } from '@/types';
-import { DEFAULT_LAYER, DEFAULT_VIEWPORT, LAYOUT_CONFIG, SHORTCUT_CONFIG, VIEWER_DEFAULTS, ZOOM_CONFIG, canvasThemeFromUiTheme, getSystemUiTheme, resolveUiTheme } from '@/config/viewerConfig';
+import { CANVAS_THEME_COLORS, DEFAULT_LAYER, DEFAULT_VIEWPORT, LAYOUT_CONFIG, SHORTCUT_CONFIG, VIEWER_DEFAULTS, ZOOM_CONFIG, canvasThemeFromUiTheme, getSystemUiTheme, resolveUiTheme } from '@/config/viewerConfig';
 import { Language } from '@/config/i18n';
 import { decodeDxfBuffer } from '@/core/parser/utils/textDecoder';
 import { readViewerUiSettings, ViewerUiSettings, writeViewerUiSettings } from './viewerUiSettings';
@@ -238,7 +238,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
   // 画布背景跟随最终 UI 主题：浅色 UI → 白底，深色 UI → 黑底。
   // 不再单独暴露 canvasTheme，避免 UI 主题与画布背景不一致。
   const canvasTheme: CanvasTheme = canvasThemeFromUiTheme(effectiveUiTheme);
-  const canvasBgColor = canvasTheme === 'white' ? '#FFFFFF' : '#212121';
+  const canvasBgColor = CANVAS_THEME_COLORS[canvasTheme];
 
   const drawingColorMode = controlledDrawingColorMode || internalDrawingColorMode;
   const handleSetDrawingColorMode = useCallback((newMode: DrawingColorMode) => {
@@ -720,8 +720,8 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
 
   // PC 模式下带动态宽度的面板包裹器
   const layerPanelWrapped = !isMobile && showLayerPanel ? (
-    <div style={{ display: 'flex', flexShrink: 0, height: '100%' }}>
-      <div style={{ width: layerPanelWidth, flexShrink: 0, height: '100%', overflow: 'hidden' }}>
+    <div className="side-panel-shell">
+      <div className="side-panel-frame" style={{ width: layerPanelWidth }}>
         {layerPanelContent}
       </div>
       <div
@@ -733,13 +733,13 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
   ) : null;
 
   const propertiesPanelWrapped = !isMobile && showProperties ? (
-    <div style={{ display: 'flex', flexShrink: 0, height: '100%' }}>
+    <div className="side-panel-shell">
       <div
         className="panel-resize-handle panel-resize-handle-left"
         onMouseDown={startResizePropertiesPanel}
         title="Drag to resize"
       />
-      <div style={{ width: propertiesWidth, flexShrink: 0, height: '100%', overflow: 'hidden' }}>
+      <div className="side-panel-frame" style={{ width: propertiesWidth }}>
         {propertiesContent}
       </div>
     </div>

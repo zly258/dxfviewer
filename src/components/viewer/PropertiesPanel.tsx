@@ -55,13 +55,13 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, styles = {}
    * 支持随层、随块以及索引颜色的十六进制预览。
    */
   const renderColorValue = (color: number | undefined) => {
-    if (color === CAD_BY_LAYER_COLOR) return <span style={{ color: 'var(--text-secondary)' }}>随层 (ByLayer)</span>;
-    if (color === CAD_BY_BLOCK_COLOR) return <span style={{ color: 'var(--text-secondary)' }}>随块 (ByBlock)</span>;
+    if (color === CAD_BY_LAYER_COLOR) return <span className="property-muted">随层 (ByLayer)</span>;
+    if (color === CAD_BY_BLOCK_COLOR) return <span className="property-muted">随块 (ByBlock)</span>;
     
     const hex = getAutoCadColor(color || CAD_DEFAULT_LAYER_COLOR);
     return (
       <div className="color-preview-container">
-        <span style={{ color: 'var(--text-secondary)', fontSize: '10px' }}>({color})</span>
+        <span className="property-color-index">({color})</span>
         <span className="color-hex">{hex}</span>
         <div 
           className="color-swatch" 
@@ -75,9 +75,9 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, styles = {}
    * 渲染线宽
    */
   const renderLineweight = (lw: number | undefined) => {
-    if (lw === undefined || lw === -1) return <span style={{ color: 'var(--text-secondary)' }}>随层 (ByLayer)</span>;
-    if (lw === -2) return <span style={{ color: 'var(--text-secondary)' }}>随块 (ByBlock)</span>;
-    if (lw === -3) return <span style={{ color: 'var(--text-secondary)' }}>默认 (Default)</span>;
+    if (lw === undefined || lw === -1) return <span className="property-muted">随层 (ByLayer)</span>;
+    if (lw === -2) return <span className="property-muted">随块 (ByBlock)</span>;
+    if (lw === -3) return <span className="property-muted">默认 (Default)</span>;
     if (lw === 0) return "0.00 mm";
     return `${(lw / 100).toFixed(2)} mm`;
   };
@@ -98,7 +98,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, styles = {}
       const typeDisplay = entNames[ent.type] || ent.type;
       
       const commonRows = [
-          renderPropertyRow("Type", <span style={{ color: 'var(--accent-blue)', fontWeight: 'bold' }}>{typeDisplay}</span>),
+          renderPropertyRow("Type", <span className="property-type-value">{typeDisplay}</span>),
           renderPropertyRow("Handle", formatHandle(ent.handle)),
           renderPropertyRow("Layer", ent.layer),
           renderPropertyRow("Current Space", ent.layoutName || (ent.inPaperSpace ? 'Layout' : 'Model')),
@@ -195,8 +195,8 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, styles = {}
                    // 显示单元格内容摘要
                    if (table.cells && table.cells.length > 0) {
                        specificRows.push(
-                           <tr key="cells-header" className="property-row" style={{ backgroundColor: 'var(--bg-secondary)' }}>
-                               <td colSpan={2} style={{ padding: '4px 8px', fontSize: '11px', fontWeight: 'bold' }}>
+                           <tr key="cells-header" className="property-row property-section-row">
+                               <td colSpan={2} className="property-section-cell">
                                    {t.cellContents || (lang === 'zh' ? '单元格内容' : 'Cell Contents')}
                                </td>
                            </tr>
@@ -295,15 +295,15 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, styles = {}
         </div>
         <div className="properties-content">
           {entities.length === 0 ? (
-             <div className="empty-state" style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#999' }}>
+             <div className="empty-state property-empty-state">
                {t.noSelection || "未选择对象"}
              </div>
           ) : entities.length > 1 ? (
-             <div className="empty-state" style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-               <div style={{ fontWeight: 500, color: '#6b7280' }}>
+             <div className="empty-state property-empty-state">
+               <div className="property-empty-title">
                  {t.selectedCount ? t.selectedCount.replace('{count}', entities.length.toString()) : `已选择 ${entities.length} 个对象`}
                </div>
-               <div style={{ fontSize: '12px', marginTop: '4px', color: '#999' }}>
+               <div className="property-empty-subtitle">
                  {t.selectSingle || "选择单个对象以查看详细属性"}
                </div>
              </div>

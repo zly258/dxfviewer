@@ -2,6 +2,7 @@
 import { AnyEntity, DxfBlock } from '@/types';
 import { ENTITY_TYPE_NAMES, Language } from '@/config/i18n';
 import { searchEntitiesByText, TextSearchMatch } from '@/utils/entityTextSearch';
+import ViewerIcon from '@/components/viewer/ViewerIcon';
 
 interface DxfTextSearchPanelProps {
   entities: AnyEntity[];
@@ -95,7 +96,7 @@ const DxfTextSearchPanel: React.FC<DxfTextSearchPanelProps> = ({ entities, block
   return (
     <div className="text-search-panel">
       <div className="text-search-row">
-        <span className="text-search-icon" aria-hidden="true">⌕</span>
+        <ViewerIcon className="text-search-icon" name="search" aria-hidden="true" />
         <input
           ref={inputRef}
           type="search"
@@ -111,9 +112,15 @@ const DxfTextSearchPanel: React.FC<DxfTextSearchPanelProps> = ({ entities, block
             {matches.length > 0 ? t.count(activeIndex + 1, matches.length) : '0/0'}
           </span>
         )}
-        <button type="button" className="text-search-nav" onClick={locatePrevious} disabled={matches.length === 0} title={t.previous} aria-label={t.previous}>↑</button>
-        <button type="button" className="text-search-nav" onClick={locateNext} disabled={matches.length === 0} title={t.next} aria-label={t.next}>↓</button>
-        <button type="button" className="text-search-close" onClick={onClose} title={t.close} aria-label={t.close}>×</button>
+        <button type="button" className="text-search-nav" onClick={locatePrevious} disabled={matches.length === 0} title={t.previous} aria-label={t.previous}>
+          <ViewerIcon name="chevronUp" />
+        </button>
+        <button type="button" className="text-search-nav" onClick={locateNext} disabled={matches.length === 0} title={t.next} aria-label={t.next}>
+          <ViewerIcon name="chevronDown" />
+        </button>
+        <button type="button" className="text-search-close" onClick={onClose} title={t.close} aria-label={t.close}>
+          <ViewerIcon name="close" />
+        </button>
       </div>
 
       {hasQuery && (

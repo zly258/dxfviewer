@@ -1,6 +1,7 @@
 ﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
 import DxfViewer from '@/components/viewer/DxfViewer';
-import { getSystemUiTheme, resolveUiTheme, SHORTCUT_CONFIG, VIEWER_DEFAULTS } from '@/config/viewerConfig';
+import ViewerIcon from '@/components/viewer/ViewerIcon';
+import { CANVAS_THEME_COLORS, getSystemUiTheme, resolveUiTheme, SHORTCUT_CONFIG, VIEWER_DEFAULTS } from '@/config/viewerConfig';
 import { DxfTabSource } from '@/components/workspace/DxfTabs';
 import { useDxfTabs } from '@/components/workspace/DxfTabs';
 import { UiTheme, DrawingColorMode, ResolvedUiTheme } from '@/types';
@@ -178,7 +179,9 @@ function DxfWorkspace({ editor = true, initialFiles = [] }: DxfWorkspaceProps) {
   const tabStrip = tabs.length > 0 ? (
     <div className={`tabs-container ${tabDensityClass}`}>
       {tabs.length > 8 && (
-        <button type="button" className="tab-scroll-button" onClick={() => scrollTabs(-240)} title="向左滚动标签">‹</button>
+        <button type="button" className="tab-scroll-button" onClick={() => scrollTabs(-240)} title="向左滚动标签" aria-label="向左滚动标签">
+          <ViewerIcon name="chevronLeft" />
+        </button>
       )}
       <div className="tabs-scroll-viewport" ref={tabsContainerRef} onWheel={handleTabScroll}>
         {tabs.map(tab => (
@@ -191,12 +194,18 @@ function DxfWorkspace({ editor = true, initialFiles = [] }: DxfWorkspaceProps) {
             title={tab.name}
           >
             <span className="tab-name">{tab.name}</span>
-            {editor && <span className="tab-close" onClick={(event) => handleCloseTab(event, tab.id)}>×</span>}
+            {editor && (
+              <span className="tab-close" onClick={(event) => handleCloseTab(event, tab.id)} aria-label="关闭标签">
+                <ViewerIcon name="close" />
+              </span>
+            )}
           </div>
         ))}
       </div>
       {tabs.length > 8 && (
-        <button type="button" className="tab-scroll-button" onClick={() => scrollTabs(240)} title="向右滚动标签">›</button>
+        <button type="button" className="tab-scroll-button" onClick={() => scrollTabs(240)} title="向右滚动标签" aria-label="向右滚动标签">
+          <ViewerIcon name="chevronRight" />
+        </button>
       )}
 
       {tabContextMenu && (
@@ -224,7 +233,7 @@ function DxfWorkspace({ editor = true, initialFiles = [] }: DxfWorkspaceProps) {
     if (files.length > 0) openFiles(files);
   };
 
-  const canvasBgColor = effectiveUiTheme === 'dark' ? '#212121' : '#FFFFFF';
+  const canvasBgColor = effectiveUiTheme === 'dark' ? CANVAS_THEME_COLORS.black : CANVAS_THEME_COLORS.white;
 
   return (
     <div className={`app-main-container ${effectiveUiTheme === 'dark' ? 'theme-dark' : ''}`} style={{ '--canvas-bg': canvasBgColor } as React.CSSProperties}>
@@ -232,7 +241,9 @@ function DxfWorkspace({ editor = true, initialFiles = [] }: DxfWorkspaceProps) {
         <div className="toast-container app-toast-container">
           <div className="toast error">
             <span className="toast-message">{toastMessage}</span>
-            <span className="toast-close" onClick={() => setToastMessage(null)}>×</span>
+            <span className="toast-close" onClick={() => setToastMessage(null)} aria-label="关闭提示">
+              <ViewerIcon name="close" />
+            </span>
           </div>
         </div>
       )}

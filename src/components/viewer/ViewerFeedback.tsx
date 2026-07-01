@@ -1,5 +1,7 @@
 ﻿import { Language } from '@/config/i18n';
 
+import ViewerIcon from '@/components/viewer/ViewerIcon';
+
 export interface LoadingOverlayProps {
   lang: Language;
   fileName: string;
@@ -53,7 +55,9 @@ export function Toast({ toast, onClose }: ToastProps) {
     <div className="toast-container">
       <div className={`toast ${toast.isError ? 'error' : 'success'}`}>
         <span className="toast-message">{toast.msg}</span>
-        <span className="toast-close" onClick={onClose}>×</span>
+        <span className="toast-close" onClick={onClose} aria-label="关闭提示">
+          <ViewerIcon name="close" />
+        </span>
       </div>
     </div>
   );

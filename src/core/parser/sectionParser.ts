@@ -1,5 +1,6 @@
 ﻿import { DxfLayer, DxfStyle, DxfLineType, DxfBlock, DxfLayout } from '@/types';
 import { DxfParserState } from './parserState';
+import { DxfImageDef } from '@/types';
 import { parseEntityDispatcher } from './entityParser';
 
 /**
@@ -229,4 +230,60 @@ export const parseLayoutObject = (state: DxfParserState): DxfLayout | null => {
     if (paperMaxX !== undefined && paperMaxY !== undefined) layout.paperMax = { x: paperMaxX, y: paperMaxY };
     if (!layout.displayName) layout.displayName = layout.name;
     return layout;
+};
+
+/**
+ * 解析对象段中的 IMAGEDEF 记录。
+ * IMAGE 实体通过 340 句柄引用该对象，实际图片路径保存在 IMAGEDEF 的组码 1 中。
+ */
+export const parseImageDefObject = (state: DxfParserState): DxfImageDef | null => {
+    const imageDef: DxfImageDef = {
+        handle: '',
+        filePath: '',
+    };
+    let imageWidth: number | undefined;
+    let imageHeight: number | undefined;
+    let pixelWidth: number | undefined;
+    let pixelHeight: number | undefined;
+
+    while (state.hasNext) {
+        const p = state.peek();
+        if (!p || p.code === 0) break;
+        const g = state.next()!;
+        switch (g.code) {
+            case 5:
+                imageDef.handle = g.value;
+                break;
+            case 1:
+                imageDef.filePath = g.value;
+                break;
+            case 10:
+                imageWidth = parseFloat(g.value);
+                break;
+            case 20:
+                imageHeight = parseFloat(g.value);
+                break;
+            case 11:
+                pixelWidth = parseFloat(g.value);
+                break;
+            case 21:
+                pixelHeight = parseFloat(g.value);
+                break;
+            case 280:
+                imageDef.loaded = parseInt(g.value, 10) === 1;
+                break;
+            case 281:
+                imageDef.resolutionUnits = parseInt(g.value, 10);
+                break;
+        }
+    }
+
+    if (!imageDef.handle) return null;
+    if (imageWidth !== undefined && imageHeight !== undefined) {
+        imageDef.imageSize = { x: imageWidth, y: imageHeight };
+    }
+    if (pixelWidth !== undefined && pixelHeight !== undefined) {
+        imageDef.pixelSize = { x: pixelWidth, y: pixelHeight };
+    }
+    return imageDef;
 };
