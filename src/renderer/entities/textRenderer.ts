@@ -9,7 +9,6 @@ import {
 import { buildCadTextLayout } from '@/core/text/textLayoutEngine';
 import { getCanvasFont } from '@/utils/fontResolver';
 import { getAutoCadColor } from '@/utils/colorUtils';
-import { resolveCadTextFontProfile } from '@/renderer/services/fontService';
 
 export interface RenderTransform {
     project: (p: Point2D) => Point2D;
@@ -157,14 +156,8 @@ export const drawTextEntity = (
     const totalRotation = alignedTextAngle + transform.rotation;
     if (totalRotation !== 0) ctx.rotate(-totalRotation);
 
-    // 恢复最初上传版本的文字高度链路：先按字体类型抵消可见高度修正，
-    // 再交给字体函数内部统一放大。这样单行文字和属性文字的基线不会被二次放大。
-    const profile = resolveCadTextFontProfile(ent.styleName, styles, ent.value);
-    const fontScaleFactor = profile === 'trueType' || profile === 'cjk'
-        ? TEXT_RENDER_CONFIG.trueTypeFontHeightFactor
-        : TEXT_RENDER_CONFIG.shxFontHeightFactor;
     const originalHeight = ent.height;
-    ent.height = effectiveHeight * screenScale / fontScaleFactor;
+    ent.height = effectiveHeight * screenScale;
     ctx.font = getCanvasFont(ent, styles);
     ent.height = originalHeight;
 
