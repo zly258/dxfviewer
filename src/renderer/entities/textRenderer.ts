@@ -5,7 +5,6 @@ import {
     getCadTextAnchorPosition,
     getEffectiveTextHeight,
     splitCadFormattedText,
-    getTextVerticalCanvasBaseline,
 } from '@/utils/textUtils';
 import { buildCadTextLayout } from '@/core/text/textLayoutEngine';
 import { getCanvasFont } from '@/utils/fontResolver';
@@ -108,9 +107,17 @@ const drawFormattedTextLine = (
     );
 };
 
-/** 计算 TEXT/ATTRIB 的 Canvas 基准线。 */
-const getSingleLineBaseline = (ent: DxfText, hAlign: number): CanvasTextBaseline => {
-    return getTextVerticalCanvasBaseline(ent.vAlign, hAlign);
+const getCadSingleLineBaselineY = (
+    ent: DxfText,
+    hAlign: number,
+    ascent: number,
+    descent: number,
+): number => {
+    const vAlign = ent.vAlign || 0;
+    if (vAlign === 3) return ascent;
+    if (vAlign === 2 || hAlign === 4) return (ascent - descent) / 2;
+    if (vAlign === 1) return -descent;
+    return 0;
 };
 
 /** 绘制文本实体（TEXT、MTEXT、ATTRIB、ATTDEF）。 */
@@ -195,10 +202,11 @@ export const drawTextEntity = (
         }
 
         layout.lines.forEach(line => {
+            const baselineY = line.y + layout.ascent;
             if (line.formatted) {
-                drawFormattedSegmentsLine(ctx, line.formatted.segments, line.formatted.plainText, line.x, line.y, line.align, layout.baseline, layout.visualScreenHeight);
+                drawFormattedSegmentsLine(ctx, line.formatted.segments, line.formatted.plainText, line.x, baselineY, line.align, 'alphabetic', layout.visualScreenHeight);
             } else {
-                drawFormattedTextLine(ctx, line.text, line.text, line.x, line.y, line.align, layout.baseline, layout.visualScreenHeight);
+                drawFormattedTextLine(ctx, line.text, line.text, line.x, baselineY, line.align, 'alphabetic', layout.visualScreenHeight);
             }
         });
     } else if ((hAlign === 3 || hAlign === 5) && ent.secondPosition) {
@@ -215,8 +223,9 @@ export const drawTextEntity = (
             ctx.scale(scale, hAlign === 3 ? scale : 1);
         }
         ctx.textAlign = 'left';
-        ctx.textBaseline = getSingleLineBaseline(ent, hAlign);
-        drawFormattedTextLine(ctx, ent.value || layout.plainText, layout.plainText, 0, 0, 'left', ctx.textBaseline, layout.visualScreenHeight);
+        ctx.textBaseline = 'alphabetic';
+        const baselineY = getCadSingleLineBaselineY(ent, hAlign, layout.ascent, layout.descent);
+        drawFormattedTextLine(ctx, ent.value || layout.plainText, layout.plainText, 0, baselineY, 'left', ctx.textBaseline, layout.visualScreenHeight);
     } else {
         let align = layout.align;
         if (layout.generationScale.x < 0) {
@@ -225,8 +234,9 @@ export const drawTextEntity = (
         }
         ctx.scale(layout.horizontalScale * layout.generationScale.x, layout.generationScale.y);
         ctx.textAlign = align;
-        ctx.textBaseline = layout.baseline;
-        drawFormattedTextLine(ctx, ent.value || layout.plainText, layout.plainText, 0, 0, align, layout.baseline, layout.visualScreenHeight);
+        ctx.textBaseline = 'alphabetic';
+        const baselineY = getCadSingleLineBaselineY(ent, hAlign, layout.ascent, layout.descent);
+        drawFormattedTextLine(ctx, ent.value || layout.plainText, layout.plainText, 0, baselineY, align, ctx.textBaseline, layout.visualScreenHeight);
     }
 
     ctx.restore();
