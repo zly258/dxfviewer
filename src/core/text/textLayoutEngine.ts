@@ -1,4 +1,4 @@
-﻿import { DxfStyle, DxfText, EntityType } from '@/types';
+import { DxfStyle, DxfText, EntityType } from '@/types';
 import { TEXT_RENDER_CONFIG } from '@/config/viewerConfig';
 import { resolveCadTextFontProfile } from '@/renderer/services/fontService';
 import {
@@ -50,6 +50,8 @@ export interface CadTextLayoutResult {
   boxLeft: number;
   boxTop: number;
   lineHeight: number;
+  ascent: number;
+  descent: number;
   lines: CadTextLineLayout[];
 }
 
@@ -151,6 +153,30 @@ const measureCanvasText = (context: CanvasRenderingContext2D, value: string): nu
   return Math.max(metrics.width || 0, actual || 0);
 };
 
+const measureCanvasTextVerticalMetrics = (
+  context: CanvasRenderingContext2D,
+  sampleText: string,
+  fallbackHeight: number,
+): { ascent: number; descent: number } => {
+  const metrics = context.measureText(sampleText || 'Mg');
+  const measuredAscent = metrics.actualBoundingBoxAscent || metrics.fontBoundingBoxAscent || 0;
+  const measuredDescent = metrics.actualBoundingBoxDescent || metrics.fontBoundingBoxDescent || 0;
+  const measuredTotal = measuredAscent + measuredDescent;
+
+  if (measuredTotal > 0) {
+    const scale = fallbackHeight > 0 ? fallbackHeight / measuredTotal : 1;
+    return {
+      ascent: measuredAscent * scale,
+      descent: measuredDescent * scale,
+    };
+  }
+
+  return {
+    ascent: fallbackHeight * TEXT_RENDER_CONFIG.alphabeticBaselineOffsetFactor,
+    descent: fallbackHeight * (1 - TEXT_RENDER_CONFIG.alphabeticBaselineOffsetFactor),
+  };
+};
+
 const getMeasuredTextBoxHeight = (textHeight: number, isMText: boolean): number => {
   return isMText
     ? textHeight
@@ -185,6 +211,7 @@ export const buildCadTextLayout = ({
   const horizontalScale = widthFactor * getCadFontWidthCompensation(entity, styles);
   const generationScale = getTextGenerationScale(entity);
   const measureWidth = (value: string) => measureCadText(context, value);
+  const verticalMetrics = measureCanvasTextVerticalMetrics(context, plainText, visualScreenHeight);
 
   if (!isMText) {
     const align = getTextHorizontalCanvasAlign(entity.hAlign);
@@ -206,6 +233,8 @@ export const buildCadTextLayout = ({
       boxLeft: 0,
       boxTop: 0,
       lineHeight: getMeasuredTextBoxHeight(visualScreenHeight, false),
+      ascent: verticalMetrics.ascent,
+      descent: verticalMetrics.descent,
       lines: [{ text: plainText, width: measuredWidth, x: 0, y: 0, align }],
     };
   }
@@ -247,6 +276,8 @@ export const buildCadTextLayout = ({
   const align = getMTextCanvasAlignFromEntity(entity);
   const boxLeft = [2, 5, 8].includes(attachmentPoint) ? -blockWidth / 2 : ([3, 6, 9].includes(attachmentPoint) ? -blockWidth : 0);
   const boxTop = getMTextLocalTopOffset(attachmentPoint, blockHeight);
+  // X 偏移：左附着点从 boxLeft 开始，居中从 boxLeft+blockWidth/2，右对齐从 boxLeft+blockWidth
+  // 注意：当无宽度约束时 blockWidth = 最大测量行宽，此时 boxLeft 计算正确
   const getLineX = (lineAlign: CanvasTextAlign) => {
     if (lineAlign === 'center') return boxLeft + blockWidth / 2;
     if (lineAlign === 'right' || lineAlign === 'end') return boxLeft + blockWidth;
@@ -282,6 +313,8 @@ export const buildCadTextLayout = ({
     boxLeft,
     boxTop,
     lineHeight,
+    ascent: verticalMetrics.ascent,
+    descent: verticalMetrics.descent,
     lines,
   };
 };
