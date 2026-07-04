@@ -474,7 +474,10 @@ export function getCadTextAnchorPosition(ent: DxfText): Point2D {
   const hAlign = ent.hAlign || 0;
   const vAlign = ent.vAlign || 0;
   if (ent.type !== EntityType.MTEXT && (hAlign !== 0 || vAlign !== 0) && ent.secondPosition && hAlign !== 3 && hAlign !== 5) {
-    return ent.secondPosition;
+    return {
+      x: hAlign !== 0 ? ent.secondPosition.x : ent.position.x,
+      y: vAlign !== 0 || hAlign === 4 ? ent.secondPosition.y : ent.position.y,
+    };
   }
   return ent.position;
 }
