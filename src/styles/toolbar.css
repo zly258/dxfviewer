@@ -27,7 +27,7 @@
   flex-shrink: 0;
   gap: var(--icon-button-gap);
   padding: 0 6px;
-  background-color: var(--bg-secondary);
+  background-color: transparent;
   box-sizing: border-box;
   user-select: none;
   z-index: 501;

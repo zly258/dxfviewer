@@ -61,6 +61,7 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const viewPortRef = useRef(viewPort);
   const lastMiddleClickRef = useRef<{ time: number; x: number; y: number } | null>(null);
+
   viewPortRef.current = viewPort;
   
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);

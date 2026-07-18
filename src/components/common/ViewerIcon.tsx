@@ -30,8 +30,7 @@ export type ViewerIconName =
 const ICON_PATHS: Record<ViewerIconName, React.ReactNode> = {
   open: (
     <>
-      <path d="M4 7.2h5.1l1.9 2h9v8.6a1.8 1.8 0 0 1-1.8 1.8H5.8A1.8 1.8 0 0 1 4 17.8Z" />
-      <path d="M4 7.2V5.8C4 4.8 4.8 4 5.8 4h4l1.9 2h6.5c1 0 1.8.8 1.8 1.8v1.4" />
+      <path d="M3 6h5l2 2h11v10H3z" />
     </>
   ),
   previous: (
@@ -88,10 +87,9 @@ const ICON_PATHS: Record<ViewerIconName, React.ReactNode> = {
   ),
   properties: (
     <>
-      <rect x="5" y="4" width="14" height="16" rx="2" />
-      <path d="M8 8h8" />
-      <path d="M8 12h8" />
-      <path d="M8 16h5" />
+      <path d="M4 5h16v14H4z" />
+      <path d="M8 10h8" />
+      <path d="M8 14h5" />
     </>
   ),
   theme: (
@@ -102,12 +100,10 @@ const ICON_PATHS: Record<ViewerIconName, React.ReactNode> = {
   ),
   language: (
     <>
-      <path d="M4 5.5h9.5" />
-      <path d="M8.8 4v1.5" />
-      <path d="M13 5.5c-.8 2.5-2.3 4.7-4.7 6.8" />
-      <path d="M6.2 8.2c1.1 2 3 3.6 5.6 4.8" />
-      <path d="M15 20l3-8 3 8" />
-      <path d="M16.1 17h3.8" />
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 3v18" />
+      <path d="M3 12h18" />
+      <path d="M12 3c3 0 5 4 5 9s-2 9-5 9-5-4-5-9 2-9 5-9z" />
     </>
   ),
   monochrome: (
