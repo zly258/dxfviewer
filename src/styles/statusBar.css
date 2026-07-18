@@ -3,7 +3,7 @@
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  padding: 0 12px;
+  padding: 0 16px;
   box-sizing: border-box;
   border-top: 1px solid var(--border-color);
   background-color: var(--status-bar-bg);
@@ -38,12 +38,12 @@
   align-items: center;
   gap: 4px;
   min-height: 34px;
-  padding: 4px 10px 3px;
+  padding: 4px 10px 0;
   box-sizing: border-box;
   overflow-x: auto;
   overflow-y: hidden;
   border-top: 1px solid var(--border-color);
-  background: linear-gradient(180deg, var(--bg-secondary), var(--bg-tertiary));
+  background-color: var(--bg-secondary);
   scrollbar-width: thin;
 }
 
@@ -54,10 +54,10 @@
   gap: 6px;
   min-width: 78px;
   max-width: 180px;
-  height: 26px;
-  padding: 0 9px;
+  height: 30px;
+  padding: 0 12px;
   border: 1px solid transparent;
-  border-radius: 4px 4px 0 0;
+  border-radius: var(--radius-medium) var(--radius-medium) 0 0;
   background-color: transparent;
   color: var(--text-secondary);
   cursor: pointer;
@@ -89,7 +89,7 @@
   padding: 0 5px;
   border-radius: 999px;
   box-sizing: border-box;
-  background-color: var(--accent-blue-soft);
+  background-color: var(--bg-secondary);
   color: var(--text-secondary);
   font-size: 11px;
   line-height: 16px;

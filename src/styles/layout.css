@@ -17,22 +17,10 @@
   flex-shrink: 0;
   height: var(--toolbar-height);
   background-color: var(--bg-secondary);
-  border-bottom: 0;
+  border-bottom: 1px solid var(--border-color);
   box-sizing: border-box;
   position: relative;
   z-index: 500;
-}
-
-.menu-tab-row::after {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 1px;
-  background-color: var(--border-color);
-  pointer-events: none;
-  z-index: 700;
 }
 
 .menu-tab-row .toolbar,
@@ -58,9 +46,6 @@
   min-height: 0;
   overflow: hidden;
   position: relative;
-  /* 边界线由上方菜单标签行的底边框统一提供，此处不重复绘制，
-     避免两栏切换时出现双边或边界线错位/断裂。 */
-  box-sizing: border-box;
 }
 
 .viewer-container {
@@ -71,12 +56,16 @@
   min-height: 0;
   overflow: hidden;
   position: relative;
+  background-color: var(--bg-primary);
 }
 
 .side-panel-shell {
   display: flex;
   flex-shrink: 0;
   height: 100%;
+  position: relative;
+  z-index: 150;
+  background-color: var(--bg-secondary);
 }
 
 .side-panel-frame {

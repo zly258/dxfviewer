@@ -1,13 +1,15 @@
-import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
 import CanvasViewer from '@/components/viewer/CanvasViewer';
-import LayerPanel from '@/components/viewer/LayerPanel';
-import PropertiesPanel from '@/components/viewer/PropertiesPanel';
 import ViewerToolbar from '@/components/viewer/ViewerToolbar';
-import DxfTextSearchPanel from '@/components/viewer/DxfTextSearchPanel';
 import MobileViewerControls from '@/components/viewer/MobileViewerControls';
-import AboutDialog from '@/components/common/AboutDialog';
 import { LoadingOverlay, Toast, ToastState, ViewerNotice } from '@/components/common/Overlays';
 import { SpaceSwitchBar, StatusBar } from '@/components/common/StatusBars';
+
+const AboutDialog = lazy(() => import('@/components/common/AboutDialog'));
+const DxfTextSearchPanel = lazy(() => import('@/components/viewer/DxfTextSearchPanel'));
+const LayerPanel = lazy(() => import('@/components/viewer/LayerPanel'));
+const PropertiesPanel = lazy(() => import('@/components/viewer/PropertiesPanel'));
+
 import { useIsMobile } from '@/hooks/useMediaQuery';
 import { useViewHistory } from '@/hooks/useViewHistory';
 import { useEntityVisibility } from '@/hooks/useEntityVisibility';
@@ -599,16 +601,18 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
   ) : null;
 
   const propertiesPanelWrapped = !isMobile && showProperties ? (
-    <div className="side-panel-shell">
-      <div
-        className="panel-resize-handle panel-resize-handle-left"
-        onMouseDown={startResizePropertiesPanel}
-        title="Drag to resize"
-      />
-      <div className="side-panel-frame" style={{ width: propertiesWidth }}>
-        {propertiesContent}
+    <Suspense fallback={null}>
+      <div className="side-panel-shell">
+        <div
+          className="panel-resize-handle panel-resize-handle-left"
+          onMouseDown={startResizePropertiesPanel}
+          title="Drag to resize"
+        />
+        <div className="side-panel-frame" style={{ width: propertiesWidth }}>
+          {propertiesContent}
+        </div>
       </div>
-    </div>
+    </Suspense>
   ) : null;
 
   return (
@@ -655,7 +659,9 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
       )}
 
       <div className="main-content">
-        {layerPanelWrapped}
+        <Suspense fallback={null}>
+          {layerPanelWrapped}
+        </Suspense>
 
         <main ref={viewerRef} className="viewer-container">
           {viewerNoticeMessage && (
@@ -668,13 +674,15 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
             />
           )}
           {entities.length > 0 && showTextSearch && (
-            <DxfTextSearchPanel
-              entities={entities}
-              blocks={blocks}
-              lang={lang}
-              onLocate={handleLocateTextMatch}
-              onClose={() => setShowTextSearch(false)}
-            />
+            <Suspense fallback={null}>
+              <DxfTextSearchPanel
+                entities={entities}
+                blocks={blocks}
+                lang={lang}
+                onLocate={handleLocateTextMatch}
+                onClose={() => setShowTextSearch(false)}
+              />
+            </Suspense>
           )}
           <CanvasViewer
             entities={displayEntities}
@@ -753,7 +761,9 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
         />
       )}
 
-      {showAbout && <AboutDialog lang={lang} onClose={() => setShowAbout(false)} />}
+      <Suspense fallback={null}>
+        {showAbout && <AboutDialog lang={lang} onClose={() => setShowAbout(false)} />}
+      </Suspense>
     </div>
   );
 }

@@ -1,7 +1,6 @@
 import { useState, useCallback } from 'react';
-import { parseDxf } from '@/core/parser/dxfParser';
-import { decodeDxfBuffer } from '@/core/parser/utils/textDecoder';
 import { Language, t } from '@/config/i18n';
+import LoaderWorker from './dxfLoader.worker?worker&inline';
 
 export interface DxfLoadResult {
   data: any;
@@ -14,25 +13,30 @@ export const useDxfLoader = (lang: Language, onError?: (err: Error) => void) => 
   const [loadingFileName, setLoadingFileName] = useState('');
 
   const processBuffer = useCallback(async (buffer: ArrayBuffer): Promise<DxfLoadResult> => {
-    let decoded;
-    try {
-        decoded = decodeDxfBuffer(buffer);
-    } catch (err) {
-        const error = err instanceof Error ? err : new Error(String(err));
-        onError?.(error);
-        throw new Error(t(lang, 'decodeFailed', { message: error.message }));
-    }
-
-    try {
-      const data = await parseDxf(decoded.text, (progress) => {
+    return new Promise((resolve, reject) => {
+      const worker = new LoaderWorker();
+      worker.onmessage = (e) => {
+        const { type, progress, data, sourceFormat, error } = e.data;
+        if (type === 'progress') {
           setLoadingProgress(progress);
-      });
-      return { data, sourceFormat: decoded.format };
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error(String(err));
-      onError?.(error);
-      throw new Error(t(lang, 'parseFailed', { message: error.message }));
-    }
+        } else if (type === 'success') {
+          resolve({ data, sourceFormat });
+          worker.terminate();
+        } else if (type === 'error') {
+          const formattedError = new Error(t(lang, 'parseFailed', { message: error }));
+          onError?.(formattedError);
+          reject(formattedError);
+          worker.terminate();
+        }
+      };
+      worker.onerror = (err) => {
+        const formattedError = new Error(t(lang, 'parseFailed', { message: err.message }));
+        onError?.(formattedError);
+        reject(formattedError);
+        worker.terminate();
+      };
+      worker.postMessage({ buffer }, [buffer]);
+    });
   }, [lang, onError]);
 
   const loadFromUrl = useCallback(async (url: string, fileName?: string): Promise<DxfLoadResult> => {
