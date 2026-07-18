@@ -1,11 +1,11 @@
-﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import DxfViewer from '@/components/viewer/DxfViewer';
-import ViewerIcon from '@/components/viewer/ViewerIcon';
-import { CANVAS_THEME_COLORS, getSystemUiTheme, resolveUiTheme, SHORTCUT_CONFIG, VIEWER_DEFAULTS } from '@/config/viewerConfig';
+import ViewerIcon from '@/components/common/ViewerIcon';
+import { CANVAS_THEME_COLORS, getSystemUiTheme, resolveUiTheme, SHORTCUT_CONFIG, VIEWER_DEFAULTS, TABS_CONFIG } from '@/config/viewerConfig';
 import { DxfTabSource } from '@/components/workspace/DxfTabs';
 import { useDxfTabs } from '@/components/workspace/DxfTabs';
 import { UiTheme, DrawingColorMode, ResolvedUiTheme } from '@/types';
-import { Language } from '@/config/i18n';
+import { Language, t } from '@/config/i18n';
 import { readViewerUiSettings } from '@/components/viewer/viewerUiSettings';
 
 export interface DxfWorkspaceProps {
@@ -174,12 +174,12 @@ function DxfWorkspace({ editor = true, initialFiles = [] }: DxfWorkspaceProps) {
     setTabContextMenu(null);
   };
 
-  const tabDensityClass = tabs.length > 18 ? 'dense' : tabs.length > 10 ? 'compact' : '';
+  const tabDensityClass = tabs.length > TABS_CONFIG.denseThreshold ? 'dense' : tabs.length > TABS_CONFIG.compactThreshold ? 'compact' : '';
 
   const tabStrip = tabs.length > 0 ? (
     <div className={`tabs-container ${tabDensityClass}`}>
       {tabs.length > 8 && (
-        <button type="button" className="tab-scroll-button" onClick={() => scrollTabs(-240)} title="向左滚动标签" aria-label="向左滚动标签">
+        <button type="button" className="tab-scroll-button" onClick={() => scrollTabs(-TABS_CONFIG.scrollStep)} title={t(lang, 'scrollTabsLeft')} aria-label={t(lang, 'scrollTabsLeft')}>
           <ViewerIcon name="chevronLeft" />
         </button>
       )}
@@ -195,7 +195,7 @@ function DxfWorkspace({ editor = true, initialFiles = [] }: DxfWorkspaceProps) {
           >
             <span className="tab-name">{tab.name}</span>
             {editor && (
-              <span className="tab-close" onClick={(event) => handleCloseTab(event, tab.id)} aria-label="关闭标签">
+              <span className="tab-close" onClick={(event) => handleCloseTab(event, tab.id)} aria-label={t(lang, 'closeTabAriaLabel')}>
                 <ViewerIcon name="close" />
               </span>
             )}
@@ -203,7 +203,7 @@ function DxfWorkspace({ editor = true, initialFiles = [] }: DxfWorkspaceProps) {
         ))}
       </div>
       {tabs.length > 8 && (
-        <button type="button" className="tab-scroll-button" onClick={() => scrollTabs(240)} title="向右滚动标签" aria-label="向右滚动标签">
+        <button type="button" className="tab-scroll-button" onClick={() => scrollTabs(TABS_CONFIG.scrollStep)} title={t(lang, 'scrollTabsRight')} aria-label={t(lang, 'scrollTabsRight')}>
           <ViewerIcon name="chevronRight" />
         </button>
       )}
@@ -215,13 +215,13 @@ function DxfWorkspace({ editor = true, initialFiles = [] }: DxfWorkspaceProps) {
           onClick={(event) => event.stopPropagation()}
           onContextMenu={(event) => event.preventDefault()}
         >
-          <button type="button" onClick={runTabCommand(() => closeTab(tabContextMenu.tabId))}>关闭当前</button>
-          <button type="button" onClick={runTabCommand(() => closeOtherTabs(tabContextMenu.tabId))}>关闭其他</button>
+          <button type="button" onClick={runTabCommand(() => closeTab(tabContextMenu.tabId))}>{t(lang, 'closeTab')}</button>
+          <button type="button" onClick={runTabCommand(() => closeOtherTabs(tabContextMenu.tabId))}>{t(lang, 'closeOtherTabs')}</button>
           <div className="tab-context-divider" />
-          <button type="button" onClick={runTabCommand(() => closeTabsToLeft(tabContextMenu.tabId))}>关闭左边</button>
-          <button type="button" onClick={runTabCommand(() => closeTabsToRight(tabContextMenu.tabId))}>关闭右边</button>
+          <button type="button" onClick={runTabCommand(() => closeTabsToLeft(tabContextMenu.tabId))}>{t(lang, 'closeTabsToLeft')}</button>
+          <button type="button" onClick={runTabCommand(() => closeTabsToRight(tabContextMenu.tabId))}>{t(lang, 'closeTabsToRight')}</button>
           <div className="tab-context-divider" />
-          <button type="button" onClick={runTabCommand(closeAllTabs)}>全部关闭</button>
+          <button type="button" onClick={runTabCommand(closeAllTabs)}>{t(lang, 'closeAllTabs')}</button>
         </div>
       )}
     </div>
@@ -241,7 +241,7 @@ function DxfWorkspace({ editor = true, initialFiles = [] }: DxfWorkspaceProps) {
         <div className="toast-container app-toast-container">
           <div className="toast error">
             <span className="toast-message">{toastMessage}</span>
-            <span className="toast-close" onClick={() => setToastMessage(null)} aria-label="关闭提示">
+            <span className="toast-close" onClick={() => setToastMessage(null)} aria-label={t(lang, 'closeToast')}>
               <ViewerIcon name="close" />
             </span>
           </div>

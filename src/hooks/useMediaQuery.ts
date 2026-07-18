@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 /**
  * 监听 CSS 媒体查询，返回当前是否匹配。
@@ -22,5 +22,7 @@ export function useMediaQuery(query: string): boolean {
   return matches;
 }
 
-/** 是否处于移动端布局（<= 768px）。 */
-export const useIsMobile = (): boolean => useMediaQuery('(max-width: 768px)');
+import { BREAKPOINTS } from '@/config/viewerConfig';
+
+/** 是否处于移动端布局（<= BREAKPOINTS.mobile）。 */
+export const useIsMobile = (): boolean => useMediaQuery(`(max-width: ${BREAKPOINTS.mobile}px)`);

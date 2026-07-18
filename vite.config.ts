@@ -61,7 +61,7 @@ export default defineConfig({
             return 'viewer-loader';
           }
 
-          if (moduleId.includes('/src/components/ui/') || moduleId.includes('/src/components/app/')) {
+          if (moduleId.includes('/src/components/')) {
             return 'viewer-ui';
           }
 

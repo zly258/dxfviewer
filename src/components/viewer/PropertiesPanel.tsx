@@ -1,7 +1,7 @@
-﻿import React from 'react';
+import React from 'react';
 import { AnyEntity, EntityType, DxfStyle } from '@/types';
 import { getAutoCadColor } from '@/utils/colorUtils';
-import { Language, UI_TRANSLATIONS, ENTITY_TYPE_NAMES } from '@/config/i18n';
+import { Language, UI_TRANSLATIONS, ENTITY_TYPE_NAMES, t as translate } from '@/config/i18n';
 import { CAD_BY_BLOCK_COLOR, CAD_BY_LAYER_COLOR, CAD_DEFAULT_LAYER_COLOR, CAD_DEFAULT_TEXT_STYLE } from '@/config/cadConstants';
 
 /**
@@ -197,7 +197,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, styles = {}
                        specificRows.push(
                            <tr key="cells-header" className="property-row property-section-row">
                                <td colSpan={2} className="property-section-cell">
-                                   {t.cellContents || (lang === 'zh' ? '单元格内容' : 'Cell Contents')}
+                                   {t.cellContents}
                                </td>
                            </tr>
                        );
@@ -212,7 +212,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, styles = {}
                            }
                        });
                        if (table.cells.length > 10) {
-                           const totalText = t.totalCells ? t.totalCells.replace('{count}', table.cells.length.toString()) : `Total ${table.cells.length} cells`;
+                           const totalText = translate(lang, 'totalCells', { count: table.cells.length });
                            specificRows.push(
                                renderPropertyRow("...", totalText)
                            );

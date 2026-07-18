@@ -1,0 +1,211 @@
+.toolbar-icon svg,
+.text-search-icon,
+.text-search-nav svg,
+.layer-search-icon,
+.layer-tool-btn svg,
+.tab-scroll-button svg,
+.mobile-tool-button svg,
+.mobile-side-close svg,
+.mobile-view-item svg,
+.tab-close svg,
+.toast-close svg,
+.about-modal-close svg,
+.text-search-close svg,
+.layer-search-clear svg,
+.layer-checkbox-icon,
+.chevron {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.toolbar {
+  height: var(--toolbar-height);
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: var(--icon-button-gap);
+  padding: 0 6px;
+  background-color: var(--bg-secondary);
+  box-sizing: border-box;
+  user-select: none;
+  z-index: 501;
+}
+
+.toolbar-button {
+  height: var(--icon-button-size);
+  min-width: var(--icon-button-size);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 7px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-small);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: calc(var(--icon-button-size) - 2px);
+  cursor: pointer;
+  box-sizing: border-box;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.toolbar-icon-button {
+  width: var(--icon-button-size);
+  padding: 0;
+}
+
+.toolbar-button:hover:not(:disabled),
+.toolbar-button.active,
+.toolbar-menu.active > .toolbar-button {
+  background-color: var(--bg-hover);
+  border-color: transparent;
+  color: var(--text-bright);
+}
+
+.toolbar-button.active,
+.toolbar-menu.active > .toolbar-button {
+  background-color: var(--accent-blue-soft);
+  border-color: transparent;
+  color: var(--accent-blue);
+}
+
+.toolbar-button:disabled {
+  color: var(--text-muted);
+  cursor: default;
+  opacity: 0.48;
+}
+
+.toolbar-icon {
+  width: var(--icon-size);
+  height: var(--icon-size);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.toolbar-icon svg {
+  width: var(--icon-size);
+  height: var(--icon-size);
+  stroke-width: var(--icon-stroke);
+}
+
+.toolbar-menu {
+  position: relative;
+  height: var(--icon-button-size);
+}
+
+.toolbar-separator {
+  width: 1px;
+  height: 22px;
+  margin: 0 4px;
+  background-color: var(--border-color);
+  flex-shrink: 0;
+}
+
+.menu-item {
+  position: relative;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-small);
+  color: var(--text-primary);
+  font-size: 13px;
+  line-height: 28px;
+  cursor: pointer;
+  box-sizing: border-box;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.menu-item:hover,
+.menu-item.active {
+  background-color: var(--bg-hover);
+  border-color: var(--border-color);
+  color: var(--text-bright);
+}
+
+.menu-item.active {
+  background-color: var(--accent-blue-soft);
+  border-color: transparent;
+  color: var(--accent-blue);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 900;
+  min-width: 190px;
+  padding: 4px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-medium);
+  background-color: var(--bg-elevated);
+  box-shadow: var(--shadow-menu);
+  box-sizing: border-box;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  animation: dropdownFadeIn 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.dropdown-item,
+.dropdown-header {
+  width: 100%;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.dropdown-item {
+  position: relative;
+  justify-content: space-between;
+  padding: 0 28px 0 10px;
+  border-radius: var(--radius-small);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.dropdown-item:hover:not(:disabled) {
+  background-color: var(--bg-hover);
+  color: var(--text-bright);
+}
+
+.dropdown-item:disabled {
+  color: var(--text-muted);
+  cursor: default;
+  opacity: 0.55;
+}
+
+.dropdown-item.checked::after {
+  content: '✓';
+  position: absolute;
+  right: 10px;
+  color: var(--accent-blue);
+  font-weight: 700;
+}
+
+.dropdown-header {
+  padding: 0 10px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.divider {
+  height: 1px;
+  margin: 4px 4px;
+  background-color: var(--border-color);
+}

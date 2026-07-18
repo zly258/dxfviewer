@@ -1,8 +1,8 @@
-﻿import React, { useRef, useState, WheelEvent, MouseEvent, useEffect, useLayoutEffect } from 'react';
+import React, { useRef, useState, WheelEvent, MouseEvent, useEffect, useLayoutEffect } from 'react';
 import { AnyEntity, ViewPort, DxfLayer, DxfBlock, DxfStyle, DxfLineType, Point2D, CanvasTheme, DrawingColorMode } from '@/types';
 import { renderEntitiesToCanvas, hitTest, hitTestBox } from '@/renderer/services/canvasRenderService';
-import { Language } from '@/config/i18n';
-import { CANVAS_THEME_COLORS, SELECTION_CONFIG, SHORTCUT_CONFIG, VIEWER_DEFAULTS } from '@/config/viewerConfig';
+import { Language, t } from '@/config/i18n';
+import { CANVAS_THEME_COLORS, SELECTION_CONFIG, SHORTCUT_CONFIG, VIEWER_DEFAULTS, ZOOM_CONFIG, BREAKPOINTS, INTERACTION_CONFIG, CONTEXT_MENU_CONFIG } from '@/config/viewerConfig';
 
 /**
  * Canvas 渲染核心组件
@@ -98,9 +98,12 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
   };
 
   const renderRef = useRef<number | undefined>(undefined);
-  const contextMenuLabels = lang === 'zh'
-    ? { showAll: '全部显示', hideSelected: '隐藏选中', isolateSelected: '隔离选中', hideLayer: '关闭图层' }
-    : { showAll: 'Show All', hideSelected: 'Hide Selected', isolateSelected: 'Isolate Selected', hideLayer: 'Turn Layer Off' };
+  const contextMenuLabels = {
+    showAll: t(lang, 'showAll'),
+    hideSelected: t(lang, 'hideSelected'),
+    isolateSelected: t(lang, 'isolateSelected'),
+    hideLayer: t(lang, 'hideSelectedLayer'),
+  };
   const hasContextSelection = contextMenu ? contextMenu.selectionIds.size > 0 : false;
 
   contextMenuRef.current = contextMenu;
@@ -120,10 +123,10 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
   const clampContextMenuPosition = (x: number, y: number) => {
     const rect = containerRef.current?.getBoundingClientRect();
     if (!rect) return { x, y };
-    const isMobileViewport = typeof window !== 'undefined' && window.matchMedia?.('(max-width: 768px)').matches;
-    const menuWidth = isMobileViewport ? 160 : 156;
-    const menuHeight = isMobileViewport ? 196 : 174;
-    const padding = isMobileViewport ? 10 : 6;
+    const isMobileViewport = typeof window !== 'undefined' && window.matchMedia?.(`(max-width: ${BREAKPOINTS.mobile}px)`).matches;
+    const menuWidth = isMobileViewport ? CONTEXT_MENU_CONFIG.mobileWidth : CONTEXT_MENU_CONFIG.desktopWidth;
+    const menuHeight = isMobileViewport ? CONTEXT_MENU_CONFIG.mobileHeight : CONTEXT_MENU_CONFIG.desktopHeight;
+    const padding = isMobileViewport ? CONTEXT_MENU_CONFIG.mobilePadding : CONTEXT_MENU_CONFIG.padding;
     return {
       x: safeClamp(x, padding, Math.max(padding, rect.width - menuWidth - padding)),
       y: safeClamp(y, padding, Math.max(padding, rect.height - menuHeight - padding)),
@@ -236,13 +239,13 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
 
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      const scaleFactor = 1.2;
+      const scaleFactor = INTERACTION_CONFIG.wheelZoomFactor;
       const currentVP = viewPortRef.current;
       const newZoom = e.deltaY < 0 ? currentVP.zoom * scaleFactor : currentVP.zoom / scaleFactor;
 
       // 大幅放宽缩放限制以支持极端坐标
-      const MIN_ZOOM = 1e-50;
-      const MAX_ZOOM = 1e20;
+      const MIN_ZOOM = ZOOM_CONFIG.minZoom;
+      const MAX_ZOOM = ZOOM_CONFIG.maxZoom;
       if (newZoom < MIN_ZOOM || newZoom > MAX_ZOOM) return;
 
       const rect = container.getBoundingClientRect();
@@ -275,7 +278,7 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
           if (!isTouchPanningRef.current && touchStartRef.current) {
             openContextMenuAtClient(touchStartRef.current.x, touchStartRef.current.y);
           }
-        }, 560);
+        }, INTERACTION_CONFIG.touchLongPressDelayMs);
       } else if (e.touches.length === 2) {
         clearLongPressTimer();
         const t1 = e.touches[0];
@@ -298,7 +301,7 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
         
         if (!isTouchPanningRef.current && touchStartRef.current) {
           const moveDist = Math.hypot(touch.clientX - touchStartRef.current.x, touch.clientY - touchStartRef.current.y);
-          if (moveDist > 6) {
+          if (moveDist > INTERACTION_CONFIG.touchMoveThresholdPixels) {
             clearLongPressTimer();
             isTouchPanningRef.current = true;
           }
@@ -365,7 +368,7 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
       clearLongPressTimer();
       if (!isTouchPanningRef.current && touchStartRef.current && e.touches.length === 0 && !contextMenuRef.current) {
         const duration = Date.now() - touchStartRef.current.time;
-        if (duration < 300) {
+        if (duration < INTERACTION_CONFIG.touchTapMaxDurationMs) {
           const rect = container.getBoundingClientRect();
           const tapX = touchStartRef.current.x - rect.left;
           const tapY = touchStartRef.current.y - rect.top;
@@ -378,7 +381,7 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
           const thresholdCap = Math.max(viewWorldSpan * SELECTION_CONFIG.maximumHitToleranceViewportFactor, SELECTION_CONFIG.minimumHitToleranceWorld);
           
           const threshold = Math.min(
-              Math.max(SELECTION_CONFIG.geometryHitTolerancePixels * 2.5 * worldPerPixel, SELECTION_CONFIG.minimumHitToleranceWorld),
+              Math.max(SELECTION_CONFIG.geometryHitTolerancePixels * INTERACTION_CONFIG.touchHitToleranceMultiplier * worldPerPixel, SELECTION_CONFIG.minimumHitToleranceWorld),
               thresholdCap
           );
           

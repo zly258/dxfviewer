@@ -1,0 +1,163 @@
+:root {
+  --font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", Arial, sans-serif;
+  --font-size-base: 13px;
+  --font-size-small: 12px;
+  --control-height: 30px;
+
+  --bg-primary: #f7f8fa;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #eef1f5;
+  --bg-elevated: #ffffff;
+  --bg-hover: #e8f1fb;
+  --bg-active: #d9eafa;
+  --bg-selected: #d8ebff;
+
+  --border-color: #d5dbe3;
+  --border-strong: #b9c2cf;
+  --text-primary: #202733;
+  --text-secondary: #627083;
+  --text-muted: #8a96a8;
+  --text-bright: #111827;
+
+  --accent-blue: #1677ff;
+  --accent-blue-hover: #0958d9;
+  --accent-blue-soft: #e6f4ff;
+  --success-color: #1f9d55;
+  --error-color: #d93025;
+  --warning-color: #d48806;
+
+  --shadow-menu: 0 10px 28px rgba(15, 23, 42, 0.16);
+  --shadow-panel: 0 18px 48px rgba(15, 23, 42, 0.18);
+  --radius-small: 4px;
+  --radius-medium: 6px;
+  --radius-large: 8px;
+
+  --toolbar-height: 44px;
+  --icon-size: 18px;
+  --icon-size-small: 14px;
+  --icon-stroke: 1.9;
+  --icon-button-size: 30px;
+  --icon-button-gap: 2px;
+  --icon-button-radius: var(--radius-small);
+  --layer-panel-width: 270px;
+  --properties-width: 330px;
+  --status-bar-height: 28px;
+  --status-bar-bg: #eef1f5;
+  --status-bar-text: #334155;
+}
+
+.theme-dark {
+  --bg-primary: #1e1f22;
+  --bg-secondary: #25272b;
+  --bg-tertiary: #2d3036;
+  --bg-elevated: #2a2d33;
+  --bg-hover: #353944;
+  --bg-active: #3b4352;
+  --bg-selected: #26374d;
+
+  --border-color: #3e4653;
+  --border-strong: #566173;
+  --text-primary: #d9dee7;
+  --text-secondary: #aab3c2;
+  --text-muted: #818b9c;
+  --text-bright: #ffffff;
+
+  --accent-blue: #4096ff;
+  --accent-blue-hover: #69b1ff;
+  --accent-blue-soft: #172c45;
+  --success-color: #49aa19;
+  --error-color: #ff7875;
+  --warning-color: #ffc069;
+
+  --shadow-menu: 0 14px 34px rgba(0, 0, 0, 0.48);
+  --shadow-panel: 0 18px 52px rgba(0, 0, 0, 0.52);
+  --status-bar-bg: #20242b;
+  --status-bar-text: #cbd5e1;
+}
+
+@keyframes dropdownFadeIn {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.theme-dark .entity-row.selected {
+  color: var(--text-bright);
+}
+
+.theme-dark .layer-icon {
+  border-color: rgba(255, 255, 255, 0.24);
+}
+
+.theme-dark .loading-overlay {
+  background-color: rgba(16, 18, 22, 0.52);
+}
+
+@keyframes loading-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes toastIn {
+  from { transform: translateY(-8px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.theme-dark .tabs-container {
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.theme-dark .tab-item {
+  background-color: var(--bg-tertiary);
+}
+
+.theme-dark .tab-item:hover {
+  background-color: var(--bg-hover);
+}
+
+.theme-dark .tab-item.active {
+  background-color: var(--bg-primary);
+  color: var(--text-bright);
+}
+
+.theme-dark .tab-close:hover {
+  background-color: rgba(255, 255, 255, 0.16);
+}
+
+.theme-dark .tab-context-menu {
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.42);
+}
+
+.theme-dark .tab-scroll-button {
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+}
+
+.theme-dark .tab-scroll-button:hover {
+  background: var(--bg-hover);
+  color: var(--text-bright);
+}
+
+.theme-dark .about-modal-content {
+  background: rgba(30, 31, 34, 0.85);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.theme-dark .about-modal-header {
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+.theme-dark .about-info-grid {
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scaleIn {
+  from { transform: scale(0.94); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
