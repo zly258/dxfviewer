@@ -1,8 +1,8 @@
-﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AnyEntity, DxfBlock } from '@/types';
-import { ENTITY_TYPE_NAMES, Language } from '@/config/i18n';
+import { ENTITY_TYPE_NAMES, Language, t } from '@/config/i18n';
 import { searchEntitiesByText, TextSearchMatch } from '@/utils/entityTextSearch';
-import ViewerIcon from '@/components/viewer/ViewerIcon';
+import ViewerIcon from '@/components/common/ViewerIcon';
 
 interface DxfTextSearchPanelProps {
   entities: AnyEntity[];
@@ -25,31 +25,12 @@ const renderHighlightedPreview = (text: string, query: string): React.ReactNode 
   });
 };
 
-const labels = {
-  zh: {
-    placeholder: '搜索图纸文字',
-    previous: '上一个',
-    next: '下一个',
-    noResult: '未找到匹配文字',
-    count: (current: number, total: number) => `${current}/${total}`,
-    close: '关闭搜索',
-  },
-  en: {
-    placeholder: 'Search drawing text',
-    previous: 'Previous',
-    next: 'Next',
-    noResult: 'No matching text',
-    count: (current: number, total: number) => `${current}/${total}`,
-    close: 'Close search',
-  },
-};
 
 /** 图纸文字搜索面板，仅搜索当前模型空间或当前图纸空间中的实体文字。 */
 const DxfTextSearchPanel: React.FC<DxfTextSearchPanelProps> = ({ entities, blocks, lang, onLocate, onClose }) => {
   const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
-  const t = labels[lang];
   const entityTypeNames = ENTITY_TYPE_NAMES[lang];
 
   const matches = useMemo(() => searchEntitiesByText(entities, blocks, query), [blocks, entities, query]);
@@ -101,31 +82,31 @@ const DxfTextSearchPanel: React.FC<DxfTextSearchPanelProps> = ({ entities, block
           ref={inputRef}
           type="search"
           value={query}
-          placeholder={t.placeholder}
+          placeholder={t(lang, 'searchPlaceholder')}
           onChange={(event) => setQuery(event.target.value)}
           onKeyDown={handleKeyDown}
           className="text-search-input"
-          aria-label={t.placeholder}
+          aria-label={t(lang, 'searchPlaceholder')}
         />
         {hasQuery && (
           <span className="text-search-count">
-            {matches.length > 0 ? t.count(activeIndex + 1, matches.length) : '0/0'}
+            {matches.length > 0 ? `${activeIndex + 1}/${matches.length}` : '0/0'}
           </span>
         )}
-        <button type="button" className="text-search-nav" onClick={locatePrevious} disabled={matches.length === 0} title={t.previous} aria-label={t.previous}>
+        <button type="button" className="text-search-nav" onClick={locatePrevious} disabled={matches.length === 0} title={t(lang, 'searchPrevious')} aria-label={t(lang, 'searchPrevious')}>
           <ViewerIcon name="chevronUp" />
         </button>
-        <button type="button" className="text-search-nav" onClick={locateNext} disabled={matches.length === 0} title={t.next} aria-label={t.next}>
+        <button type="button" className="text-search-nav" onClick={locateNext} disabled={matches.length === 0} title={t(lang, 'searchNext')} aria-label={t(lang, 'searchNext')}>
           <ViewerIcon name="chevronDown" />
         </button>
-        <button type="button" className="text-search-close" onClick={onClose} title={t.close} aria-label={t.close}>
+        <button type="button" className="text-search-close" onClick={onClose} title={t(lang, 'searchClose')} aria-label={t(lang, 'searchClose')}>
           <ViewerIcon name="close" />
         </button>
       </div>
 
       {hasQuery && (
         <div className="text-search-results">
-          {matches.length === 0 && <div className="text-search-empty">{t.noResult}</div>}
+          {matches.length === 0 && <div className="text-search-empty">{t(lang, 'searchNoResult')}</div>}
           {matches.slice(0, 30).map((match, index) => (
             <button
               key={match.id}

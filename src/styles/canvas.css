@@ -1,0 +1,19 @@
+.canvas-container {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  user-select: none;
+  touch-action: none;
+  overscroll-behavior: none;
+  cursor: default !important;
+  /* 默认白色，避免浅色主题下 --canvas-bg 未及时设置时出现黑色闪烁。 */
+  background-color: var(--canvas-bg, #ffffff);
+}
+
+.canvas-container canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}

@@ -1,7 +1,7 @@
-﻿import React, { useEffect, useRef, useState } from 'react';
-import { Language, UI_TRANSLATIONS } from '@/config/i18n';
+import React, { useEffect, useRef, useState } from 'react';
+import { Language, UI_TRANSLATIONS, t } from '@/config/i18n';
 import { DrawingColorMode, UiTheme } from '@/types';
-import ViewerIcon, { ViewerIconName } from '@/components/viewer/ViewerIcon';
+import ViewerIcon, { ViewerIconName } from '@/components/common/ViewerIcon';
 
 interface ViewerToolbarProps {
   onImport: (files: File[]) => void;
@@ -53,8 +53,7 @@ const ViewerToolbar: React.FC<ViewerToolbarProps> = ({
 }) => {
   const [activeMenu, setActiveMenu] = useState<MenuKey | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const t = UI_TRANSLATIONS[lang];
-  const isZh = lang === 'zh';
+  const tt = UI_TRANSLATIONS[lang];
 
   useEffect(() => {
     if (!activeMenu) return;
@@ -105,7 +104,7 @@ const ViewerToolbar: React.FC<ViewerToolbarProps> = ({
   );
 
   return (
-    <div className="toolbar" role="toolbar" aria-label={isZh ? '查看器工具栏' : 'Viewer toolbar'}>
+    <div className="toolbar" role="toolbar" aria-label={t(lang, 'viewerToolbar')}>
       <input
         ref={fileInputRef}
         type="file"
@@ -115,16 +114,16 @@ const ViewerToolbar: React.FC<ViewerToolbarProps> = ({
         className="hidden-file-input"
       />
 
-      {showOpen && renderToolButton('open', t.openFile, openFileDialog)}
+      {showOpen && renderToolButton('open', tt.openFile, openFileDialog)}
       {showOpen && <div className="toolbar-separator" role="separator" />}
 
-      {renderToolButton('previous', t.previousView, onPreviousView, !canGoPreviousView)}
-      {renderToolButton('next', t.nextView, onNextView, !canGoNextView)}
-      {renderToolButton('fit', t.fitView, onFitView)}
+      {renderToolButton('previous', tt.previousView, onPreviousView, !canGoPreviousView)}
+      {renderToolButton('next', tt.nextView, onNextView, !canGoNextView)}
+      {renderToolButton('fit', tt.fitView, onFitView)}
 
       <div className="toolbar-separator" role="separator" />
 
-      {renderToolButton('search', isZh ? '搜索文字' : 'Search text', onToggleSearch, false, isSearchActive)}
+      {renderToolButton('search', t(lang, 'searchText'), onToggleSearch, false, isSearchActive)}
 
       <div className="toolbar-separator" role="separator" />
 
@@ -133,8 +132,8 @@ const ViewerToolbar: React.FC<ViewerToolbarProps> = ({
           type="button"
           className="toolbar-button toolbar-icon-button"
           onClick={(event) => toggleMenu(event, 'view')}
-          title={t.view}
-          aria-label={t.view}
+          title={tt.view}
+          aria-label={tt.view}
           aria-haspopup="menu"
           aria-expanded={activeMenu === 'view'}
         >
@@ -143,13 +142,13 @@ const ViewerToolbar: React.FC<ViewerToolbarProps> = ({
         {activeMenu === 'view' && (
           <div className="dropdown-menu" role="menu" onClick={(event) => event.stopPropagation()}>
             <button type="button" onClick={() => closeMenuAndRun(() => onSetUiTheme('system'))} className={`dropdown-item ${uiTheme === 'system' ? 'checked' : ''}`}>
-              <span>{t.system}</span>
+              <span>{tt.system}</span>
             </button>
             <button type="button" onClick={() => closeMenuAndRun(() => onSetUiTheme('light'))} className={`dropdown-item ${uiTheme === 'light' ? 'checked' : ''}`}>
-              <span>{t.light}</span>
+              <span>{tt.light}</span>
             </button>
             <button type="button" onClick={() => closeMenuAndRun(() => onSetUiTheme('dark'))} className={`dropdown-item ${uiTheme === 'dark' ? 'checked' : ''}`}>
-              <span>{t.dark}</span>
+              <span>{tt.dark}</span>
             </button>
             <div className="divider" />
             <button
@@ -157,18 +156,18 @@ const ViewerToolbar: React.FC<ViewerToolbarProps> = ({
               onClick={() => closeMenuAndRun(() => onSetDrawingColorMode(drawingColorMode === 'monochrome' ? 'original' : 'monochrome'))}
               className={`dropdown-item ${drawingColorMode === 'monochrome' ? 'checked' : ''}`}
             >
-              <span>{t.monochrome}</span>
+              <span>{tt.monochrome}</span>
             </button>
             <div className="divider" />
             <button type="button" onClick={() => closeMenuAndRun(onToggleLayerPanel)} className={`dropdown-item ${showLayerPanel ? 'checked' : ''}`}>
-              <span>{t.layers}</span>
+              <span>{tt.layers}</span>
             </button>
             <button type="button" onClick={() => closeMenuAndRun(onToggleProperties)} className={`dropdown-item ${showProperties ? 'checked' : ''}`}>
-              <span>{t.properties}</span>
+              <span>{tt.properties}</span>
             </button>
             <div className="divider" />
             <button type="button" onClick={() => closeMenuAndRun(() => onSetLang(lang === 'zh' ? 'en' : 'zh'))} className="dropdown-item">
-              <span>{t.language}: {lang === 'zh' ? 'English' : '简体中文'}</span>
+              <span>{tt.language}: {lang === 'zh' ? 'English' : '简体中文'}</span>
             </button>
           </div>
         )}
@@ -177,7 +176,7 @@ const ViewerToolbar: React.FC<ViewerToolbarProps> = ({
       {onShowAbout && (
         <>
           <div className="toolbar-separator" role="separator" />
-          {renderToolButton('about', t.about, () => closeMenuAndRun(onShowAbout))}
+          {renderToolButton('about', tt.about, () => closeMenuAndRun(onShowAbout))}
         </>
       )}
     </div>

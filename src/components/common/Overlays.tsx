@@ -1,6 +1,6 @@
-﻿import { Language } from '@/config/i18n';
+import { Language, t } from '@/config/i18n';
 
-import ViewerIcon from '@/components/viewer/ViewerIcon';
+import ViewerIcon from '@/components/common/ViewerIcon';
 
 export interface LoadingOverlayProps {
   lang: Language;
@@ -28,8 +28,8 @@ export interface ViewerNoticeProps {
 
 export function LoadingOverlay({ lang, fileName, progress }: LoadingOverlayProps) {
   const safeProgress = Math.max(0, Math.min(100, progress));
-  const fallbackName = lang === 'zh' ? 'DXF 文件' : 'DXF file';
-  const title = lang === 'zh' ? '正在加载' : 'Loading';
+  const fallbackName = t(lang, 'dxfFile');
+  const title = t(lang, 'loading');
 
   return (
     <div className="loading-overlay" aria-live="polite" aria-busy="true">
@@ -67,17 +67,17 @@ export function ViewerNotice({ lang, message, hasEntities, onFitView, onDismiss 
   return (
     <div className="viewer-error-panel">
       <div className="viewer-error-title">
-        {lang === 'zh' ? '没有可显示内容' : 'Nothing Visible'}
+        {t(lang, 'nothingVisible')}
       </div>
       <div className="viewer-error-message">{message}</div>
       <div className="viewer-error-actions">
         {hasEntities && (
           <button type="button" className="viewer-error-button" onClick={onFitView}>
-            {lang === 'zh' ? '充满视图' : 'Fit View'}
+            {t(lang, 'fitView')}
           </button>
         )}
         <button type="button" className="viewer-error-button primary" onClick={onDismiss}>
-          {lang === 'zh' ? '关闭提示' : 'Dismiss'}
+          {t(lang, 'dismiss')}
         </button>
       </div>
     </div>

@@ -1,8 +1,8 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { AnyEntity, EntityType, DxfLayer } from '@/types';
 import { getAutoCadColor } from '@/utils/colorUtils';
-import { Language, UI_TRANSLATIONS, ENTITY_TYPE_NAMES } from '@/config/i18n';
-import ViewerIcon from '@/components/viewer/ViewerIcon';
+import { Language, UI_TRANSLATIONS, ENTITY_TYPE_NAMES, t as translate } from '@/config/i18n';
+import ViewerIcon from '@/components/common/ViewerIcon';
 
 interface LayerPanelProps {
   layers: Record<string, DxfLayer>;
@@ -277,7 +277,7 @@ const LayerPanel: React.FC<LayerPanelProps> = ({
                                         e.stopPropagation();
                                         onToggleLayerVisibility?.(item.name);
                                     }}
-                                    title={isHidden ? (lang === 'zh' ? '显示图层' : 'Show layer') : (lang === 'zh' ? '隐藏图层' : 'Hide layer')}
+                                    title={isHidden ? translate(lang, 'showLayer') : translate(lang, 'hideLayer')}
                                 >
                                     <ViewerIcon className="layer-checkbox-icon" name={isHidden ? 'checkboxEmpty' : 'checkboxChecked'} />
                                 </div>

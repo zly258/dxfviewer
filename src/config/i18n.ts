@@ -1,7 +1,8 @@
-﻿export type Language = 'en' | 'zh';
+export type Language = 'en' | 'zh';
 
 export const UI_TRANSLATIONS: Record<Language, Record<string, string>> = {
   en: {
+    // 工具栏 & 视图
     view: 'View',
     fitView: 'Fit View',
     previousView: 'Previous View',
@@ -17,16 +18,33 @@ export const UI_TRANSLATIONS: Record<Language, Record<string, string>> = {
     language: 'Language',
     on: 'On',
     off: 'Off',
+    searchText: 'Search text',
+    viewerToolbar: 'Viewer toolbar',
+
+    // 图层面板
     layersTitle: 'Layers',
+    layerSearch: 'Search layers…',
+    layerFilterEmpty: 'Hide empty layers',
+    layerSortName: 'Sort by name',
+    layerSortCount: 'Sort by count',
+    layerSortAsc: 'Ascending',
+    layerSortDesc: 'Descending',
+    layerEmptyHint: 'No matching layers',
+    showLayer: 'Show layer',
+    hideLayer: 'Hide layer',
+
+    // 属性面板
     propertiesTitle: 'Properties',
     noSelection: 'No entities selected',
     selectedCount: '{count} entities selected',
+    selectSingle: 'Select a single entity to view details',
     type: 'Type',
     handle: 'Handle',
     layer: 'Layer',
     color: 'Color',
     linetype: 'Linetype',
     lineweight: 'Lineweight',
+    linetypeScale: 'Linetype Scale',
     byLayer: 'ByLayer',
     byBlock: 'ByBlock',
     default: 'Default',
@@ -71,15 +89,69 @@ export const UI_TRANSLATIONS: Record<Language, Record<string, string>> = {
     imageWidth: 'Image Width',
     imageHeight: 'Image Height',
     imageRef: 'Image Ref',
-    layerSearch: 'Search layers…',
-    layerFilterEmpty: 'Hide empty layers',
-    layerSortName: 'Sort by name',
-    layerSortCount: 'Sort by count',
-    layerSortAsc: 'Ascending',
-    layerSortDesc: 'Descending',
-    layerEmptyHint: 'No matching layers'
+    rows: 'Rows',
+    columns: 'Columns',
+    rowSpacing: 'Row Spacing',
+    colSpacing: 'Col Spacing',
+    cellContents: 'Cell Contents',
+    totalCells: 'Total {count} cells',
+
+    // 右键菜单（画布）
+    showAll: 'Show All',
+    hideSelected: 'Hide Selected',
+    isolateSelected: 'Isolate Selected',
+    hideSelectedLayer: 'Turn Layer Off',
+
+    // 标签页右键菜单
+    closeTab: 'Close',
+    closeOtherTabs: 'Close Others',
+    closeTabsToLeft: 'Close to Left',
+    closeTabsToRight: 'Close to Right',
+    closeAllTabs: 'Close All',
+    scrollTabsLeft: 'Scroll tabs left',
+    scrollTabsRight: 'Scroll tabs right',
+    closeTabAriaLabel: 'Close tab',
+
+    // 加载 & 反馈
+    loading: 'Loading',
+    dxfFile: 'DXF file',
+    decodeFailed: 'DXF decode failed: {message}',
+    parseFailed: 'DXF parse failed: {message}',
+    loadFailed: 'DXF load failed: {message}',
+    renderFailed: 'DXF render failed: {message}',
+    fileReadError: 'File Read Error',
+    nothingVisible: 'Nothing Visible',
+    dismiss: 'Dismiss',
+    closeToast: 'Close',
+
+    // 关于对话框
+    aboutTitle: 'About DXF Viewer',
+    aboutHeading: 'DXF Viewer',
+    aboutDescription: 'A React and HTML5 Canvas based DXF viewer component with Model/Layout switching, common geometry, text, annotations and block rendering.',
+    contactEmail: 'Contact Email',
+    license: 'License',
+    close: 'Close',
+
+    // 状态栏
+    noObjectsSelected: 'No objects selected',
+    statusSelected: 'Selected {count}',
+    statusSpace: 'Space',
+    statusEntities: 'Entities',
+    spaceSwitchAriaLabel: 'Space switch',
+
+    // 移动端
+    mobileToolbar: 'Mobile toolbar',
+    viewSettings: 'View Settings',
+
+    // 搜索面板
+    searchPlaceholder: 'Search drawing text',
+    searchPrevious: 'Previous',
+    searchNext: 'Next',
+    searchNoResult: 'No matching text',
+    searchClose: 'Close search',
   },
   zh: {
+    // 工具栏 & 视图
     view: '视图',
     fitView: '充满视图',
     previousView: '上一个视图',
@@ -95,26 +167,33 @@ export const UI_TRANSLATIONS: Record<Language, Record<string, string>> = {
     language: '语言',
     on: '开启',
     off: '关闭',
+    searchText: '搜索文字',
+    viewerToolbar: '查看器工具栏',
+
+    // 图层面板
     layersTitle: '图层列表',
+    layerSearch: '搜索图层…',
+    layerFilterEmpty: '隐藏空图层',
+    layerSortName: '按名称排序',
+    layerSortCount: '按数量排序',
+    layerSortAsc: '升序',
+    layerSortDesc: '降序',
+    layerEmptyHint: '无匹配图层',
+    showLayer: '显示图层',
+    hideLayer: '隐藏图层',
+
+    // 属性面板
     propertiesTitle: '属性面板',
-    linetypeScale: '线型比例',
     noSelection: '未选择对象',
     selectedCount: '已选择 {count} 个对象',
     selectSingle: '选择单个对象以查看详细属性',
-    
-    // 表格属性
-    rows: '行数',
-    columns: '列数',
-    rowSpacing: '行间距',
-    colSpacing: '列间距',
-    cellContents: '单元格内容',
-    totalCells: '共 {count} 个单元格',
     type: '类型',
     handle: '句柄',
     layer: '图层',
     color: '颜色',
     linetype: '线型',
     lineweight: '线宽',
+    linetypeScale: '线型比例',
     byLayer: '随层 (ByLayer)',
     byBlock: '随块 (ByBlock)',
     default: '默认 (Default)',
@@ -159,14 +238,83 @@ export const UI_TRANSLATIONS: Record<Language, Record<string, string>> = {
     imageWidth: '图像宽度',
     imageHeight: '图像高度',
     imageRef: '图像引用',
-    layerSearch: '搜索图层…',
-    layerFilterEmpty: '隐藏空图层',
-    layerSortName: '按名称排序',
-    layerSortCount: '按数量排序',
-    layerSortAsc: '升序',
-    layerSortDesc: '降序',
-    layerEmptyHint: '无匹配图层'
+    rows: '行数',
+    columns: '列数',
+    rowSpacing: '行间距',
+    colSpacing: '列间距',
+    cellContents: '单元格内容',
+    totalCells: '共 {count} 个单元格',
+
+    // 右键菜单（画布）
+    showAll: '全部显示',
+    hideSelected: '隐藏选中',
+    isolateSelected: '隔离选中',
+    hideSelectedLayer: '关闭图层',
+
+    // 标签页右键菜单
+    closeTab: '关闭当前',
+    closeOtherTabs: '关闭其他',
+    closeTabsToLeft: '关闭左边',
+    closeTabsToRight: '关闭右边',
+    closeAllTabs: '全部关闭',
+    scrollTabsLeft: '向左滚动标签',
+    scrollTabsRight: '向右滚动标签',
+    closeTabAriaLabel: '关闭标签',
+
+    // 加载 & 反馈
+    loading: '正在加载',
+    dxfFile: 'DXF 文件',
+    decodeFailed: 'DXF 解码失败：{message}',
+    parseFailed: 'DXF 解析失败：{message}',
+    loadFailed: 'DXF 加载失败：{message}',
+    renderFailed: 'DXF 渲染失败：{message}',
+    fileReadError: '文件读取失败',
+    nothingVisible: '没有可显示内容',
+    dismiss: '关闭提示',
+    closeToast: '关闭提示',
+
+    // 关于对话框
+    aboutTitle: '关于 DXF Viewer',
+    aboutHeading: 'DXF 浏览器',
+    aboutDescription: '基于 React 和 HTML5 Canvas 的 DXF 文件查看组件，支持模型空间、多个图纸空间、常用几何实体、文字、标注和块参照解析渲染。',
+    contactEmail: '联系邮箱',
+    license: '开源协议',
+    close: '关闭',
+
+    // 状态栏
+    noObjectsSelected: '未选择对象',
+    statusSelected: '已选 {count}',
+    statusSpace: '空间',
+    statusEntities: '实体',
+    spaceSwitchAriaLabel: '空间切换',
+
+    // 移动端
+    mobileToolbar: '移动端工具栏',
+    viewSettings: '视图设置',
+
+    // 搜索面板
+    searchPlaceholder: '搜索图纸文字',
+    searchPrevious: '上一个',
+    searchNext: '下一个',
+    searchNoResult: '未找到匹配文字',
+    searchClose: '关闭搜索',
   }
+};
+
+/**
+ * 翻译辅助函数，支持 {key} 插值。
+ *
+ * @example
+ *   t(lang, 'selectedCount', { count: 5 })  → "已选择 5 个对象"
+ *   t(lang, 'fitView')                      → "充满视图"
+ */
+export const t = (lang: Language, key: string, params?: Record<string, string | number>): string => {
+  const template = UI_TRANSLATIONS[lang]?.[key] ?? UI_TRANSLATIONS.en[key] ?? key;
+  if (!params) return template;
+  return template.replace(/\{(\w+)\}/g, (_, paramKey) => {
+    const value = params[paramKey];
+    return value !== undefined ? String(value) : `{${paramKey}}`;
+  });
 };
 
 export const ENTITY_TYPE_NAMES: Record<Language, Record<string, string>> = {

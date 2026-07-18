@@ -1,4 +1,4 @@
-﻿import { DxfLayer, ViewPort, DxfStyle, CanvasTheme, DrawingColorMode, ResolvedUiTheme, UiTheme } from '@/types';
+import { DxfLayer, ViewPort, DxfStyle, CanvasTheme, DrawingColorMode, ResolvedUiTheme, UiTheme } from '@/types';
 import {
   CAD_DEFAULT_LAYER_COLOR,
   CAD_DEFAULT_LAYER_NAME,
@@ -244,4 +244,40 @@ export const LEADER_RENDER_CONFIG = {
   defaultMLeaderDoglegLength: 4,
   mleaderTextGapFactor: 0.8,
   leaderAnnotationTextGapFactor: 0.5,
+};
+
+export const INTERACTION_CONFIG = {
+  wheelZoomFactor: 1.2,
+  touchMoveThresholdPixels: 6,
+  touchLongPressDelayMs: 560,
+  touchTapMaxDurationMs: 300,
+  touchHitToleranceMultiplier: 2.5,
+};
+
+export const PANEL_CONFIG = {
+  layerPanelInitialWidth: 270,
+  layerPanelMinWidth: 160,
+  layerPanelMaxWidth: 520,
+  propertiesPanelInitialWidth: 330,
+  propertiesPanelMinWidth: 180,
+  propertiesPanelMaxWidth: 560,
+};
+
+export const CONTEXT_MENU_CONFIG = {
+  desktopWidth: 156,
+  desktopHeight: 174,
+  mobileWidth: 160,
+  mobileHeight: 196,
+  padding: 6,
+  mobilePadding: 10,
+};
+
+export const TABS_CONFIG = {
+  denseThreshold: 18,
+  compactThreshold: 10,
+  scrollStep: 240,
+};
+
+export const BREAKPOINTS = {
+  mobile: 768,
 };

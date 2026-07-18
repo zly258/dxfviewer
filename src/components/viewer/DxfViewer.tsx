@@ -1,20 +1,21 @@
-﻿import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import CanvasViewer from '@/components/viewer/CanvasViewer';
 import LayerPanel from '@/components/viewer/LayerPanel';
 import PropertiesPanel from '@/components/viewer/PropertiesPanel';
 import ViewerToolbar from '@/components/viewer/ViewerToolbar';
 import DxfTextSearchPanel from '@/components/viewer/DxfTextSearchPanel';
 import MobileViewerControls from '@/components/viewer/MobileViewerControls';
-import AboutDialog from './AboutDialog';
-import { LoadingOverlay, Toast, ToastState, ViewerNotice } from './ViewerFeedback';
-import { SpaceSwitchBar, StatusBar } from './ViewerStatus';
+import AboutDialog from '@/components/common/AboutDialog';
+import { LoadingOverlay, Toast, ToastState, ViewerNotice } from '@/components/common/Overlays';
+import { SpaceSwitchBar, StatusBar } from '@/components/common/StatusBars';
 import { useIsMobile } from '@/hooks/useMediaQuery';
-import { parseDxf } from '@/core/parser/dxfParser';
+import { useViewHistory } from '@/hooks/useViewHistory';
+import { useEntityVisibility } from '@/hooks/useEntityVisibility';
+import { useDxfLoader } from '@/hooks/useDxfLoader';
 import { calculateExtents } from '@/core/geometry/extents';
 import { AnyEntity, ViewPort, DxfLayer, DxfBlock, EntityType, DxfStyle, DxfLineType, Point2D, CanvasTheme, DrawingColorMode, UiTheme, DxfLayout, ResolvedUiTheme } from '@/types';
-import { CANVAS_THEME_COLORS, DEFAULT_LAYER, DEFAULT_VIEWPORT, LAYOUT_CONFIG, SHORTCUT_CONFIG, VIEWER_DEFAULTS, ZOOM_CONFIG, canvasThemeFromUiTheme, getSystemUiTheme, resolveUiTheme } from '@/config/viewerConfig';
-import { Language } from '@/config/i18n';
-import { decodeDxfBuffer } from '@/core/parser/utils/textDecoder';
+import { CANVAS_THEME_COLORS, DEFAULT_LAYER, DEFAULT_VIEWPORT, LAYOUT_CONFIG, SHORTCUT_CONFIG, VIEWER_DEFAULTS, ZOOM_CONFIG, PANEL_CONFIG, canvasThemeFromUiTheme, getSystemUiTheme, resolveUiTheme } from '@/config/viewerConfig';
+import { Language, t } from '@/config/i18n';
 import { readViewerUiSettings, ViewerUiSettings, writeViewerUiSettings } from './viewerUiSettings';
 import { TextSearchMatch } from '@/utils/entityTextSearch';
 
@@ -23,20 +24,8 @@ import { TextSearchMatch } from '@/utils/entityTextSearch';
  * 负责解析文件、管理全局状态、协调侧边栏与主查看器的交互
  */
 
-
 /** 判断图纸空间是否可以切换。模型空间始终保留，空图纸空间不进入底部切换栏。 */
-const isSwitchableLayout = (layout: DxfLayout): boolean => layout.isModel || layout.entities.length > 0;
-
-/** 判断两个视图是否足够接近，避免同一视图重复入栈。 */
-const isSameViewPort = (a: ViewPort, b: ViewPort): boolean => {
-  const positionBase = Math.max(1, Math.abs(a.targetX), Math.abs(a.targetY), Math.abs(b.targetX), Math.abs(b.targetY));
-  const zoomBase = Math.max(1, Math.abs(a.zoom), Math.abs(b.zoom));
-  const positionTolerance = VIEWER_DEFAULTS.viewHistoryPositionTolerance * positionBase;
-  const zoomTolerance = VIEWER_DEFAULTS.viewHistoryZoomTolerance * zoomBase;
-  return Math.abs(a.targetX - b.targetX) <= positionTolerance
-    && Math.abs(a.targetY - b.targetY) <= positionTolerance
-    && Math.abs(a.zoom - b.zoom) <= zoomTolerance;
-};
+const isSwitchableLayout = (layout: DxfLayout): boolean => layout.isModel || layout.entities?.length > 0;
 
 export interface DxfViewerProps {
   initFile?: string | File;
@@ -79,23 +68,22 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
   const [layouts, setLayouts] = useState<DxfLayout[]>([]);
   const [activeLayoutName, setActiveLayoutName] = useState('Model');
   const [layers, setLayers] = useState<Record<string, DxfLayer>>({ [DEFAULT_LAYER.name]: DEFAULT_LAYER });
-  const [hiddenLayers, setHiddenLayers] = useState<Set<string>>(new Set());
-  const hiddenLayersRef = useRef(hiddenLayers);
-  const [hiddenEntityIds, setHiddenEntityIds] = useState<Set<string>>(new Set());
-  const [isolatedEntityIds, setIsolatedEntityIds] = useState<Set<string> | null>(null);
   const [showAbout, setShowAbout] = useState(false);
   const [showTextSearch, setShowTextSearch] = useState(false);
   const isMobile = useIsMobile();
   const mobileFileInputRef = useRef<HTMLInputElement>(null);
 
-  const toggleLayerVisibility = useCallback((layerName: string) => {
-    setHiddenLayers(prev => {
-      const next = new Set(prev);
-      if (next.has(layerName)) next.delete(layerName);
-      else next.add(layerName);
-      return next;
-    });
-  }, []);
+  const {
+    hiddenLayers,
+    setHiddenLayers,
+    hiddenLayersRef,
+    setHiddenEntityIds,
+    setIsolatedEntityIds,
+    toggleLayerVisibility,
+    displayEntities,
+    resetVisibility
+  } = useEntityVisibility(entities);
+
   const [blocks, setBlocks] = useState<Record<string, DxfBlock>>({});
   const [styles, setStyles] = useState<Record<string, DxfStyle>>({});
   const [lineTypes, setLineTypes] = useState<Record<string, DxfLineType>>({});
@@ -103,8 +91,8 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
   const [worldOffset, setWorldOffset] = useState<Point2D | undefined>();
   const [showLayerPanel, setShowLayerPanel] = useState(savedUiSettingsRef.current.showLayerPanel ?? savedUiSettingsRef.current.showSidebar ?? true);
   const [showProperties, setShowProperties] = useState(savedUiSettingsRef.current.showProperties ?? true);
-  const [layerPanelWidth, setLayerPanelWidth] = useState(270);
-  const [propertiesWidth, setPropertiesWidth] = useState(330);
+  const [layerPanelWidth, setLayerPanelWidth] = useState(PANEL_CONFIG.layerPanelInitialWidth);
+  const [propertiesWidth, setPropertiesWidth] = useState(PANEL_CONFIG.propertiesPanelInitialWidth);
   const layerResizingRef = useRef(false);
   const propertiesResizingRef = useRef(false);
   const resizeStartXRef = useRef(0);
@@ -118,7 +106,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
     const onMove = (me: MouseEvent) => {
       if (!layerResizingRef.current) return;
       const delta = me.clientX - resizeStartXRef.current;
-      setLayerPanelWidth(Math.max(160, Math.min(520, resizeStartWidthRef.current + delta)));
+      setLayerPanelWidth(Math.max(PANEL_CONFIG.layerPanelMinWidth, Math.min(PANEL_CONFIG.layerPanelMaxWidth, resizeStartWidthRef.current + delta)));
     };
     const onUp = () => {
       layerResizingRef.current = false;
@@ -141,7 +129,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
     const onMove = (me: MouseEvent) => {
       if (!propertiesResizingRef.current) return;
       const delta = me.clientX - resizeStartXRef.current;
-      setPropertiesWidth(Math.max(180, Math.min(560, resizeStartWidthRef.current - delta)));
+      setPropertiesWidth(Math.max(PANEL_CONFIG.propertiesPanelMinWidth, Math.min(PANEL_CONFIG.propertiesPanelMaxWidth, resizeStartWidthRef.current - delta)));
     };
     const onUp = () => {
       propertiesResizingRef.current = false;
@@ -156,19 +144,18 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
     window.addEventListener('mouseup', onUp);
   }, [propertiesWidth]);
   
-  const [isLoading, setIsLoading] = useState(false);
-  const [loadingProgress, setLoadingProgress] = useState(0);
-  const [loadingFileName, setLoadingFileName] = useState('');
-
   const [selectedEntityIds, setSelectedEntityIds] = useState<Set<string>>(new Set());
   
-  const [viewPort, setViewPort] = useState<ViewPort>(DEFAULT_VIEWPORT);
-  const [viewHistory, setViewHistory] = useState<ViewPort[]>([]);
-  const [viewHistoryIndex, setViewHistoryIndex] = useState(-1);
-  const viewHistoryRef = useRef<ViewPort[]>([]);
-  const viewHistoryIndexRef = useRef(-1);
-  const viewHistoryTimerRef = useRef<number | undefined>(undefined);
-  const isRestoringViewHistoryRef = useRef(false);
+  const {
+    viewPort,
+    setViewPort,
+    resetViewHistory,
+    handlePreviousView,
+    handleNextView,
+    canGoPreviousView,
+    canGoNextView
+  } = useViewHistory(DEFAULT_VIEWPORT, entities.length > 0);
+
   const [internalUiTheme, setInternalUiTheme] = useState<UiTheme>(savedUiSettingsRef.current.uiTheme ?? VIEWER_DEFAULTS.uiTheme);
   const [internalDrawingColorMode, setInternalDrawingColorMode] = useState<DrawingColorMode>(savedUiSettingsRef.current.drawingColorMode ?? VIEWER_DEFAULTS.drawingColorMode);
   const [internalLang, setInternalLang] = useState<Language>(savedUiSettingsRef.current.language ?? defaultLanguage);
@@ -202,38 +189,10 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
   };
 
   const lang = controlledLang || internalLang;
-  const handleSetLang = useCallback((newLang: Language) => {
-    setInternalLang(newLang);
-    onLanguageChange?.(newLang);
-  }, [onLanguageChange]);
+  const { isLoading, loadingProgress, loadingFileName, loadFromUrl, loadFromFile } = useDxfLoader(lang, onError);
 
   const uiTheme = controlledUiTheme || internalUiTheme;
   const effectiveUiTheme = resolveUiTheme(uiTheme, systemTheme);
-  const handleSetUiTheme = useCallback((newTheme: UiTheme) => {
-    setInternalUiTheme(newTheme);
-    onUiThemeChange?.(newTheme);
-  }, [onUiThemeChange]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || !window.matchMedia) return;
-    const media = window.matchMedia('(prefers-color-scheme: dark)');
-    const updateSystemTheme = () => setSystemTheme(media.matches ? 'dark' : 'light');
-    updateSystemTheme();
-    media.addEventListener?.('change', updateSystemTheme);
-    return () => media.removeEventListener?.('change', updateSystemTheme);
-  }, []);
-
-  useEffect(() => {
-    hiddenLayersRef.current = hiddenLayers;
-  }, [hiddenLayers]);
-
-  const displayEntities = useMemo(() => {
-    return entities.filter(entity => {
-      if (hiddenEntityIds.has(entity.id)) return false;
-      if (isolatedEntityIds && !isolatedEntityIds.has(entity.id)) return false;
-      return true;
-    });
-  }, [entities, hiddenEntityIds, isolatedEntityIds]);
 
   // 画布背景跟随最终 UI 主题：浅色 UI → 白底，深色 UI → 黑底。
   // 不再单独暴露 canvasTheme，避免 UI 主题与画布背景不一致。
@@ -256,83 +215,24 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
     });
   }, [uiTheme, drawingColorMode, lang, showLayerPanel, showProperties]);
 
-  const clearViewHistoryTimer = useCallback(() => {
-    if (viewHistoryTimerRef.current !== undefined) {
-      window.clearTimeout(viewHistoryTimerRef.current);
-      viewHistoryTimerRef.current = undefined;
-    }
-  }, []);
+  const handleSetLang = useCallback((newLang: Language) => {
+    setInternalLang(newLang);
+    onLanguageChange?.(newLang);
+  }, [onLanguageChange]);
 
-  const applyViewHistory = useCallback((history: ViewPort[], index: number) => {
-    viewHistoryRef.current = history;
-    viewHistoryIndexRef.current = index;
-    setViewHistory(history);
-    setViewHistoryIndex(index);
-  }, []);
-
-  const resetViewHistory = useCallback(() => {
-    clearViewHistoryTimer();
-    applyViewHistory([], -1);
-  }, [applyViewHistory, clearViewHistoryTimer]);
-
-  const commitViewHistory = useCallback((nextViewPort: ViewPort) => {
-    const history = viewHistoryRef.current;
-    const currentIndex = viewHistoryIndexRef.current;
-    const currentViewPort = currentIndex >= 0 ? history[currentIndex] : undefined;
-    if (currentViewPort && isSameViewPort(currentViewPort, nextViewPort)) return;
-
-    const baseHistory = currentIndex >= 0 ? history.slice(0, currentIndex + 1) : [];
-    const lastViewPort = baseHistory[baseHistory.length - 1];
-    if (lastViewPort && isSameViewPort(lastViewPort, nextViewPort)) return;
-
-    const limitedHistory = [...baseHistory, nextViewPort].slice(-VIEWER_DEFAULTS.viewHistoryMaxSize);
-    applyViewHistory(limitedHistory, limitedHistory.length - 1);
-  }, [applyViewHistory]);
-
-  const handleViewPortChange = useCallback((nextViewPort: ViewPort) => {
-    setViewPort(nextViewPort);
-  }, []);
-
-  const goToViewHistory = useCallback((nextIndex: number) => {
-    const history = viewHistoryRef.current;
-    if (nextIndex < 0 || nextIndex >= history.length) return;
-    clearViewHistoryTimer();
-    isRestoringViewHistoryRef.current = true;
-    viewHistoryIndexRef.current = nextIndex;
-    setViewHistoryIndex(nextIndex);
-    setViewPort(history[nextIndex]);
-  }, [clearViewHistoryTimer]);
-
-  const handlePreviousView = useCallback(() => {
-    goToViewHistory(viewHistoryIndexRef.current - 1);
-  }, [goToViewHistory]);
-
-  const handleNextView = useCallback(() => {
-    goToViewHistory(viewHistoryIndexRef.current + 1);
-  }, [goToViewHistory]);
+  const handleSetUiTheme = useCallback((newTheme: UiTheme) => {
+    setInternalUiTheme(newTheme);
+    onUiThemeChange?.(newTheme);
+  }, [onUiThemeChange]);
 
   useEffect(() => {
-    viewHistoryRef.current = viewHistory;
-  }, [viewHistory]);
-
-  useEffect(() => {
-    viewHistoryIndexRef.current = viewHistoryIndex;
-  }, [viewHistoryIndex]);
-
-  useEffect(() => {
-    if (isRestoringViewHistoryRef.current) {
-      isRestoringViewHistoryRef.current = false;
-      return;
-    }
-    if (entities.length === 0) return;
-    clearViewHistoryTimer();
-    viewHistoryTimerRef.current = window.setTimeout(() => {
-      commitViewHistory(viewPort);
-      viewHistoryTimerRef.current = undefined;
-    }, VIEWER_DEFAULTS.viewHistoryIdleMs);
-
-    return clearViewHistoryTimer;
-  }, [clearViewHistoryTimer, commitViewHistory, entities.length, viewPort]);
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+    const updateSystemTheme = () => setSystemTheme(media.matches ? 'dark' : 'light');
+    updateSystemTheme();
+    media.addEventListener?.('change', updateSystemTheme);
+    return () => media.removeEventListener?.('change', updateSystemTheme);
+  }, []);
 
   const fitView = useCallback((ents: AnyEntity[], blks: Record<string, DxfBlock>, currentStyles: Record<string, DxfStyle> = styles) => {
     if (ents.length === 0) return;
@@ -387,102 +287,71 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
         targetY: centerY, 
         zoom 
     });
-  }, [styles]);
+  }, [styles, setViewPort]);
 
-  const processBuffer = async (buffer: ArrayBuffer) => {
-    let decoded: ReturnType<typeof decodeDxfBuffer>;
+  const handleViewPortChange = useCallback((nextViewPort: ViewPort) => {
+    setViewPort(nextViewPort);
+  }, [setViewPort]);
+
+  const applyLoadResult = useCallback((result: any) => {
+    const data = result.data;
+    setParseErrorMessage(null);
+    setRenderErrorMessage(null);
+    const parsedLayouts = data.layouts || [];
+    const switchableLayouts = parsedLayouts.filter(isSwitchableLayout);
+    const initialLayout = switchableLayouts.find((layout: DxfLayout) => layout.name === data.activeLayoutName)
+      || switchableLayouts.find((layout: DxfLayout) => layout.isModel)
+      || switchableLayouts[0];
+    const initialEntities = initialLayout?.entities || data.entities;
+
+    resetViewHistory();
+    resetVisibility();
+    setShowTextSearch(false);
+    setLayouts(switchableLayouts);
+    setActiveLayoutName(initialLayout?.name || 'Model');
+    setEntities(initialEntities);
+    setSelectedEntityIds(new Set());
+    setLayers(data.layers);
+    setBlocks(data.blocks);
+    setStyles(data.styles);
+    setLineTypes(data.lineTypes);
+    setLtScale(data.header?.ltScale ?? VIEWER_DEFAULTS.defaultLineTypeScale);
+    setWorldOffset(data.offset);
+    onLoad?.({ ...data, sourceFormat: result.sourceFormat });
+    
+    const applyFitView = () => fitView(initialEntities, data.blocks, data.styles);
+    applyFitView();
+    requestAnimationFrame(applyFitView);
+    window.setTimeout(applyFitView, 0);
+  }, [resetViewHistory, resetVisibility, fitView, onLoad]);
+
+  const handleLoadFromUrl = async (url: string) => {
     try {
-        decoded = decodeDxfBuffer(buffer);
-    } catch (err) {
-        const error = err instanceof Error ? err : new Error(String(err));
-        onError?.(error);
-        const message = lang === 'zh' ? `DXF 解码失败：${error.message}` : `DXF decode failed: ${error.message}`;
-        reportOpenFailure(message);
-        setIsLoading(false);
-        return;
-    }
-
-    try {
-        const data = await parseDxf(decoded.text, (progress) => {
-            setLoadingProgress(progress);
-        });
-        setParseErrorMessage(null);
-        setRenderErrorMessage(null);
-        const parsedLayouts = data.layouts || [];
-        const switchableLayouts = parsedLayouts.filter(isSwitchableLayout);
-        const initialLayout = switchableLayouts.find(layout => layout.name === data.activeLayoutName)
-          || switchableLayouts.find(layout => layout.isModel)
-          || switchableLayouts[0];
-        const initialEntities = initialLayout?.entities || data.entities;
-
-        resetViewHistory();
-        setHiddenEntityIds(new Set());
-        setIsolatedEntityIds(null);
-        setShowTextSearch(false);
-        setHiddenLayers(new Set());
-        setLayouts(switchableLayouts);
-        setActiveLayoutName(initialLayout?.name || 'Model');
-        setEntities(initialEntities);
-        setSelectedEntityIds(new Set());
-        setLayers(data.layers);
-        setBlocks(data.blocks);
-        setStyles(data.styles);
-        setLineTypes(data.lineTypes);
-        setLtScale(data.header?.ltScale ?? VIEWER_DEFAULTS.defaultLineTypeScale);
-        setWorldOffset(data.offset);
-        onLoad?.({ ...data, sourceFormat: decoded.format });
-        
-        const applyFitView = () => fitView(initialEntities, data.blocks, data.styles);
-        applyFitView();
-        requestAnimationFrame(applyFitView);
-        window.setTimeout(applyFitView, 0);
-    } catch (err) {
-        const error = err instanceof Error ? err : new Error(String(err));
-        onError?.(error);
-        const message = lang === 'zh' ? `DXF 解析失败：${error.message}` : `DXF parse failed: ${error.message}`;
-        reportOpenFailure(message);
-        console.error(err);
-    } finally {
-        setIsLoading(false);
+      const result = await loadFromUrl(url, fileName);
+      applyLoadResult(result);
+    } catch (err: any) {
+      reportOpenFailure(err.message);
     }
   };
 
-  const loadFromUrl = async (url: string) => {
-    setIsLoading(true);
-    setLoadingProgress(0);
-    setLoadingFileName(fileName || url.split(/[\\/]/).pop() || url);
+  const handleLoadFromFile = async (file: File) => {
     try {
-        const response = await fetch(url);
-        if (!response.ok) throw new Error(`Failed to fetch ${url}: ${response.statusText}`);
-        const buffer = await response.arrayBuffer();
-        await processBuffer(buffer);
-    } catch (err) {
-        const error = err instanceof Error ? err : new Error(String(err));
-        onError?.(error);
-        const message = lang === 'zh' ? `DXF 加载失败：${error.message}` : `DXF load failed: ${error.message}`;
-        reportOpenFailure(message);
-        setIsLoading(false);
+      const result = await loadFromFile(file);
+      applyLoadResult(result);
+    } catch (err: any) {
+      reportOpenFailure(err.message);
     }
   };
 
-  const loadFromFile = async (file: File) => {
-    setIsLoading(true);
-    setLoadingProgress(0);
-    setLoadingFileName(file.name);
-    const reader = new FileReader();
-    reader.onload = async (evt) => {
-      const buffer = evt.target?.result as ArrayBuffer;
-      await processBuffer(buffer);
-    };
-    reader.onerror = () => {
-        const error = new Error(lang === 'zh' ? "文件读取失败" : "File Read Error");
-        onError?.(error);
-        const message = lang === 'zh' ? `DXF 加载失败：${error.message}` : `DXF load failed: ${error.message}`;
-        reportOpenFailure(message);
-        setIsLoading(false);
-    };
-    reader.readAsArrayBuffer(file);
-  };
+  useEffect(() => {
+    if (initFile) {
+      if (typeof initFile === 'string') {
+        handleLoadFromUrl(initFile);
+      } else if (initFile instanceof File) {
+        handleLoadFromFile(initFile);
+      }
+    }
+  }, [initFile, fileName]);
 
   // 在窗口大小调整或布局更改时调整视图
   useEffect(() => {
@@ -618,10 +487,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
       return;
     }
 
-    setIsLoading(true);
-    setLoadingProgress(0);
-    setLoadingFileName(files[0].name);
-    await loadFromFile(files[0]);
+    await handleLoadFromFile(files[0]);
   };
 
   const handleMobileFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -692,7 +558,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
   const viewerNoticeMessage = useMemo(() => {
     if (parseErrorMessage || isLoading || isNoticeDismissed) return null;
     if (renderErrorMessage) {
-      return lang === 'zh' ? `DXF 渲染失败：${renderErrorMessage}` : `DXF render failed: ${renderErrorMessage}`;
+      return t(lang, 'renderFailed', { message: renderErrorMessage });
     }
     return null;
   }, [parseErrorMessage, isLoading, isNoticeDismissed, renderErrorMessage, lang]);
@@ -768,8 +634,8 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
             onNextView={handleNextView}
             onToggleSearch={() => setShowTextSearch(value => !value)}
             isSearchActive={showTextSearch}
-            canGoPreviousView={viewHistoryIndex > 0}
-            canGoNextView={viewHistoryIndex >= 0 && viewHistoryIndex < viewHistory.length - 1}
+            canGoPreviousView={canGoPreviousView}
+            canGoNextView={canGoNextView}
             showOpen={showOpenMenu}
             uiTheme={uiTheme}
             onSetUiTheme={handleSetUiTheme}
@@ -846,8 +712,8 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
               onNextView={handleNextView}
               onToggleSearch={() => setShowTextSearch(value => !value)}
               isSearchActive={showTextSearch}
-              canGoPreviousView={viewHistoryIndex > 0}
-              canGoNextView={viewHistoryIndex >= 0 && viewHistoryIndex < viewHistory.length - 1}
+              canGoPreviousView={canGoPreviousView}
+              canGoNextView={canGoNextView}
               uiTheme={uiTheme}
               onSetUiTheme={handleSetUiTheme}
               drawingColorMode={drawingColorMode}

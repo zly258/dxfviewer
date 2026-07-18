@@ -1,7 +1,7 @@
-﻿import React, { useState } from 'react';
-import { Language, UI_TRANSLATIONS } from '@/config/i18n';
+import React, { useState } from 'react';
+import { Language, UI_TRANSLATIONS, t } from '@/config/i18n';
 import { DxfLayout, DrawingColorMode, UiTheme } from '@/types';
-import ViewerIcon, { ViewerIconName } from '@/components/viewer/ViewerIcon';
+import ViewerIcon, { ViewerIconName } from '@/components/common/ViewerIcon';
 
 export interface MobileViewerControlsProps {
   lang: Language;
@@ -84,8 +84,7 @@ const MobileViewerControls: React.FC<MobileViewerControlsProps> = ({
   activeLayoutName,
   onSelectLayout,
 }) => {
-  const t = UI_TRANSLATIONS[lang];
-  const isZh = lang === 'zh';
+  const tt = UI_TRANSLATIONS[lang];
   const [activePanel, setActivePanel] = useState<MobilePanel | null>(null);
 
   const togglePanel = (panel: MobilePanel) => {
@@ -94,7 +93,7 @@ const MobileViewerControls: React.FC<MobileViewerControlsProps> = ({
 
   const closePanel = () => setActivePanel(null);
 
-  const showViewPanelTitle = isZh ? '视图设置' : 'View Settings';
+  const showViewPanelTitle = t(lang, 'viewSettings');
 
   return (
     <>
@@ -104,18 +103,18 @@ const MobileViewerControls: React.FC<MobileViewerControlsProps> = ({
         {selectedCount > 0 && <span className="coord-selected">· {selectedCount}</span>}
       </div>
 
-      <div className="mobile-right-toolbar" role="toolbar" aria-label={isZh ? '移动端工具栏' : 'Mobile toolbar'}>
-        {showOpen && <MobileToolButton icon="open" label={t.openFile} onClick={onOpen} />}
+      <div className="mobile-right-toolbar" role="toolbar" aria-label={t(lang, 'mobileToolbar')}>
+        {showOpen && <MobileToolButton icon="open" label={tt.openFile} onClick={onOpen} />}
         {showOpen && <div className="mobile-tool-separator" role="separator" />}
-        <MobileToolButton icon="search" label={isZh ? '搜索文字' : 'Search Text'} onClick={onToggleSearch} active={isSearchActive} />
-        <MobileToolButton icon="previous" label={t.previousView} onClick={onPreviousView} disabled={!canGoPreviousView} />
-        <MobileToolButton icon="next" label={t.nextView} onClick={onNextView} disabled={!canGoNextView} />
-        <MobileToolButton icon="fit" label={t.fitView} onClick={onFitView} />
+        <MobileToolButton icon="search" label={t(lang, 'searchText')} onClick={onToggleSearch} active={isSearchActive} />
+        <MobileToolButton icon="previous" label={tt.previousView} onClick={onPreviousView} disabled={!canGoPreviousView} />
+        <MobileToolButton icon="next" label={tt.nextView} onClick={onNextView} disabled={!canGoNextView} />
+        <MobileToolButton icon="fit" label={tt.fitView} onClick={onFitView} />
         <div className="mobile-tool-separator" role="separator" />
-        <MobileToolButton icon="layers" label={t.layers} onClick={() => togglePanel('layers')} active={activePanel === 'layers'} />
-        <MobileToolButton icon="properties" label={t.properties} onClick={() => togglePanel('properties')} active={activePanel === 'properties'} />
+        <MobileToolButton icon="layers" label={tt.layers} onClick={() => togglePanel('layers')} active={activePanel === 'layers'} />
+        <MobileToolButton icon="properties" label={tt.properties} onClick={() => togglePanel('properties')} active={activePanel === 'properties'} />
         <MobileToolButton icon="view" label={showViewPanelTitle} onClick={() => togglePanel('view')} active={activePanel === 'view'} />
-        <MobileToolButton icon="about" label={t.about} onClick={() => { closePanel(); onShowAbout(); }} />
+        <MobileToolButton icon="about" label={tt.about} onClick={() => { closePanel(); onShowAbout(); }} />
       </div>
 
       {activePanel && <div className="mobile-side-backdrop" onClick={closePanel} />}
@@ -123,11 +122,11 @@ const MobileViewerControls: React.FC<MobileViewerControlsProps> = ({
       <aside className={`mobile-side-panel ${activePanel ? 'open' : ''}`} aria-hidden={!activePanel}>
         <div className="mobile-side-panel-header">
           <span>
-            {activePanel === 'layers' && t.layers}
-            {activePanel === 'properties' && t.properties}
+            {activePanel === 'layers' && tt.layers}
+            {activePanel === 'properties' && tt.properties}
             {activePanel === 'view' && showViewPanelTitle}
           </span>
-          <button type="button" className="mobile-side-close" onClick={closePanel} aria-label={isZh ? '关闭' : 'Close'}>
+          <button type="button" className="mobile-side-close" onClick={closePanel} aria-label={t(lang, 'close')}>
             <ViewerIcon name="close" />
           </button>
         </div>
@@ -138,21 +137,21 @@ const MobileViewerControls: React.FC<MobileViewerControlsProps> = ({
             <div className="mobile-view-list">
               <button type="button" className="mobile-view-item" onClick={() => onSetUiTheme(nextTheme(uiTheme))}>
                 <ViewerIcon name="theme" />
-                <span>{uiTheme === 'system' ? t.system : uiTheme === 'light' ? t.light : t.dark}</span>
+                <span>{uiTheme === 'system' ? tt.system : uiTheme === 'light' ? tt.light : tt.dark}</span>
               </button>
               <button type="button" className={`mobile-view-item ${drawingColorMode === 'monochrome' ? 'checked' : ''}`} onClick={() => onSetDrawingColorMode(drawingColorMode === 'monochrome' ? 'original' : 'monochrome')}>
                 <ViewerIcon name="monochrome" />
-                <span>{t.monochrome}</span>
+                <span>{tt.monochrome}</span>
               </button>
               <button type="button" className="mobile-view-item" onClick={() => onSetLang(lang === 'zh' ? 'en' : 'zh')}>
                 <ViewerIcon name="language" />
-                <span>{t.language}: {lang === 'zh' ? 'English' : '简体中文'}</span>
+                <span>{tt.language}: {lang === 'zh' ? 'English' : '简体中文'}</span>
               </button>
               {layouts.length > 1 && (
                 <>
-                  <div className="mobile-view-section-title">{isZh ? '空间' : 'Space'}</div>
+                  <div className="mobile-view-section-title">{t(lang, 'currentSpace')}</div>
                   {layouts.map(layout => {
-                    const label = layout.isModel ? (isZh ? '模型' : 'Model') : (layout.displayName || layout.name);
+                    const label = layout.isModel ? t(lang, 'modelSpace') : (layout.displayName || layout.name);
                     return (
                       <button
                         key={layout.name}

@@ -1,0 +1,100 @@
+.status-bar {
+  height: var(--status-bar-height);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  box-sizing: border-box;
+  border-top: 1px solid var(--border-color);
+  background-color: var(--status-bar-bg);
+  color: var(--status-bar-text);
+  font-size: 12px;
+  line-height: 1;
+  z-index: 1000;
+}
+
+.status-left,
+.status-center,
+.status-right {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.status-left {
+  flex: 1;
+  justify-content: flex-start;
+}
+
+.status-right {
+  flex: 0.7;
+  justify-content: flex-end;
+}
+
+/* 模型空间与图纸空间底部切换栏 */
+.space-switch-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 34px;
+  padding: 4px 10px 3px;
+  box-sizing: border-box;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-top: 1px solid var(--border-color);
+  background: linear-gradient(180deg, var(--bg-secondary), var(--bg-tertiary));
+  scrollbar-width: thin;
+}
+
+.space-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 78px;
+  max-width: 180px;
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  border-radius: 4px 4px 0 0;
+  background-color: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.space-tab:hover {
+  color: var(--text-bright);
+  background-color: var(--bg-hover);
+}
+
+.space-tab.active {
+  color: var(--accent-blue);
+  background-color: var(--bg-primary);
+  border-color: var(--border-color);
+  border-bottom-color: var(--bg-primary);
+  font-weight: 600;
+}
+
+.space-tab-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.space-tab-count {
+  min-width: 18px;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 999px;
+  box-sizing: border-box;
+  background-color: var(--accent-blue-soft);
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.space-tab.active .space-tab-count {
+  color: var(--accent-blue);
+}

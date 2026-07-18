@@ -1,4 +1,4 @@
-﻿import { Language } from '@/config/i18n';
+import { Language, t } from '@/config/i18n';
 import { DxfLayout } from '@/types';
 
 export interface SpaceSwitchBarProps {
@@ -17,13 +17,13 @@ export interface StatusBarProps {
 }
 
 const getLayoutLabel = (layout: DxfLayout, lang: Language) => {
-  if (layout.isModel) return lang === 'zh' ? '模型' : 'Model';
+  if (layout.isModel) return t(lang, 'modelSpace');
   return layout.displayName || layout.name;
 };
 
 export function SpaceSwitchBar({ layouts, activeLayoutName, lang, onSelect }: SpaceSwitchBarProps) {
   return (
-    <div className="space-switch-bar" role="tablist" aria-label={lang === 'zh' ? '空间切换' : 'Space switch'}>
+    <div className="space-switch-bar" role="tablist" aria-label={t(lang, 'spaceSwitchAriaLabel')}>
       {layouts.map(layout => {
         const label = getLayoutLabel(layout, lang);
         const active = activeLayoutName === layout.name;
@@ -60,18 +60,18 @@ export function StatusBar({ lang, mouseCoords, selectedCount, activeLayoutName, 
 
       <div className="status-center">
         {selectedCount === 0 ? (
-          <span>{lang === 'zh' ? '未选择对象' : 'No objects selected'}</span>
+          <span>{t(lang, 'noObjectsSelected')}</span>
         ) : (
           <div className="status-selection">
-            <span>{lang === 'zh' ? `已选 ${selectedCount}` : `Selected ${selectedCount}`}</span>
+            <span>{t(lang, 'statusSelected', { count: selectedCount })}</span>
           </div>
         )}
       </div>
 
       <div className="status-right">
         <div className="status-summary">
-          <span>{lang === 'zh' ? '空间' : 'Space'}: <span className="status-value">{activeLayoutName}</span></span>
-          <span>{lang === 'zh' ? '实体' : 'Entities'}: <span className="status-value">{entityCount}</span></span>
+          <span>{t(lang, 'statusSpace')}: <span className="status-value">{activeLayoutName}</span></span>
+          <span>{t(lang, 'statusEntities')}: <span className="status-value">{entityCount}</span></span>
         </div>
       </div>
     </div>
