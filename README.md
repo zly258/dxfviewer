@@ -78,15 +78,27 @@ export default function App() {
 | `DxfWorkspaceProps` | `DxfWorkspace` 属性类型。 |
 | `DxfTabSource` | 多 Tab 初始文件来源类型。 |
 
+只需要解析能力、且不希望加载 React、查看器 UI 或样式时，可使用轻量入口：
+
+```ts
+import { parseDxf, EntityType } from '@zhangly1403/dxfviewer/parser';
+```
+
+`parseDxf` 继续兼容原有两个参数，并支持可选的第三个参数配置取消信号、进度节流和事件循环让步。
+
 ### 常用脚本
 
 ```bash
 npm ci
 npm run typecheck
+npm test
+npm run bench
 npm run build
 npm run dev
 npm run build:example
 npm run build:all
+npm run test:e2e
+npm run test:package
 ```
 
 说明：`dxfviewer-example` 是真实示例工作区，完整仓库中会存在该目录。根目录的 `package-lock.json` 已保留 workspace 链接，支持包含示例工程时执行 `npm ci`。
@@ -187,15 +199,27 @@ export default function App() {
 | `DxfWorkspaceProps` | Props type for `DxfWorkspace`. |
 | `DxfTabSource` | Initial file source type for multi-tab usage. |
 
+For parsing without React, viewer UI, or CSS, use the lightweight entry:
+
+```ts
+import { parseDxf, EntityType } from '@zhangly1403/dxfviewer/parser';
+```
+
+The existing two-argument `parseDxf` calls remain supported. An optional third argument can configure cancellation, progress throttling, and event-loop yielding.
+
 ### Scripts
 
 ```bash
 npm ci
 npm run typecheck
+npm test
+npm run bench
 npm run build
 npm run dev
 npm run build:example
 npm run build:all
+npm run test:e2e
+npm run test:package
 ```
 
 Note: `dxfviewer-example` is a real example workspace and exists in the full repository. The root `package-lock.json` keeps the workspace link entries so `npm ci` works when the example workspace is present.

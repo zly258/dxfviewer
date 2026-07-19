@@ -310,4 +310,4 @@ const LayerPanel: React.FC<LayerPanelProps> = ({
   );
 };
 
-export default LayerPanel;
+export default React.memo(LayerPanel);

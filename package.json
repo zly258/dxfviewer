@@ -8,11 +8,15 @@
   "type": "module",
   "main": "./dist/dxfviewer.js",
   "module": "./dist/dxfviewer.js",
-  "types": "./dist/index.d.ts",
+  "types": "./dist/dxfviewer.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
+      "types": "./dist/dxfviewer.d.ts",
       "import": "./dist/dxfviewer.js"
+    },
+    "./parser": {
+      "types": "./dist/parser.d.ts",
+      "import": "./dist/parser.js"
     },
     "./style.css": "./dist/style.css"
   },
@@ -23,7 +27,12 @@
   "scripts": {
     "dev": "npm --workspace dxfviewer-example run dev",
     "dev:example": "npm run build:lib && npm --workspace dxfviewer-example run dev",
-    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "npm run build:example && playwright test",
+    "test:package": "node scripts/package-smoke.mjs",
+    "bench": "vitest bench --run",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json",
     "build": "npm run build:lib",
     "build:lib": "npm run typecheck && vite build",
     "build:example": "npm run build:lib && npm --workspace dxfviewer-example run build",
@@ -40,7 +49,10 @@
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
     "@types/react": "^19.2.7",
-    "@types/react-dom": "^19.2.3"
+    "@types/react-dom": "^19.2.3",
+    "@playwright/test": "^1.61.1",
+    "jsdom": "^26.1.0",
+    "vitest": "^4.1.10"
   },
   "peerDependencies": {
     "react": "^18.2.0 || ^19.0.0",

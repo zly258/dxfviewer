@@ -82,3 +82,23 @@ export interface DxfData {
   offset?: Point2D;
   extents?: { center: Point2D, width: number, height: number, min: Point2D, max: Point2D };
 }
+
+export type DxfSourceFormat = 'ascii' | 'binary';
+
+/** Worker/loader 的内部结果，保留解析数据与源文件格式的分层结构。 */
+export interface DxfLoadResult {
+  data: DxfData;
+  sourceFormat: DxfSourceFormat;
+}
+
+/** 查看器加载完成后向调用方暴露的数据结构。 */
+export type DxfLoadedData = DxfData & { sourceFormat: DxfSourceFormat };
+
+/** DXF 解析调度选项；第三个参数保持现有调用方式完全兼容。 */
+export interface ParseDxfOptions {
+  signal?: AbortSignal;
+  /** 直接在主线程解析时主动让出事件循环的时间间隔；0 表示不让出。 */
+  yieldIntervalMs?: number;
+  /** 两次进度回调之间的最大时间间隔。 */
+  progressIntervalMs?: number;
+}

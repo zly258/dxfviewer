@@ -9,6 +9,7 @@
   EntityType,
   DxfLayout,
   DxfImageDef,
+  ParseDxfOptions,
 } from '@/types';
 import { DxfParserState, parsePoint } from './parserState';
 import { parseTable, parseBlock, parseLayoutObject, parseImageDefObject } from './sectionParser';
@@ -206,7 +207,19 @@ const calculateStableOffset = (
 /**
  * DXF 文件解析核心主函数。
  */
-export const parseDxf = async (dxfString: string, onProgress?: (percent: number) => void): Promise<DxfData> => {
+const createAbortError = (): Error => {
+  const error = new Error('DXF parsing was cancelled');
+  error.name = 'AbortError';
+  return error;
+};
+
+const getNow = (): number => typeof performance !== 'undefined' ? performance.now() : Date.now();
+
+export const parseDxf = async (
+  dxfString: string,
+  onProgress?: (percent: number) => void,
+  options: ParseDxfOptions = {},
+): Promise<DxfData> => {
   ensureDxfStructure(dxfString);
   const state = new DxfParserState(dxfString);
   const allEntities: AnyEntity[] = [];
@@ -224,15 +237,30 @@ export const parseDxf = async (dxfString: string, onProgress?: (percent: number)
   lineTypes.CONTINUOUS = { name: 'CONTINUOUS', pattern: [], totalLength: 0 };
 
   const estimatedTotalLines = dxfString.length / 15;
+  const yieldIntervalMs = Math.max(0, options.yieldIntervalMs ?? 16);
+  const progressIntervalMs = Math.max(0, options.progressIntervalMs ?? 50);
   let currentSection = '';
   let linesProcessed = 0;
+  let lastProgress = -1;
+  let lastProgressAt = getNow();
+  let lastYieldAt = lastProgressAt;
 
   while (state.hasNext) {
+    if (options.signal?.aborted) throw createAbortError();
+
     if (state.linesRead > linesProcessed + 500) {
       linesProcessed = state.linesRead;
       const percent = Math.min(99, Math.round((state.linesRead / estimatedTotalLines) * 100));
-      if (onProgress) onProgress(percent);
-      await new Promise(resolve => setTimeout(resolve, 0));
+      const now = getNow();
+      if (onProgress && percent !== lastProgress && (percent - lastProgress >= 1 || now - lastProgressAt >= progressIntervalMs)) {
+        lastProgress = percent;
+        lastProgressAt = now;
+        onProgress(percent);
+      }
+      if (yieldIntervalMs > 0 && now - lastYieldAt >= yieldIntervalMs) {
+        await new Promise<void>(resolve => setTimeout(resolve, 0));
+        lastYieldAt = getNow();
+      }
     }
 
     const group = state.next();
@@ -293,6 +321,7 @@ export const parseDxf = async (dxfString: string, onProgress?: (percent: number)
     }
   }
 
+  if (options.signal?.aborted) throw createAbortError();
   if (onProgress) onProgress(100);
 
   precomputeBlockExtents(blocks, styles);

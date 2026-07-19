@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AnyEntity, DxfBlock } from '@/types';
 import { ENTITY_TYPE_NAMES, Language, t } from '@/config/i18n';
-import { searchEntitiesByText, TextSearchMatch } from '@/utils/entityTextSearch';
+import { buildEntityTextSearchIndex, searchEntityTextIndex, TextSearchMatch } from '@/utils/entityTextSearch';
 import ViewerIcon from '@/components/common/ViewerIcon';
 
 interface DxfTextSearchPanelProps {
@@ -33,7 +33,8 @@ const DxfTextSearchPanel: React.FC<DxfTextSearchPanelProps> = ({ entities, block
   const [activeIndex, setActiveIndex] = useState(0);
   const entityTypeNames = ENTITY_TYPE_NAMES[lang];
 
-  const matches = useMemo(() => searchEntitiesByText(entities, blocks, query), [blocks, entities, query]);
+  const searchIndex = useMemo(() => buildEntityTextSearchIndex(entities, blocks), [blocks, entities]);
+  const matches = useMemo(() => searchEntityTextIndex(searchIndex, query), [query, searchIndex]);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -124,4 +125,4 @@ const DxfTextSearchPanel: React.FC<DxfTextSearchPanelProps> = ({ entities, block
   );
 };
 
-export default DxfTextSearchPanel;
+export default React.memo(DxfTextSearchPanel);

@@ -315,4 +315,4 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, styles = {}
   );
 };
 
-export default PropertiesPanel;
+export default React.memo(PropertiesPanel);

@@ -234,9 +234,10 @@ export const drawDimension = (
             ctx.stroke();
         }
 
+        const measurement = ent.measurement;
         const label = ent.text && ent.text !== '<>'
             ? cleanCadText(ent.text)
-            : (Number.isFinite(ent.measurement) && ent.measurement !== 0 ? String(Math.round(ent.measurement * 1000) / 1000) : '');
+            : (measurement !== undefined && Number.isFinite(measurement) && measurement !== 0 ? String(Math.round(measurement * 1000) / 1000) : '');
         if (label && ent.textMidPoint) {
             const tp = transform.project(ent.textMidPoint);
             ctx.save();
