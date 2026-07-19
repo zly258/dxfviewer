@@ -13,9 +13,9 @@ const PropertiesPanel = lazy(() => import('@/components/viewer/PropertiesPanel')
 import { useIsMobile } from '@/hooks/useMediaQuery';
 import { useViewHistory } from '@/hooks/useViewHistory';
 import { useEntityVisibility } from '@/hooks/useEntityVisibility';
-import { useDxfLoader } from '@/hooks/useDxfLoader';
+import { isAbortError, useDxfLoader } from '@/hooks/useDxfLoader';
 import { calculateExtents } from '@/core/geometry/extents';
-import { AnyEntity, ViewPort, DxfLayer, DxfBlock, EntityType, DxfStyle, DxfLineType, Point2D, CanvasTheme, DrawingColorMode, UiTheme, DxfLayout, ResolvedUiTheme } from '@/types';
+import { AnyEntity, ViewPort, DxfLayer, DxfBlock, EntityType, DxfStyle, DxfLineType, Point2D, CanvasTheme, DrawingColorMode, UiTheme, DxfLayout, ResolvedUiTheme, DxfLoadResult, DxfLoadedData } from '@/types';
 import { CANVAS_THEME_COLORS, DEFAULT_LAYER, DEFAULT_VIEWPORT, LAYOUT_CONFIG, SHORTCUT_CONFIG, VIEWER_DEFAULTS, ZOOM_CONFIG, PANEL_CONFIG, canvasThemeFromUiTheme, getSystemUiTheme, resolveUiTheme } from '@/config/viewerConfig';
 import { Language, t } from '@/config/i18n';
 import { readViewerUiSettings, ViewerUiSettings, writeViewerUiSettings } from './viewerUiSettings';
@@ -30,12 +30,13 @@ import { TextSearchMatch } from '@/utils/entityTextSearch';
 const isSwitchableLayout = (layout: DxfLayout): boolean => layout.isModel || layout.entities?.length > 0;
 
 export interface DxfViewerProps {
+  active?: boolean;
   initFile?: string | File;
   fileName?: string;
   showOpenMenu?: boolean;
   tabStrip?: React.ReactNode;
   onError?: (err: Error) => void; // 错误回调
-  onLoad?: (data: any) => void; // 加载完成回调
+  onLoad?: (data: DxfLoadedData) => void; // 加载完成回调
   onOpenFiles?: (files: File[]) => void; // 由外层容器接管文件打开时使用
   onOpenFailed?: (message: string) => void; // 打开失败回调
   defaultLanguage?: Language; // 默认语言
@@ -49,6 +50,7 @@ export interface DxfViewerProps {
 
 
 const DxfViewer: React.FC<DxfViewerProps> = ({ 
+  active = true,
   initFile,
   fileName, 
   showOpenMenu = true,
@@ -163,20 +165,28 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
   const [internalLang, setInternalLang] = useState<Language>(savedUiSettingsRef.current.language ?? defaultLanguage);
   const [systemTheme, setSystemTheme] = useState<ResolvedUiTheme>(() => getSystemUiTheme());
   const [mouseCoords, setMouseCoords] = useState<{x: number, y: number}>({x: 0, y: 0});
+  const pendingMouseCoordsRef = useRef<{ x: number; y: number } | null>(null);
+  const mouseCoordsFrameRef = useRef<number | undefined>(undefined);
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<HTMLDivElement>(null);
+  const fitViewFrameRef = useRef<number | undefined>(undefined);
+  const onLoadRef = useRef(onLoad);
   
   const [parseErrorMessage, setParseErrorMessage] = useState<string | null>(null);
   const [renderErrorMessage, setRenderErrorMessage] = useState<string | null>(null);
   const [isNoticeDismissed, setIsNoticeDismissed] = useState(false);
   const [toastMessage, setToastMessage] = useState<ToastState | null>(null);
 
-  const showToast = (msg: string, isError: boolean = true) => {
+  useEffect(() => {
+    onLoadRef.current = onLoad;
+  }, [onLoad]);
+
+  const showToast = useCallback((msg: string, isError: boolean = true) => {
     setToastMessage({msg, isError});
     setTimeout(() => setToastMessage(null), VIEWER_DEFAULTS.toastDurationMs);
-  };
+  }, []);
 
-  const reportOpenFailure = (message: string) => {
+  const reportOpenFailure = useCallback((message: string) => {
     setParseErrorMessage(null);
     setRenderErrorMessage(null);
     setEntities([]);
@@ -188,10 +198,10 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
     setShowTextSearch(false);
     showToast(message);
     onOpenFailed?.(message);
-  };
+  }, [onOpenFailed, setHiddenEntityIds, setHiddenLayers, setIsolatedEntityIds, showToast]);
 
   const lang = controlledLang || internalLang;
-  const { isLoading, loadingProgress, loadingFileName, loadFromUrl, loadFromFile } = useDxfLoader(lang, onError);
+  const { isLoading, loadingProgress, loadingFileName, loadFromUrl, loadFromFile, cancel: cancelLoad } = useDxfLoader(lang, onError);
 
   const uiTheme = controlledUiTheme || internalUiTheme;
   const effectiveUiTheme = resolveUiTheme(uiTheme, systemTheme);
@@ -236,13 +246,21 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
     return () => media.removeEventListener?.('change', updateSystemTheme);
   }, []);
 
-  const fitView = useCallback((ents: AnyEntity[], blks: Record<string, DxfBlock>, currentStyles: Record<string, DxfStyle> = styles) => {
+  const fitView = useCallback((
+    ents: AnyEntity[],
+    blks: Record<string, DxfBlock>,
+    currentStyles: Record<string, DxfStyle>,
+    knownExtents?: DxfLayout['extents'],
+  ) => {
     if (ents.length === 0) return;
     const currentHiddenLayers = hiddenLayersRef.current;
     const visibleEnts = ents.filter(e => e.visible !== false && e.type !== EntityType.ATTDEF && !currentHiddenLayers.has(e.layer));
     if (visibleEnts.length === 0) return;
 
-    const extents = calculateExtents(visibleEnts, blks, currentStyles);
+    const canUseKnownExtents = Boolean(knownExtents)
+      && ents.every(entity => entity.visible !== false)
+      && currentHiddenLayers.size === 0;
+    const extents = canUseKnownExtents ? knownExtents! : calculateExtents(visibleEnts, blks, currentStyles);
 
     // 第 2 步：计算世界中心
     const centerX = extents.center.x;
@@ -289,13 +307,38 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
         targetY: centerY, 
         zoom 
     });
-  }, [styles, setViewPort]);
+  }, [setViewPort]);
+
+  const scheduleFitView = useCallback((
+    ents: AnyEntity[],
+    blks: Record<string, DxfBlock>,
+    currentStyles: Record<string, DxfStyle>,
+    knownExtents?: DxfLayout['extents'],
+  ) => {
+    if (fitViewFrameRef.current !== undefined) cancelAnimationFrame(fitViewFrameRef.current);
+    fitViewFrameRef.current = requestAnimationFrame(() => {
+      fitViewFrameRef.current = undefined;
+      fitView(ents, blks, currentStyles, knownExtents);
+    });
+  }, [fitView]);
+
+  useEffect(() => () => {
+    if (fitViewFrameRef.current !== undefined) cancelAnimationFrame(fitViewFrameRef.current);
+  }, []);
+
+  useEffect(() => {
+    if (active) return;
+    if (fitViewFrameRef.current !== undefined) {
+      cancelAnimationFrame(fitViewFrameRef.current);
+      fitViewFrameRef.current = undefined;
+    }
+  }, [active]);
 
   const handleViewPortChange = useCallback((nextViewPort: ViewPort) => {
     setViewPort(nextViewPort);
   }, [setViewPort]);
 
-  const applyLoadResult = useCallback((result: any) => {
+  const applyLoadResult = useCallback((result: DxfLoadResult) => {
     const data = result.data;
     setParseErrorMessage(null);
     setRenderErrorMessage(null);
@@ -319,85 +362,40 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
     setLineTypes(data.lineTypes);
     setLtScale(data.header?.ltScale ?? VIEWER_DEFAULTS.defaultLineTypeScale);
     setWorldOffset(data.offset);
-    onLoad?.({ ...data, sourceFormat: result.sourceFormat });
-    
-    const applyFitView = () => fitView(initialEntities, data.blocks, data.styles);
-    applyFitView();
-    requestAnimationFrame(applyFitView);
-    window.setTimeout(applyFitView, 0);
-  }, [resetViewHistory, resetVisibility, fitView, onLoad]);
+    onLoadRef.current?.({ ...data, sourceFormat: result.sourceFormat });
 
-  const handleLoadFromUrl = async (url: string) => {
+    scheduleFitView(initialEntities, data.blocks, data.styles, initialLayout?.extents || data.extents);
+  }, [resetViewHistory, resetVisibility, scheduleFitView]);
+
+  const handleLoadFromUrl = useCallback(async (url: string) => {
     try {
       const result = await loadFromUrl(url, fileName);
       applyLoadResult(result);
-    } catch (err: any) {
-      reportOpenFailure(err.message);
+    } catch (error: unknown) {
+      if (isAbortError(error)) return;
+      reportOpenFailure(error instanceof Error ? error.message : String(error));
     }
-  };
+  }, [applyLoadResult, fileName, loadFromUrl, reportOpenFailure]);
 
-  const handleLoadFromFile = async (file: File) => {
+  const handleLoadFromFile = useCallback(async (file: File) => {
     try {
       const result = await loadFromFile(file);
       applyLoadResult(result);
-    } catch (err: any) {
-      reportOpenFailure(err.message);
+    } catch (error: unknown) {
+      if (isAbortError(error)) return;
+      reportOpenFailure(error instanceof Error ? error.message : String(error));
     }
-  };
+  }, [applyLoadResult, loadFromFile, reportOpenFailure]);
 
   useEffect(() => {
-    if (initFile) {
-      if (typeof initFile === 'string') {
-        handleLoadFromUrl(initFile);
-      } else if (initFile instanceof File) {
-        handleLoadFromFile(initFile);
-      }
+    if (!active || !initFile) {
+      cancelLoad();
+      return;
     }
-  }, [initFile, fileName]);
-
-  // 在窗口大小调整或布局更改时调整视图
-  useEffect(() => {
-    const handleResize = () => {
-      if (entities.length > 0) {
-        fitView(entities, blocks);
-      }
-    };
-    
-    // 观察 viewerRef 以进行更准确的大小调整检测
-    const observer = new ResizeObserver(() => {
-      // 使用下一帧回调，避免尺寸观察器循环限制错误。
-      requestAnimationFrame(() => {
-        handleResize();
-      });
-    });
-
-    if (viewerRef.current) {
-      observer.observe(viewerRef.current);
-    } else if (containerRef.current) {
-      observer.observe(containerRef.current);
-    }
-    
-    window.addEventListener('resize', handleResize);
-    
-    // 初始调整
-    handleResize();
-    
-    return () => {
-      window.removeEventListener('resize', handleResize);
-      observer.disconnect();
-    };
-  }, [entities, blocks, fitView]);
-
-  // 如果提供了初始文件，则加载
-  useEffect(() => {
-    if (initFile) {
-        if (typeof initFile === 'string') {
-            loadFromUrl(initFile);
-        } else if (initFile instanceof File) {
-            loadFromFile(initFile);
-        }
-    }
-  }, [initFile]);
+    if (typeof initFile === 'string') void handleLoadFromUrl(initFile);
+    else void handleLoadFromFile(initFile);
+    return cancelLoad;
+  }, [active, cancelLoad, handleLoadFromFile, handleLoadFromUrl, initFile]);
 
   const locateEntity = useCallback((entity: AnyEntity) => {
       const extents = calculateExtents([entity], blocks, styles);
@@ -426,13 +424,13 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
       }
   }, [entities, locateEntity]);
 
-  const handleLayerPanelSelectIds = (ids: Set<string>) => {
+  const handleLayerPanelSelectIds = useCallback((ids: Set<string>) => {
       handleSelectAndLocateIds(ids);
-  };
+  }, [handleSelectAndLocateIds]);
 
   const handleFitView = useCallback(() => {
-      fitView(displayEntities, blocks);
-  }, [displayEntities, blocks, fitView]);
+      fitView(displayEntities, blocks, styles);
+  }, [displayEntities, blocks, fitView, styles]);
 
   const handleSetActiveLayout = useCallback((layoutName: string) => {
       const layout = layouts.find(item => item.name === layoutName);
@@ -447,12 +445,11 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
       setRenderErrorMessage(null);
       setIsNoticeDismissed(false);
 
-      const applyFitView = () => fitView(layout.entities, blocks, styles);
-      applyFitView();
-      requestAnimationFrame(applyFitView);
-  }, [activeLayoutName, blocks, fitView, layouts, resetViewHistory, styles]);
+      scheduleFitView(layout.entities, blocks, styles, layout.extents);
+  }, [activeLayoutName, blocks, layouts, resetViewHistory, scheduleFitView, styles]);
 
   useEffect(() => {
+    if (!active) return;
     const handleShortcut = (event: KeyboardEvent) => {
       if (!containerRef.current) return;
       if (getComputedStyle(containerRef.current).visibility === 'hidden') return;
@@ -477,7 +474,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
 
     window.addEventListener('keydown', handleShortcut);
     return () => window.removeEventListener('keydown', handleShortcut);
-  }, [handleFitView]);
+  }, [active, handleFitView]);
 
 
 
@@ -497,6 +494,21 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
     event.target.value = '';
     if (files.length > 0) handleImport(files);
   };
+
+  const handleMouseMoveWorld = useCallback((x: number, y: number) => {
+    pendingMouseCoordsRef.current = { x, y };
+    if (mouseCoordsFrameRef.current !== undefined) return;
+    mouseCoordsFrameRef.current = requestAnimationFrame(() => {
+      mouseCoordsFrameRef.current = undefined;
+      const pending = pendingMouseCoordsRef.current;
+      pendingMouseCoordsRef.current = null;
+      if (pending) setMouseCoords(pending);
+    });
+  }, []);
+
+  useEffect(() => () => {
+    if (mouseCoordsFrameRef.current !== undefined) cancelAnimationFrame(mouseCoordsFrameRef.current);
+  }, []);
 
   const handleShowAllEntities = useCallback(() => {
     setHiddenLayers(new Set());
@@ -556,7 +568,10 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
     handleSelectAndLocateIds(new Set([match.id]));
   }, [handleSelectAndLocateIds]);
 
-  const selectedEntities = entities.filter(e => selectedEntityIds.has(e.id));
+  const selectedEntities = useMemo(
+    () => entities.filter(entity => selectedEntityIds.has(entity.id)),
+    [entities, selectedEntityIds],
+  );
   const viewerNoticeMessage = useMemo(() => {
     if (parseErrorMessage || isLoading || isNoticeDismissed) return null;
     if (renderErrorMessage) {
@@ -685,6 +700,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
             </Suspense>
           )}
           <CanvasViewer
+            active={active}
             entities={displayEntities}
             layers={layers}
             blocks={blocks}
@@ -704,7 +720,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
             theme={canvasTheme}
             drawingColorMode={drawingColorMode}
             lang={lang}
-            onMouseMoveWorld={(x, y) => setMouseCoords({x, y})}
+            onMouseMoveWorld={handleMouseMoveWorld}
             onRenderError={setRenderErrorMessage}
             hiddenLayers={hiddenLayers}
           />

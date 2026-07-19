@@ -278,6 +278,7 @@ function DxfWorkspace({ editor = true, initialFiles = [] }: DxfWorkspaceProps) {
               }}
             >
               <DxfViewer
+                active={effectiveActiveTabId === tab.id}
                 initFile={tab.file || tab.url}
                 fileName={tab.name}
                 showOpenMenu={editor}

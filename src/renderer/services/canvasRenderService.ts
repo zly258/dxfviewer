@@ -55,6 +55,7 @@ import {
   drawWipeout, 
   drawTolerance 
 } from '@/renderer/entities/annotationRenderer';
+import { SceneIndex } from '@/renderer/services/sceneIndex';
 
 const SELECTION_COLOR = SELECTION_CONFIG.selectionBorderColor;
 
@@ -75,7 +76,8 @@ export const renderEntitiesToCanvas = (
     height: number,
     theme: CanvasTheme,
     drawingColorMode: DrawingColorMode = 'original',
-    hiddenLayers: Set<string> = new Set()
+    hiddenLayers: Set<string> = new Set(),
+    sceneIndex?: SceneIndex,
 ) => {
     // 使用画布主题背景色填充整个 Canvas
     ctx.fillStyle = CANVAS_THEME_COLORS[theme];
@@ -99,10 +101,12 @@ export const renderEntitiesToCanvas = (
     };
 
     // 建立实体 Handle 映射表用于解析引线关联信息
-    const entityByHandle = new Map<string, AnyEntity>();
-    entities.forEach(entity => {
-        if (entity.handle) entityByHandle.set(entity.handle, entity);
-    });
+    const entityByHandle = sceneIndex?.entityByHandle || new Map<string, AnyEntity>();
+    if (!sceneIndex) {
+        entities.forEach(entity => {
+            if (entity.handle) entityByHandle.set(entity.handle, entity);
+        });
+    }
 
     /**
      * 渲染单个 DXF 图元的核心调度器
@@ -199,7 +203,7 @@ export const renderEntitiesToCanvas = (
                 drawMLine(ctx, ent, transform);
                 break;
             case EntityType.SPLINE:
-                drawSpline(ctx, ent, transform);
+                drawSpline(ctx, ent, transform, sceneIndex?.splineSamples.get(ent.id));
                 break;
             case EntityType.HELIX:
                 drawHelix(ctx, ent, transform);
@@ -253,7 +257,11 @@ export const renderEntitiesToCanvas = (
     };
 
     // 遍历图纸中的顶级实体进行依次渲染绘制
-    entities.forEach(ent => drawEntity(ent, transform, undefined, undefined, false, 0, false));
+    const visibleCandidates = sceneIndex?.query({
+        min: { x: vMinX, y: vMinY },
+        max: { x: vMaxX, y: vMaxY },
+    }) || entities;
+    visibleCandidates.forEach(ent => drawEntity(ent, transform, undefined, undefined, false, 0, false));
 };
 
 /**
@@ -294,7 +302,8 @@ export const hitTest = (
     entities: AnyEntity[], 
     blocks: Record<string, DxfBlock>, 
     layers: Record<string, DxfLayer>, 
-    _styles: Record<string, DxfStyle>
+    _styles: Record<string, DxfStyle>,
+    splineSamples?: ReadonlyMap<string, Point2D[]>,
 ): string | null => {
     /**
      * 递归检查单个实体，返回到该实体的最短几何距离
@@ -450,7 +459,7 @@ export const hitTest = (
                 }
             }
         } else if (ent.type === EntityType.SPLINE) {
-             const points = sampleSplinePoints(
+             const points = splineSamples?.get(ent.id) || sampleSplinePoints(
                 ent.controlPoints || [],
                 ent.degree || 3,
                 ent.knots,

@@ -185,8 +185,10 @@ export const drawMLine = (ctx: CanvasRenderingContext2D, ent: DxfMLine, transfor
 /**
  * 绘制样条曲线 (SPLINE)
  */
-export const drawSpline = (ctx: CanvasRenderingContext2D, ent: DxfSpline, transform: RenderTransform) => {
-    const splinePoints = ent.calculatedPoints && ent.calculatedPoints.length > 0
+export const drawSpline = (ctx: CanvasRenderingContext2D, ent: DxfSpline, transform: RenderTransform, cachedPoints?: Point2D[]) => {
+    const splinePoints = cachedPoints && cachedPoints.length > 0
+        ? cachedPoints
+        : ent.calculatedPoints && ent.calculatedPoints.length > 0
         ? ent.calculatedPoints
         : ent.fitPoints && ent.fitPoints.length > 1
             ? ent.fitPoints

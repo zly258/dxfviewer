@@ -17,19 +17,5 @@ export type { DxfTabSource } from '@/components/workspace/DxfTabs';
 export type AppShellProps = DxfWorkspaceProps;
 
 export { parseDxf } from '@/core/parser';
-
-export type {
-  AnyEntity,
-  CanvasTheme,
-  DxfBlock,
-  DxfData,
-  DxfLayer,
-  DxfLayout,
-  DxfLineType,
-  DxfStyle,
-  DrawingColorMode,
-  Point2D,
-  ResolvedUiTheme,
-  UiTheme,
-  ViewPort,
-} from '@/types';
+export { EntityType, ToolMode } from '@/types';
+export type * from '@/types';

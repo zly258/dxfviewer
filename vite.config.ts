@@ -3,14 +3,15 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import dts from 'vite-plugin-dts';
 
-const libraryEntry = path.resolve(__dirname, 'src/index.ts');
+const libraryEntries = {
+  dxfviewer: path.resolve(__dirname, 'src/index.ts'),
+  parser: path.resolve(__dirname, 'src/parser.ts'),
+};
 const isExternalPackage = (id: string) =>
   id === 'react' ||
   id === 'react-dom' ||
   id === 'react-dom/client' ||
   id === 'react/jsx-runtime';
-
-const normalizePath = (value: string) => value.replace(/\\/g, '/');
 
 export default defineConfig({
   build: {
@@ -21,9 +22,8 @@ export default defineConfig({
     assetsInlineLimit: 0,
     chunkSizeWarningLimit: 150,
     lib: {
-      entry: libraryEntry,
+      entry: libraryEntries,
       name: 'DxfViewer',
-      fileName: () => 'dxfviewer.js',
       formats: ['es'],
     },
     minify: 'terser',
@@ -44,29 +44,10 @@ export default defineConfig({
     rollupOptions: {
       external: isExternalPackage,
       output: {
-        entryFileNames: 'dxfviewer.js',
+        entryFileNames: chunkInfo => chunkInfo.facadeModuleId?.replace(/\\/g, '/').endsWith('/src/parser.ts')
+          ? 'parser.js'
+          : 'dxfviewer.js',
         chunkFileNames: 'chunks/[name]-[hash].js',
-        manualChunks(id) {
-          const moduleId = normalizePath(id);
-
-          if (moduleId.includes('node_modules/@mlightcad/shx-parser')) {
-            return 'vendor-shx';
-          }
-
-          if (moduleId.includes('/src/renderer/services/canvasRenderService') || moduleId.includes('/src/core/text/')) {
-            return 'viewer-render';
-          }
-
-          if (moduleId.includes('/src/utils/')) {
-            return 'viewer-loader';
-          }
-
-          if (moduleId.includes('/src/components/')) {
-            return 'viewer-ui';
-          }
-
-          return undefined;
-        },
         assetFileNames: assetInfo => {
           if (assetInfo.name?.endsWith('.css')) {
             return 'style.css';

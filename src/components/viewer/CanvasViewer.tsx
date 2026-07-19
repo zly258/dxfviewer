@@ -1,14 +1,16 @@
-import React, { useRef, useState, WheelEvent, MouseEvent, useEffect, useLayoutEffect } from 'react';
+import React, { useRef, useState, WheelEvent, MouseEvent, useEffect, useLayoutEffect, useCallback, useMemo } from 'react';
 import { AnyEntity, ViewPort, DxfLayer, DxfBlock, DxfStyle, DxfLineType, Point2D, CanvasTheme, DrawingColorMode } from '@/types';
 import { renderEntitiesToCanvas, hitTest, hitTestBox } from '@/renderer/services/canvasRenderService';
 import { Language, t } from '@/config/i18n';
 import { CANVAS_THEME_COLORS, SELECTION_CONFIG, SHORTCUT_CONFIG, VIEWER_DEFAULTS, ZOOM_CONFIG, BREAKPOINTS, INTERACTION_CONFIG, CONTEXT_MENU_CONFIG } from '@/config/viewerConfig';
+import { boxQueryBounds, createSceneIndex, pointQueryBounds, SceneBounds } from '@/renderer/services/sceneIndex';
 
 /**
  * Canvas 渲染核心组件
  * 负责 Canvas 渲染、坐标转换、缩放平移交互以及拾取逻辑
  */
 interface CanvasViewerProps {
+  active?: boolean;
   entities: AnyEntity[]; // 要渲染的实体列表
   layers: Record<string, DxfLayer>; // 图层信息
   blocks?: Record<string, DxfBlock>; // 块定义
@@ -34,6 +36,7 @@ interface CanvasViewerProps {
 }
 
 const CanvasViewer: React.FC<CanvasViewerProps> = ({ 
+    active = true,
     entities, 
     layers, 
     blocks = {}, 
@@ -60,9 +63,13 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const viewPortRef = useRef(viewPort);
+  const onViewPortChangeRef = useRef(onViewPortChange);
+  const pendingViewPortRef = useRef<ViewPort | null>(null);
+  const viewPortUpdateFrameRef = useRef<number | undefined>(undefined);
   const lastMiddleClickRef = useRef<{ time: number; x: number; y: number } | null>(null);
 
   viewPortRef.current = viewPort;
+  onViewPortChangeRef.current = onViewPortChange;
   
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const lastTouchRef = useRef<{ x: number; y: number; dist: number } | null>(null);
@@ -75,6 +82,7 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
   const contextMenuRef = useRef<typeof contextMenu>(null);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [currentMousePos, setCurrentMousePos] = useState({ x: 0, y: 0 });
+  const [canvasSizeVersion, setCanvasSizeVersion] = useState(0);
   // 从屏幕坐标计算世界坐标（以中心为原点）
   const screenToWorld = (sx: number, sy: number) => {
      const canvas = canvasRef.current;
@@ -99,6 +107,7 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
   };
 
   const renderRef = useRef<number | undefined>(undefined);
+  const sceneIndex = useMemo(() => createSceneIndex(entities), [entities]);
   const contextMenuLabels = {
     showAll: t(lang, 'showAll'),
     hideSelected: t(lang, 'hideSelected'),
@@ -109,7 +118,25 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
 
   contextMenuRef.current = contextMenu;
 
-  const getPickableEntities = () => entities.filter(entity => entity.visible !== false && !hiddenLayers.has(entity.layer));
+  const getPickableEntities = useCallback((bounds: SceneBounds) => {
+    return sceneIndex.query(bounds).filter(entity => entity.visible !== false && !hiddenLayers.has(entity.layer));
+  }, [hiddenLayers, sceneIndex]);
+
+  const scheduleViewPortChange = useCallback((nextViewPort: ViewPort) => {
+    pendingViewPortRef.current = nextViewPort;
+    viewPortRef.current = nextViewPort;
+    if (viewPortUpdateFrameRef.current !== undefined) return;
+    viewPortUpdateFrameRef.current = requestAnimationFrame(() => {
+      viewPortUpdateFrameRef.current = undefined;
+      const pending = pendingViewPortRef.current;
+      pendingViewPortRef.current = null;
+      if (pending) onViewPortChangeRef.current(pending);
+    });
+  }, []);
+
+  useEffect(() => () => {
+    if (viewPortUpdateFrameRef.current !== undefined) cancelAnimationFrame(viewPortUpdateFrameRef.current);
+  }, []);
 
   const closeContextMenu = () => setContextMenu(null);
 
@@ -145,7 +172,16 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
     const safeZoom = Math.max(Math.abs(currentViewPort.zoom), Number.MIN_VALUE);
     const worldPerPixel = 1 / safeZoom;
     const threshold = Math.max(SELECTION_CONFIG.geometryHitTolerancePixels * worldPerPixel, SELECTION_CONFIG.minimumHitToleranceWorld);
-    const hitId = hitTest(wPos.x, wPos.y, threshold, getPickableEntities(), blocks, layers, styles);
+    const hitId = hitTest(
+      wPos.x,
+      wPos.y,
+      threshold,
+      getPickableEntities(pointQueryBounds(wPos.x, wPos.y, threshold)),
+      blocks,
+      layers,
+      styles,
+      sceneIndex.splineSamples,
+    );
     const position = clampContextMenuPosition(mouseX, mouseY);
 
     if (hitId && !selectedEntityIds.has(hitId)) {
@@ -186,8 +222,41 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
     };
   }, [contextMenu]);
 
+  useEffect(() => {
+    if (active) return;
+    setContextMenu(null);
+    setIsPanning(false);
+    setIsBoxSelecting(false);
+    pendingViewPortRef.current = null;
+    if (viewPortUpdateFrameRef.current !== undefined) {
+      cancelAnimationFrame(viewPortUpdateFrameRef.current);
+      viewPortUpdateFrameRef.current = undefined;
+    }
+  }, [active]);
+
+  useEffect(() => {
+    if (!active) return;
+    const container = containerRef.current;
+    if (!container) return;
+    let resizeFrame: number | undefined;
+    const scheduleResize = () => {
+      if (resizeFrame !== undefined) return;
+      resizeFrame = requestAnimationFrame(() => {
+        resizeFrame = undefined;
+        setCanvasSizeVersion(version => version + 1);
+      });
+    };
+    const observer = new ResizeObserver(scheduleResize);
+    observer.observe(container);
+    return () => {
+      observer.disconnect();
+      if (resizeFrame !== undefined) cancelAnimationFrame(resizeFrame);
+    };
+  }, [active]);
+
 
   useLayoutEffect(() => {
+     if (!active) return;
      const render = () => {
         const canvas = canvasRef.current;
         if (!canvas || !containerRef.current) return;
@@ -200,9 +269,11 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
         const dpr = window.devicePixelRatio || 1;
         
         // 如果需要，调整大小
-        if (canvas.width !== rect.width * dpr || canvas.height !== rect.height * dpr) {
-            canvas.width = rect.width * dpr;
-            canvas.height = rect.height * dpr;
+        const pixelWidth = Math.max(1, Math.round(rect.width * dpr));
+        const pixelHeight = Math.max(1, Math.round(rect.height * dpr));
+        if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+            canvas.width = pixelWidth;
+            canvas.height = pixelHeight;
             canvas.style.width = `${rect.width}px`;
             canvas.style.height = `${rect.height}px`;
         }
@@ -212,7 +283,7 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
         ctx.scale(dpr, dpr);
 
         try {
-            renderEntitiesToCanvas(ctx, entities, layers, blocks, styles, lineTypes, ltScale, viewPort, selectedEntityIds, rect.width, rect.height, theme, drawingColorMode, hiddenLayers);
+            renderEntitiesToCanvas(ctx, entities, layers, blocks, styles, lineTypes, ltScale, viewPort, selectedEntityIds, rect.width, rect.height, theme, drawingColorMode, hiddenLayers, sceneIndex);
             onRenderError?.(null);
 
 
@@ -231,10 +302,11 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
      return () => {
         if (renderRef.current) cancelAnimationFrame(renderRef.current);
      };
-  }, [entities, layers, blocks, styles, lineTypes, ltScale, viewPort, selectedEntityIds, worldOffset, theme, drawingColorMode, onRenderError, hiddenLayers, currentMousePos]);
+  }, [active, entities, layers, blocks, styles, lineTypes, ltScale, viewPort, selectedEntityIds, worldOffset, theme, drawingColorMode, onRenderError, hiddenLayers, canvasSizeVersion, sceneIndex]);
 
   // 处理滚轮和触控事件
   useEffect(() => {
+    if (!active) return;
     const container = containerRef.current;
     if (!container) return;
 
@@ -261,7 +333,7 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
       const newTargetX = currentVP.targetX + (mouseX - centerX) * (1/currentVP.zoom - 1/safeZoom);
       const newTargetY = currentVP.targetY - (mouseY - centerY) * (1/currentVP.zoom - 1/safeZoom);
 
-      onViewPortChange({
+      scheduleViewPortChange({
         targetX: newTargetX,
         targetY: newTargetY,
         zoom: safeZoom
@@ -315,7 +387,7 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
           const newTargetX = currentVP.targetX - dx / safeZoom;
           const newTargetY = currentVP.targetY + dy / safeZoom;
           
-          onViewPortChange({
+          scheduleViewPortChange({
             targetX: safeClamp(newTargetX, -Number.MAX_VALUE, Number.MAX_VALUE),
             targetY: safeClamp(newTargetY, -Number.MAX_VALUE, Number.MAX_VALUE),
             zoom: currentVP.zoom
@@ -355,7 +427,7 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
         const finalTargetX = targetXWithZoom - panDx / safeZoom;
         const finalTargetY = targetYWithZoom + panDy / safeZoom;
         
-        onViewPortChange({
+        scheduleViewPortChange({
           targetX: safeClamp(finalTargetX, -Number.MAX_VALUE, Number.MAX_VALUE),
           targetY: safeClamp(finalTargetY, -Number.MAX_VALUE, Number.MAX_VALUE),
           zoom: safeZoom
@@ -386,7 +458,16 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
               thresholdCap
           );
           
-          const hitId = hitTest(wPos.x, wPos.y, threshold, getPickableEntities(), blocks, layers, styles);
+          const hitId = hitTest(
+            wPos.x,
+            wPos.y,
+            threshold,
+            getPickableEntities(pointQueryBounds(wPos.x, wPos.y, threshold)),
+            blocks,
+            layers,
+            styles,
+            sceneIndex.splineSamples,
+          );
           
           if (hitId) {
             onSelectIds(new Set([hitId]));
@@ -413,7 +494,7 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
       container.removeEventListener('touchend', onTouchEnd);
       clearLongPressTimer();
     };
-  }, [onViewPortChange, entities, blocks, layers, styles, hiddenLayers, onSelectIds]);
+  }, [active, blocks, getPickableEntities, layers, onSelectIds, scheduleViewPortChange, sceneIndex.splineSamples, styles]);
 
   const handleContextMenu = (e: MouseEvent) => {
     e.preventDefault();
@@ -472,7 +553,7 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
       const newTargetX = currentViewPort.targetX - dx / safeZoom;
       const newTargetY = currentViewPort.targetY + dy / safeZoom;
 
-      onViewPortChange({
+      scheduleViewPortChange({
         targetX: safeClamp(newTargetX, -Number.MAX_VALUE, Number.MAX_VALUE),
         targetY: safeClamp(newTargetY, -Number.MAX_VALUE, Number.MAX_VALUE),
         zoom: currentViewPort.zoom
@@ -507,7 +588,16 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
              Math.max(SELECTION_CONFIG.geometryHitTolerancePixels * worldPerPixel, SELECTION_CONFIG.minimumHitToleranceWorld),
              thresholdCap
          );
-         const hitId = hitTest(wPos.x, wPos.y, threshold, getPickableEntities(), blocks, layers, styles);
+         const hitId = hitTest(
+             wPos.x,
+             wPos.y,
+             threshold,
+             getPickableEntities(pointQueryBounds(wPos.x, wPos.y, threshold)),
+             blocks,
+             layers,
+             styles,
+             sceneIndex.splineSamples,
+         );
          
          if (hitId) {
              const newSet = new Set(e.ctrlKey || e.shiftKey ? selectedEntityIds : []);
@@ -529,7 +619,7 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
 
          const boxIds = hitTestBox(
              { x1: startW.x, y1: startW.y, x2: endW.x, y2: endW.y },
-             getPickableEntities(),
+             getPickableEntities(boxQueryBounds({ x1: startW.x, y1: startW.y, x2: endW.x, y2: endW.y })),
              layers,
              blocks,
              isCrossing // 传递选择模式
@@ -606,4 +696,4 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
   );
 };
 
-export default CanvasViewer;
+export default React.memo(CanvasViewer);
