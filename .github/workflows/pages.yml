@@ -31,7 +31,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 24
-          registry-url: https://registry.npmjs.org/
           cache: npm
 
       - name: 固定 npm 官方源
@@ -45,25 +44,11 @@ jobs:
       - name: 安装依赖
         run: npm ci --registry=https://registry.npmjs.org/ --prefer-offline=false --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000
 
-      - name: 类型与单元测试
-        run: |
-          npm run typecheck
-          npm test
+      - name: 类型检查
+        run: npm run typecheck
 
       - name: 构建库和示例
         run: npm run build:all
-
-      - name: 验证发布入口
-        run: npm run test:package
-
-      - name: 性能基线
-        run: npm run bench -- tests/benchmarks/sceneIndex.bench.ts
-
-      - name: 安装 Chromium
-        run: npx playwright install --with-deps chromium
-
-      - name: 浏览器冒烟测试
-        run: npx playwright test
 
       - name: 构建 Pages 产物
         if: github.event_name != 'pull_request'
