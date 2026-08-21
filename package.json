@@ -1,6 +1,7 @@
 {
   "name": "@zhangly1403/dxfviewer",
   "version": "1.5.4",
+  "author": "zly258 <zhangly1403@gmail.com>",
   "license": "MIT",
   "publishConfig": {
     "access": "public"
