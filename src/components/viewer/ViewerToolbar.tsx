@@ -23,6 +23,8 @@ interface ViewerToolbarProps {
   onToggleLayerPanel: () => void;
   showProperties: boolean;
   onToggleProperties: () => void;
+  snapshotMode: boolean;
+  onToggleSnapshotMode: () => void;
   onShowAbout?: () => void;
 }
 
@@ -49,6 +51,8 @@ const ViewerToolbar: React.FC<ViewerToolbarProps> = ({
   onToggleLayerPanel,
   showProperties,
   onToggleProperties,
+  snapshotMode,
+  onToggleSnapshotMode,
   onShowAbout
 }) => {
   const [activeMenu, setActiveMenu] = useState<MenuKey | null>(null);
@@ -157,6 +161,13 @@ const ViewerToolbar: React.FC<ViewerToolbarProps> = ({
               className={`dropdown-item ${drawingColorMode === 'monochrome' ? 'checked' : ''}`}
             >
               <span>{tt.monochrome}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => closeMenuAndRun(onToggleSnapshotMode)}
+              className={`dropdown-item ${snapshotMode ? 'checked' : ''}`}
+            >
+              <span>{tt.snapshotMode}</span>
             </button>
             <div className="divider" />
             <button type="button" onClick={() => closeMenuAndRun(onToggleLayerPanel)} className={`dropdown-item ${showLayerPanel ? 'checked' : ''}`}>

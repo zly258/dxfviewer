@@ -1,4 +1,4 @@
-﻿import { DxfText, DxfStyle, CanvasTheme, Point2D, EntityType } from '@/types';
+import { DxfText, DxfStyle, CanvasTheme, Point2D, EntityType } from '@/types';
 import { CANVAS_THEME_COLORS, TEXT_RENDER_CONFIG } from '@/config/viewerConfig';
 import { CAD_BY_LAYER_COLOR } from '@/config/cadConstants';
 import {
@@ -6,9 +6,10 @@ import {
     getEffectiveTextHeight,
     splitCadFormattedText,
 } from '@/utils/textUtils';
-import { buildCadTextLayout } from '@/core/text/textLayoutEngine';
 import { getCanvasFont } from '@/utils/fontResolver';
 import { getAutoCadColor } from '@/utils/colorUtils';
+import { getMeasuredTextWidthCached, getTextLayoutCached } from '@/renderer/services/renderCache';
+import { buildCadTextLayout, CadTextLayoutResult } from '@/core/text/textLayoutEngine';
 
 export interface RenderTransform {
     project: (p: Point2D) => Point2D;
@@ -16,13 +17,9 @@ export interface RenderTransform {
     rotation: number;
 }
 
-/** 测量 Canvas 文本宽度，优先使用实际包围盒宽度。 */
-export const getMeasuredTextWidth = (ctx: CanvasRenderingContext2D, value: string): number => {
-    if (!value) return 0;
-    const metrics = ctx.measureText(value);
-    const bboxWidth = Math.abs((metrics.actualBoundingBoxRight || 0) - (metrics.actualBoundingBoxLeft || 0));
-    return Math.max(metrics.width || 0, bboxWidth || 0);
-};
+/** 测量 Canvas 文本宽度，优先使用实际包围盒宽度（结果经全局缓存去重）。 */
+export const getMeasuredTextWidth = (ctx: CanvasRenderingContext2D, value: string): number =>
+    getMeasuredTextWidthCached(ctx, value);
 
 /** 获取下划线相对基准线的偏移。 */
 const getUnderlineOffset = (baseline: CanvasTextBaseline, textHeightPixels: number): number => {
@@ -119,6 +116,110 @@ const getCadSingleLineBaselineY = (
     return 0;
 };
 
+/**
+ * 按布局结果绘制文字。
+ * `k` 为布局几何到当前帧像素的缩放因子：
+ * - 缓存路径：参考字高布局 → k = 屏幕字高 / 参考字高；
+ * - 直接路径：屏幕字高布局 → k = 1（与引入缓存前的行为逐像素一致）。
+ */
+const drawTextLayout = (
+    ctx: CanvasRenderingContext2D,
+    ent: DxfText,
+    theme: CanvasTheme,
+    layout: CadTextLayoutResult,
+    k: number,
+    screenScale: number,
+    hAlign: number,
+) => {
+    if (layout.isMText) {
+        ctx.scale(layout.horizontalScale * layout.generationScale.x, layout.generationScale.y);
+        ctx.textAlign = layout.align;
+        ctx.textBaseline = layout.baseline;
+
+        if (ent.bgFill) {
+            ctx.save();
+            ctx.fillStyle = (ent.bgColor !== undefined && ent.bgColor !== CAD_BY_LAYER_COLOR)
+                ? getAutoCadColor(ent.bgColor)
+                : CANVAS_THEME_COLORS[theme];
+            const bgPadding = layout.visualScreenHeight * k * TEXT_RENDER_CONFIG.mtextBackgroundPaddingFactor;
+            ctx.fillRect(
+                layout.boxLeft * k - bgPadding,
+                layout.boxTop * k - bgPadding,
+                layout.blockWidth * k + bgPadding * 2,
+                layout.blockHeight * k + bgPadding * 2,
+            );
+            ctx.restore();
+        }
+
+        layout.lines.forEach(line => {
+            const baselineY = line.y * k + layout.ascent * k;
+            if (line.formatted) {
+                drawFormattedSegmentsLine(ctx, line.formatted.segments, line.formatted.plainText, line.x * k, baselineY, line.align, 'alphabetic', layout.visualScreenHeight * k);
+            } else {
+                drawFormattedTextLine(ctx, line.text, line.text, line.x * k, baselineY, line.align, 'alphabetic', layout.visualScreenHeight * k);
+            }
+        });
+    } else if ((hAlign === 3 || hAlign === 5) && ent.secondPosition) {
+        const dx = ent.secondPosition.x - ent.position.x;
+        const dy = ent.secondPosition.y - ent.position.y;
+        const targetWidth = Math.hypot(dx, dy) * screenScale;
+        const measuredWidth = Math.max(layout.blockWidth * k, TEXT_RENDER_CONFIG.minimumMeasuredTextWidth);
+        if (targetWidth > 0 && measuredWidth > 0) {
+            const rawScale = targetWidth / measuredWidth;
+            const scale = Math.min(
+                Math.max(rawScale, TEXT_RENDER_CONFIG.minimumTextFitScale),
+                TEXT_RENDER_CONFIG.maximumTextFitScale,
+            );
+            ctx.scale(scale, hAlign === 3 ? scale : 1);
+        }
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'alphabetic';
+        const baselineY = getCadSingleLineBaselineY(ent, hAlign, layout.ascent * k, layout.descent * k);
+        drawFormattedTextLine(ctx, ent.value || layout.plainText, layout.plainText, 0, baselineY, 'left', ctx.textBaseline, layout.visualScreenHeight * k);
+    } else {
+        let align = layout.align;
+        if (layout.generationScale.x < 0) {
+            if (align === 'left') align = 'right';
+            else if (align === 'right') align = 'left';
+        }
+        ctx.scale(layout.horizontalScale * layout.generationScale.x, layout.generationScale.y);
+        ctx.textAlign = align;
+        ctx.textBaseline = 'alphabetic';
+        const baselineY = getCadSingleLineBaselineY(ent, hAlign, layout.ascent * k, layout.descent * k);
+        drawFormattedTextLine(ctx, ent.value || layout.plainText, layout.plainText, 0, baselineY, align, ctx.textBaseline, layout.visualScreenHeight * k);
+    }
+};
+
+/**
+ * 直接布局路径（缓存未命中时的回退）：与引入布局缓存前完全一致——
+ * 以屏幕字号设置字体、按当前视图缩放构建布局并绘制。
+ */
+const drawTextEntityDirect = (
+    ctx: CanvasRenderingContext2D,
+    ent: DxfText,
+    styles: Record<string, DxfStyle>,
+    theme: CanvasTheme,
+    noMTextWrap: boolean,
+    screenScale: number,
+    screenTextHeight: number,
+) => {
+    const originalHeight = ent.height;
+    ent.height = screenTextHeight;
+    ctx.font = getCanvasFont(ent, styles);
+    ent.height = originalHeight;
+
+    const layout = buildCadTextLayout({
+        entity: ent,
+        styles,
+        context: ctx,
+        worldToScreenScale: screenScale,
+        noWrap: noMTextWrap,
+    });
+    if (!layout) return;
+
+    drawTextLayout(ctx, ent, theme, layout, 1, screenScale, ent.hAlign || 0);
+};
+
 /** 绘制文本实体（TEXT、MTEXT、ATTRIB、ATTDEF）。 */
 export const drawTextEntity = (
     ctx: CanvasRenderingContext2D,
@@ -156,80 +257,24 @@ export const drawTextEntity = (
     const totalRotation = alignedTextAngle + transform.rotation;
     if (totalRotation !== 0) ctx.rotate(-totalRotation);
 
-    const originalHeight = ent.height;
-    ent.height = effectiveHeight * screenScale;
-    ctx.font = getCanvasFont(ent, styles);
-    ent.height = originalHeight;
+    // 布局获取：优先命中缓存（命中时零 measureText，参考字高布局按
+    // scaleFactor 线性映射到当前帧）；返回 null 时（如含 \H 内联字高覆盖的
+    // MTEXT，其缩放行为无法用单一因子复刻）回退到直接布局路径，
+    // 与引入缓存前的行为保持一致。
+    const cachedLayout = getTextLayoutCached(ctx, ent, styles, screenTextHeight, noMTextWrap);
+    if (cachedLayout) {
+        const { layout, scaleFactor } = cachedLayout;
 
-    const layout = buildCadTextLayout({
-        entity: ent,
-        styles,
-        context: ctx,
-        worldToScreenScale: screenScale,
-        noWrap: noMTextWrap,
-    });
+        // 实际绘制使用屏幕字号字体（fillText 依赖 ctx.font）；
+        // 布局缓存内部使用的参考字体已通过 save/restore 隔离，不会泄漏到这里。
+        const originalHeight = ent.height;
+        ent.height = screenTextHeight;
+        ctx.font = getCanvasFont(ent, styles);
+        ent.height = originalHeight;
 
-    if (!layout) {
-        ctx.restore();
-        return;
-    }
-
-    if (layout.isMText) {
-        ctx.scale(layout.horizontalScale * layout.generationScale.x, layout.generationScale.y);
-        ctx.textAlign = layout.align;
-        ctx.textBaseline = layout.baseline;
-
-        if (ent.bgFill) {
-            ctx.save();
-            ctx.fillStyle = (ent.bgColor !== undefined && ent.bgColor !== CAD_BY_LAYER_COLOR)
-                ? getAutoCadColor(ent.bgColor)
-                : CANVAS_THEME_COLORS[theme];
-            const bgPadding = layout.visualScreenHeight * TEXT_RENDER_CONFIG.mtextBackgroundPaddingFactor;
-            ctx.fillRect(
-                layout.boxLeft - bgPadding,
-                layout.boxTop - bgPadding,
-                layout.blockWidth + bgPadding * 2,
-                layout.blockHeight + bgPadding * 2,
-            );
-            ctx.restore();
-        }
-
-        layout.lines.forEach(line => {
-            const baselineY = line.y + layout.ascent;
-            if (line.formatted) {
-                drawFormattedSegmentsLine(ctx, line.formatted.segments, line.formatted.plainText, line.x, baselineY, line.align, 'alphabetic', layout.visualScreenHeight);
-            } else {
-                drawFormattedTextLine(ctx, line.text, line.text, line.x, baselineY, line.align, 'alphabetic', layout.visualScreenHeight);
-            }
-        });
-    } else if ((hAlign === 3 || hAlign === 5) && ent.secondPosition) {
-        const dx = ent.secondPosition.x - ent.position.x;
-        const dy = ent.secondPosition.y - ent.position.y;
-        const targetWidth = Math.hypot(dx, dy) * screenScale;
-        const measuredWidth = Math.max(layout.blockWidth, TEXT_RENDER_CONFIG.minimumMeasuredTextWidth);
-        if (targetWidth > 0 && measuredWidth > 0) {
-            const rawScale = targetWidth / measuredWidth;
-            const scale = Math.min(
-                Math.max(rawScale, TEXT_RENDER_CONFIG.minimumTextFitScale),
-                TEXT_RENDER_CONFIG.maximumTextFitScale,
-            );
-            ctx.scale(scale, hAlign === 3 ? scale : 1);
-        }
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'alphabetic';
-        const baselineY = getCadSingleLineBaselineY(ent, hAlign, layout.ascent, layout.descent);
-        drawFormattedTextLine(ctx, ent.value || layout.plainText, layout.plainText, 0, baselineY, 'left', ctx.textBaseline, layout.visualScreenHeight);
+        drawTextLayout(ctx, ent, theme, layout, scaleFactor, screenScale, hAlign);
     } else {
-        let align = layout.align;
-        if (layout.generationScale.x < 0) {
-            if (align === 'left') align = 'right';
-            else if (align === 'right') align = 'left';
-        }
-        ctx.scale(layout.horizontalScale * layout.generationScale.x, layout.generationScale.y);
-        ctx.textAlign = align;
-        ctx.textBaseline = 'alphabetic';
-        const baselineY = getCadSingleLineBaselineY(ent, hAlign, layout.ascent, layout.descent);
-        drawFormattedTextLine(ctx, ent.value || layout.plainText, layout.plainText, 0, baselineY, align, ctx.textBaseline, layout.visualScreenHeight);
+        drawTextEntityDirect(ctx, ent, styles, theme, noMTextWrap, screenScale, screenTextHeight);
     }
 
     ctx.restore();

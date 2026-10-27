@@ -1,4 +1,4 @@
-﻿import { 
+import { 
   AnyEntity, 
   EntityType, 
   DxfLayer, 
@@ -10,10 +10,11 @@
   CanvasTheme, 
   DrawingColorMode 
 } from '@/types';
-import { 
-  CANVAS_THEME_COLORS, 
-  SELECTION_CONFIG, 
-  LINE_RENDER_CONFIG 
+import {
+  CANVAS_THEME_COLORS,
+  SELECTION_CONFIG,
+  LINE_RENDER_CONFIG,
+  LOD_RENDER_CONFIG
 } from '@/config/viewerConfig';
 import { resolveEntityColor } from '@/utils/entityColor';
 import { resolveCadStrokeStyle } from '@/utils/lineStyle';
@@ -60,6 +61,65 @@ import { SceneIndex } from '@/renderer/services/sceneIndex';
 const SELECTION_COLOR = SELECTION_CONFIG.selectionBorderColor;
 
 /**
+ * Canvas 状态去重追踪器。
+ *
+ * Canvas 2D 的状态赋值（即使写入相同值）都有解析与校验开销；万级实体逐帧
+ * 绘制时，相邻实体大量共享同一颜色/线宽/虚线组合（同图层连续图元、表格线、
+ * 块内重复图形）。此追踪器按值去重，仅在状态真正变化时才写入 context。
+ *
+ * 不变量：实体绘制函数允许将 fillStyle 临时改为"与调度器写入值相同"的颜色
+ * （drawLeader 箭头、blockRenderer 单元格文字均如此），save/restore 恢复后
+ * 与追踪值一致，因此仅追踪调度器写入的值是安全的；字体、变换等状态不经过
+ * 此追踪器，不受影响。
+ */
+class CanvasStateTracker {
+    private strokeStyleValue: string | null = null;
+    private fillStyleValue: string | null = null;
+    private lineWidthValue = -1;
+    private dashSignature: string | null = null;
+
+    constructor(private readonly ctx: CanvasRenderingContext2D) {}
+
+    /** 每帧重置：背景填充等帧首操作会绕过追踪器改动状态，跨帧追踪不可靠。 */
+    reset(): void {
+        this.strokeStyleValue = null;
+        this.fillStyleValue = null;
+        this.lineWidthValue = -1;
+        this.dashSignature = null;
+    }
+
+    setStrokeStyle(value: string): void {
+        if (this.strokeStyleValue !== value) {
+            this.ctx.strokeStyle = value;
+            this.strokeStyleValue = value;
+        }
+    }
+
+    setFillStyle(value: string): void {
+        if (this.fillStyleValue !== value) {
+            this.ctx.fillStyle = value;
+            this.fillStyleValue = value;
+        }
+    }
+
+    setLineWidth(value: number): void {
+        if (this.lineWidthValue !== value) {
+            this.ctx.lineWidth = value;
+            this.lineWidthValue = value;
+        }
+    }
+
+    setLineDash(pattern: number[]): void {
+        // 空数组统一归为 ''（实线），避免每次都产生 join 开销。
+        const signature = pattern.length === 0 ? '' : pattern.join(',');
+        if (this.dashSignature !== signature) {
+            this.ctx.setLineDash(pattern);
+            this.dashSignature = signature;
+        }
+    }
+}
+
+/**
  * 将 DXF 图纸中所有可绘制图元绘制到画布上。
  */
 export const renderEntitiesToCanvas = (
@@ -82,6 +142,12 @@ export const renderEntitiesToCanvas = (
     // 使用画布主题背景色填充整个 Canvas
     ctx.fillStyle = CANVAS_THEME_COLORS[theme];
     ctx.fillRect(0, 0, width, height);
+
+    const stateTracker = new CanvasStateTracker(ctx);
+    stateTracker.reset();
+    // 线帽/拐角样式全场景固定，每帧设置一次即可。
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
 
     // 计算当前可见区域包围盒范围，用于顶层视口剔除 (Culling)
     const safeZoom = Math.max(Math.abs(viewPort.zoom), Number.MIN_VALUE);
@@ -130,16 +196,28 @@ export const renderEntitiesToCanvas = (
             }
         }
 
+        // LOD 剔除：包围盒投影不足 1 像素的实体在当前缩放下不可辨认，
+        // 直接跳过（缩小看全图时万级实体中大部分命中此路径，剔除后
+        // 每帧绘制量骤减）。选中实体永不剔除，保证高亮始终可见。
+        const isSelected = selectedIds.has(ent.id) || parentSelected;
+        if (depth === 0 && ent.extents && !isSelected) {
+            const sx = (ent.extents.max.x - ent.extents.min.x) * viewPort.zoom;
+            const sy = (ent.extents.max.y - ent.extents.min.y) * viewPort.zoom;
+            if (sx < LOD_RENDER_CONFIG.minimumEntityScreenSizePixels &&
+                sy < LOD_RENDER_CONFIG.minimumEntityScreenSizePixels) {
+                return;
+            }
+        }
+
         const layerName = (ent.layer === '0' && parentLayerName) ? parentLayerName : ent.layer;
         if (hiddenLayers && hiddenLayers.has(layerName)) return;
         const layer = layers[layerName];
         if (layer && layer.isVisible === false) return;
 
-        const isSelected = selectedIds.has(ent.id) || parentSelected;
         const color = isSelected ? SELECTION_COLOR : resolveEntityColor(ent, layer, parentColor, drawingColorMode, theme);
-        
-        ctx.strokeStyle = color;
-        ctx.fillStyle = color;
+
+        stateTracker.setStrokeStyle(color);
+        stateTracker.setFillStyle(color);
 
         // 解析 CAD 线宽、线型属性并应用到画布绘图上下文。
         let strokeStyle = resolveCadStrokeStyle({
@@ -164,10 +242,8 @@ export const renderEntitiesToCanvas = (
             };
         }
 
-        ctx.lineWidth = strokeStyle.lineWidth;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        ctx.setLineDash(strokeStyle.dashPattern);
+        stateTracker.setLineWidth(strokeStyle.lineWidth);
+        stateTracker.setLineDash(strokeStyle.dashPattern);
 
         switch (ent.type) {
             case EntityType.LINE:

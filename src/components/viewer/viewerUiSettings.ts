@@ -1,4 +1,4 @@
-﻿import { DrawingColorMode, UiTheme } from '@/types';
+import { DrawingColorMode, UiTheme } from '@/types';
 import { Language } from '@/config/i18n';
 
 export interface ViewerUiSettings {
@@ -8,6 +8,8 @@ export interface ViewerUiSettings {
   showLayerPanel?: boolean;
   showSidebar?: boolean;
   showProperties?: boolean;
+  /** 快照平移缩放（性能模式）：交互期间用快照位图贴图，停止后精绘。 */
+  snapshotMode?: boolean;
 }
 
 export const VIEWER_UI_SETTINGS_KEY = 'dxfviewer.uiSettings.v1';

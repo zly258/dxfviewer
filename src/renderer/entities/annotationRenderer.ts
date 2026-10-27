@@ -1,4 +1,4 @@
-﻿import { 
+import { 
   DxfHatch, 
   DxfLeader, 
   DxfMLeader, 
@@ -64,8 +64,18 @@ const drawHatchLoop = (ctx: CanvasRenderingContext2D, loop: any, transform: Rend
 
 /**
  * 创建非实心填充剖面线图案
+ *
+ * 性能关键：图案与颜色相关而与视图无关（绘制时平铺在当前变换下），
+ * 必须按颜色缓存。未缓存时每次绘制 HATCH 都要 `document.createElement`
+ * + 新建 2D 上下文 + 描边，万级图纸全图视图下每帧可能执行数百次，
+ * 是缩放/平移卡顿的主要热点之一。
  */
+const hatchPatternCache = new Map<string, CanvasPattern>();
+
 const createHatchPattern = (ctx: CanvasRenderingContext2D, color: string) => {
+    const cached = hatchPatternCache.get(color);
+    if (cached) return cached;
+
     const canvas = document.createElement('canvas');
     canvas.width = 10;
     canvas.height = 10;
@@ -78,7 +88,12 @@ const createHatchPattern = (ctx: CanvasRenderingContext2D, color: string) => {
         pCtx.lineTo(10, 0);
         pCtx.stroke();
     }
-    return ctx.createPattern(canvas, 'repeat');
+    const pattern = ctx.createPattern(canvas, 'repeat');
+    if (pattern) {
+        if (hatchPatternCache.size >= 64) hatchPatternCache.clear();
+        hatchPatternCache.set(color, pattern);
+    }
+    return pattern;
 };
 
 /**
