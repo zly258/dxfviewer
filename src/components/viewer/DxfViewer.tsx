@@ -20,6 +20,7 @@ import { CANVAS_THEME_COLORS, DEFAULT_LAYER, DEFAULT_VIEWPORT, LAYOUT_CONFIG, SH
 import { Language, t } from '@/config/i18n';
 import { readViewerUiSettings, ViewerUiSettings, writeViewerUiSettings } from './viewerUiSettings';
 import { TextSearchMatch } from '@/utils/entityTextSearch';
+import { clearAllRenderCaches } from '@/renderer/services/renderCache';
 
 /**
  * DXF 查看器主容器组件
@@ -163,6 +164,8 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
   const [internalUiTheme, setInternalUiTheme] = useState<UiTheme>(savedUiSettingsRef.current.uiTheme ?? VIEWER_DEFAULTS.uiTheme);
   const [internalDrawingColorMode, setInternalDrawingColorMode] = useState<DrawingColorMode>(savedUiSettingsRef.current.drawingColorMode ?? VIEWER_DEFAULTS.drawingColorMode);
   const [internalLang, setInternalLang] = useState<Language>(savedUiSettingsRef.current.language ?? defaultLanguage);
+  // 快照平移缩放（性能模式）默认开启：大图纸交互期间用快照位图贴图。
+  const [snapshotMode, setSnapshotMode] = useState<boolean>(savedUiSettingsRef.current.snapshotMode ?? VIEWER_DEFAULTS.snapshotMode);
   const [systemTheme, setSystemTheme] = useState<ResolvedUiTheme>(() => getSystemUiTheme());
   const [mouseCoords, setMouseCoords] = useState<{x: number, y: number}>({x: 0, y: 0});
   const pendingMouseCoordsRef = useRef<{ x: number; y: number } | null>(null);
@@ -224,8 +227,9 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
       language: lang,
       showLayerPanel,
       showProperties,
+      snapshotMode,
     });
-  }, [uiTheme, drawingColorMode, lang, showLayerPanel, showProperties]);
+  }, [uiTheme, drawingColorMode, lang, showLayerPanel, showProperties, snapshotMode]);
 
   const handleSetLang = useCallback((newLang: Language) => {
     setInternalLang(newLang);
@@ -340,6 +344,8 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
 
   const applyLoadResult = useCallback((result: DxfLoadResult) => {
     const data = result.data;
+    // 图纸切换后旧渲染缓存（测量/文字布局）全部作废，统一清空防止串图。
+    clearAllRenderCaches();
     setParseErrorMessage(null);
     setRenderErrorMessage(null);
     const parsedLayouts = data.layouts || [];
@@ -666,6 +672,8 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
             onToggleLayerPanel={() => setShowLayerPanel(v => !v)}
             showProperties={showProperties}
             onToggleProperties={() => setShowProperties(v => !v)}
+            snapshotMode={snapshotMode}
+            onToggleSnapshotMode={() => setSnapshotMode(v => !v)}
             onShowAbout={() => setShowAbout(true)}
           />
         )}
@@ -723,6 +731,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
             onMouseMoveWorld={handleMouseMoveWorld}
             onRenderError={setRenderErrorMessage}
             hiddenLayers={hiddenLayers}
+            snapshotMode={snapshotMode}
           />
 
 

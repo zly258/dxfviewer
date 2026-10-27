@@ -16,6 +16,9 @@ export const VIEWER_DEFAULTS = {
   language: 'zh' as const,
   uiTheme: 'system' as UiTheme,
   drawingColorMode: 'original' as DrawingColorMode,
+  // 快照平移缩放（性能模式）默认开启；用户可在视图菜单中关闭以换取
+  // 交互期间的逐帧精确渲染。
+  snapshotMode: true,
   toastDurationMs: 5000,
   defaultLineTypeScale: CAD_DEFAULT_LINE_TYPE_SCALE,
   // 视图停留超过该时间才写入历史，避免滚轮缩放和平移过程中频繁入栈。
@@ -252,6 +255,19 @@ export const INTERACTION_CONFIG = {
   touchLongPressDelayMs: 560,
   touchTapMaxDurationMs: 300,
   touchHitToleranceMultiplier: 2.5,
+  // 交互（平移/缩放）停止后多久触发一次全量精绘（freeze + refine 模式）。
+  interactionRefineDelayMs: 150,
+};
+
+/**
+ * LOD（细节层次）剔除：
+ * 屏幕投影尺寸低于阈值的实体在当前缩放下不可辨认，直接跳过绘制。
+ * 这是 CAD 处理"缩小看全图"场景的核心手段——全图视图下万级实体中
+ * 大量图元的投影不足 1 像素，逐个 stroke 的开销远大于其视觉价值。
+ */
+export const LOD_RENDER_CONFIG = {
+  /** 实体包围盒投影宽高均低于该像素值时跳过绘制。 */
+  minimumEntityScreenSizePixels: 1,
 };
 
 export const PANEL_CONFIG = {
