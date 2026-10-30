@@ -1,4 +1,4 @@
-﻿import { AnyEntity, DxfBlock, DxfStyle, DxfText, DxfTable, EntityType, Point2D } from '@/types';
+import { AnyEntity, DxfBlock, DxfStyle, DxfText, DxfTable, EntityType, Point2D } from '@/types';
 import { EXTENTS_CONFIG, TABLE_EXTENTS_CONFIG, LEADER_RENDER_CONFIG } from '@/config/viewerConfig';
 import { sampleBulgeSegment } from './bulge';
 import { sampleEllipsePoints, sampleHatchLoop, sampleSplinePoints } from './curveSampling';
@@ -8,6 +8,7 @@ import {
     isPlaceholderAttributeText,
     isTextLikeEntity,
     isGuideEntity,
+    isShapeEntity,
     isDefpointsLayer,
     hasDrawableBlockGeometry,
     isPrimaryGeometryEntity,
@@ -488,6 +489,8 @@ const shouldUseEntityForDrawingExtents = (ent: AnyEntity, hasPrimaryGeometry: bo
     if (ent.visible === false || ent.type === EntityType.ATTDEF) return false;
     if (isDefpointsLayer(ent.layer)) return false;
     if (EXTENTS_CONFIG.ignoreGuideLinesInDrawingExtents && isGuideEntity(ent)) return false;
+    // SHAPE 不渲染（无 .shx 字形）且常残留于主图之外，纳入范围会把适配视口拉偏
+    if (isShapeEntity(ent)) return false;
     if (!EXTENTS_CONFIG.includePointsInDrawingExtents && ent.type === EntityType.POINT && hasPrimaryGeometry) return false;
     if (ent.type === EntityType.ACAD_TABLE && !isTableWithDrawableBlock(ent, blocks)) return false;
     if (ent.type === EntityType.INSERT && !isBlockInsertWithDrawableExtents(ent, blocks)) return false;

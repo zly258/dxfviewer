@@ -1,4 +1,4 @@
-﻿import type { RenderContext } from '@/renderer/context';
+import type { RenderContext } from '@/renderer/context';
 import { 
   Point2D, 
   DxfLine, 
@@ -284,23 +284,13 @@ export const drawViewport = (ctx: RenderContext, ent: DxfViewport, transform: Re
 };
 
 /**
- * 绘制 SHAPE 占位符。
+ * SHAPE 渲染：不绘制。
+ *
+ * SHAPE 引用 .shx 形状字体字形，本库不加载 .shx，无法还原真实字形；
+ * 此前绘制的「+」占位符在真实图纸中会成为杂散标记（SHAPE 常残留于
+ * 主图之外的符号库坐标），故改为静默跳过。实体仍参与解析/属性/拾取数据，
+ * 仅不做视觉输出。
  */
-export const drawShape = (ctx: RenderContext, ent: DxfShape, transform: RenderTransform) => {
-    const point = transform.project(ent.position);
-    const size = Math.max(4, Math.min(14, Math.abs(ent.size || 1) * Math.abs(transform.scale)));
-    ctx.beginPath();
-    ctx.moveTo(point.x - size, point.y);
-    ctx.lineTo(point.x + size, point.y);
-    ctx.moveTo(point.x, point.y - size);
-    ctx.lineTo(point.x, point.y + size);
-    ctx.stroke();
-
-    if (ent.name && size > 5) {
-        ctx.save();
-        ctx.font = '11px sans-serif';
-        ctx.textBaseline = 'bottom';
-        ctx.fillText(ent.name, point.x + size + 3, point.y - size - 2);
-        ctx.restore();
-    }
+export const drawShape = (_ctx: RenderContext, _ent: DxfShape, _transform: RenderTransform) => {
+    // no-op：见上方说明
 };
