@@ -26,6 +26,7 @@ export type ViewerIconName =
   | 'filterEmpty'
   | 'sortName'
   | 'sortCount'
+  | 'more'
   | 'export';
 
 /**
@@ -117,6 +118,10 @@ const ICON_PATHS: Record<ViewerIconName, React.ReactNode> = {
   ),
   // file_download
   export: <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />,
+  // more_vert
+  more: (
+    <path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z" />
+  ),
 };
 
 type ViewerIconProps = React.SVGAttributes<SVGSVGElement> & {

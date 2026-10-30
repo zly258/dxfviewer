@@ -46,15 +46,31 @@
   flex-shrink: 0;
   font-size: 11px;
   font-weight: 500;
-  color: var(--text-muted);
-  background-color: var(--bg-primary);
-  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  background-color: var(--bg-tertiary);
+  border: 0;
   border-radius: 999px;
-  padding: 0 6px;
-  line-height: 16px;
-  height: 16px;
+  padding: 0 8px;
+  line-height: 18px;
+  height: 18px;
   display: inline-flex;
   align-items: center;
+}
+
+/* 头部右侧溢出菜单（排序/过滤），搜索行保持单一职责 */
+.layer-header-menu {
+  position: relative;
+  margin-left: auto;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.layer-panel-menu {
+  top: calc(100% + 6px);
+  left: auto;
+  right: -8px;
+  min-width: 168px;
 }
 
 .layer-panel-content,
