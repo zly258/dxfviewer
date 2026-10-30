@@ -25,7 +25,8 @@ export type ViewerIconName =
   | 'sortDesc'
   | 'filterEmpty'
   | 'sortName'
-  | 'sortCount';
+  | 'sortCount'
+  | 'export';
 
 const ICON_PATHS: Record<ViewerIconName, React.ReactNode> = {
   open: (
@@ -159,6 +160,13 @@ const ICON_PATHS: Record<ViewerIconName, React.ReactNode> = {
       <path d="M5 7h14" />
       <path d="M5 12h10" />
       <path d="M5 17h6" />
+    </>
+  ),
+  export: (
+    <>
+      {/* Material Design: file_download */}
+      <path d="M5 20h14v-2H5v2z" />
+      <path d="M19 9h-4V3H9v6H5l7 7 7-7z" />
     </>
   ),
 };

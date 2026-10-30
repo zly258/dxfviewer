@@ -21,6 +21,15 @@ export const UI_TRANSLATIONS: Record<Language, Record<string, string>> = {
     off: 'Off',
     searchText: 'Search text',
     viewerToolbar: 'Viewer toolbar',
+    exportMenu: 'Export',
+    exportPng: 'PNG image (1280×800)',
+    exportSvg: 'SVG vector',
+    exportPdf: 'PDF raster (A4)',
+    exportPdfVector: 'PDF vector (A4)',
+    exportDxf: 'Write back DXF (round-trip test)',
+    exportSuccess: 'Exported',
+    exportFailed: 'Export failed',
+    exportNoData: 'Open a drawing first',
 
     // 图层面板
     layersTitle: 'Layers',
@@ -172,6 +181,15 @@ export const UI_TRANSLATIONS: Record<Language, Record<string, string>> = {
     off: '关闭',
     searchText: '搜索文字',
     viewerToolbar: '查看器工具栏',
+    exportMenu: '导出',
+    exportPng: 'PNG 图片（1280×800）',
+    exportSvg: 'SVG 矢量图',
+    exportPdf: 'PDF 栅格版（A4）',
+    exportPdfVector: 'PDF 矢量版（A4）',
+    exportDxf: '写出 DXF（还原验证）',
+    exportSuccess: '已导出',
+    exportFailed: '导出失败',
+    exportNoData: '请先打开图纸',
 
     // 图层面板
     layersTitle: '图层列表',

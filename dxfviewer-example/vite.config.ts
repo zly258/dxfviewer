@@ -20,6 +20,11 @@ export default defineConfig({
   resolve: {
     alias: {
       '@zhangly1403/dxfviewer/style.css': path.resolve(__dirname, '../dist/style.css'),
+      // 子入口必须列在主入口之前（Vite 对象别名按声明序精确匹配）
+      '@zhangly1403/dxfviewer/parser': path.resolve(__dirname, '../dist/parser.js'),
+      '@zhangly1403/dxfviewer/writer': path.resolve(__dirname, '../dist/writer.js'),
+      '@zhangly1403/dxfviewer/render': path.resolve(__dirname, '../dist/render.js'),
+      '@zhangly1403/dxfviewer/export': path.resolve(__dirname, '../dist/export.js'),
       '@zhangly1403/dxfviewer': path.resolve(__dirname, '../dist/dxfviewer.js'),
     },
   },

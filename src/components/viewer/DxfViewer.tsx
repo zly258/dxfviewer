@@ -1,6 +1,8 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
 import CanvasViewer from '@/components/viewer/CanvasViewer';
-import ViewerToolbar from '@/components/viewer/ViewerToolbar';
+import ViewerToolbar, { ExportKind } from '@/components/viewer/ViewerToolbar';
+import { exportPng, exportPdf, exportPdfVector, exportSvg } from '@/export';
+import { writeDxf } from '@/writer';
 import MobileViewerControls from '@/components/viewer/MobileViewerControls';
 import { LoadingOverlay, Toast, ToastState, ViewerNotice } from '@/components/common/Overlays';
 import { SpaceSwitchBar, StatusBar } from '@/components/common/StatusBars';
@@ -16,7 +18,7 @@ import { useEntityVisibility } from '@/hooks/useEntityVisibility';
 import { isAbortError, useDxfLoader } from '@/hooks/useDxfLoader';
 import { calculateExtents } from '@/core/geometry/extents';
 import { fitExtentsToBox } from '@/renderer/services/viewportFitting';
-import { AnyEntity, ViewPort, DxfLayer, DxfBlock, EntityType, DxfStyle, DxfLineType, Point2D, CanvasTheme, DrawingColorMode, UiTheme, DxfLayout, ResolvedUiTheme, DxfLoadResult, DxfLoadedData } from '@/types';
+import { AnyEntity, ViewPort, DxfLayer, DxfBlock, DxfData, EntityType, DxfStyle, DxfLineType, Point2D, CanvasTheme, DrawingColorMode, UiTheme, DxfLayout, ResolvedUiTheme, DxfLoadResult, DxfLoadedData } from '@/types';
 import { CANVAS_THEME_COLORS, DEFAULT_LAYER, DEFAULT_VIEWPORT, LAYOUT_CONFIG, SHORTCUT_CONFIG, VIEWER_DEFAULTS, ZOOM_CONFIG, PANEL_CONFIG, canvasThemeFromUiTheme, getSystemUiTheme, resolveUiTheme } from '@/config/viewerConfig';
 import { Language, t } from '@/config/i18n';
 import { readViewerUiSettings, ViewerUiSettings, writeViewerUiSettings } from './viewerUiSettings';
@@ -180,6 +182,8 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
   const [renderErrorMessage, setRenderErrorMessage] = useState<string | null>(null);
   const [isNoticeDismissed, setIsNoticeDismissed] = useState(false);
   const [toastMessage, setToastMessage] = useState<ToastState | null>(null);
+  /** 最近一次成功加载的完整图纸数据（导出用：含全部布局/块/图层）。 */
+  const loadedDataRef = useRef<DxfData | null>(null);
 
   useEffect(() => {
     onLoadRef.current = onLoad;
@@ -326,6 +330,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
     const data = result.data;
     // 图纸切换后旧渲染缓存（测量/文字布局）全部作废，统一清空防止串图。
     clearAllRenderCaches();
+    loadedDataRef.current = data;
     setParseErrorMessage(null);
     setRenderErrorMessage(null);
     const parsedLayouts = data.layouts || [];
@@ -433,6 +438,76 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
 
       scheduleFitView(layout.entities, blocks, styles, layout.extents);
   }, [activeLayoutName, blocks, layouts, resetViewHistory, scheduleFitView, styles]);
+
+  // ---------------------------------------------------------------------------
+  // 导出：PNG / SVG / 栅格 PDF / 矢量 PDF / 写出 DXF（还原验证）
+  // ---------------------------------------------------------------------------
+  const handleExport = useCallback(async (kind: ExportKind) => {
+    const data = loadedDataRef.current;
+    if (!data || entities.length === 0) {
+      showToast(t(lang, 'exportNoData'));
+      return;
+    }
+
+    const baseName = (fileName || 'drawing').replace(/\.dxf$/i, '') || 'drawing';
+    const download = (blob: Blob, name: string) => {
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = name;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+    };
+
+    // 导出与当前视图一致的图层状态（隐藏图层同样隐藏）
+    const currentHiddenLayers = [...hiddenLayersRef.current];
+    const viewOptions = {
+      layout: activeLayoutName,
+      hiddenLayers: currentHiddenLayers,
+      theme: 'white' as CanvasTheme,
+      drawingColorMode,
+    };
+
+    try {
+      if (kind === 'png') {
+        const blob = await exportPng(data, { ...viewOptions, width: 1280, height: 800, background: '#ffffff', padding: 24 });
+        download(blob, `${baseName}.png`);
+      } else if (kind === 'svg') {
+        const svg = exportSvg(data, { ...viewOptions, width: 1280, height: 800, background: '#ffffff', padding: 24 });
+        download(new Blob([svg], { type: 'image/svg+xml' }), `${baseName}.svg`);
+      } else if (kind === 'pdf') {
+        const blob = await exportPdf(data, {
+          ...viewOptions,
+          paperSize: 'A4', orientation: 'landscape', marginMm: 8, dpi: 220,
+          title: baseName,
+        });
+        download(blob, `${baseName}.pdf`);
+      } else if (kind === 'pdfVector') {
+        const blob = await exportPdfVector(data, {
+          ...viewOptions,
+          paperSize: 'A4', orientation: 'landscape', marginMm: 8,
+          title: baseName,
+        });
+        download(blob, `${baseName}-vector.pdf`);
+      } else {
+        // 写出 DXF：重建式写出（还原验证：重新打开该文件应与原图渲染一致）
+        const { content, skipped } = writeDxf(data);
+        download(new Blob([content], { type: 'application/dxf' }), `${baseName}.out.dxf`);
+        showToast(
+          skipped.length > 0
+            ? `${t(lang, 'exportSuccess')} DXF（skipped ${skipped.length}）`
+            : `${t(lang, 'exportSuccess')} DXF`,
+          false,
+        );
+        return;
+      }
+      showToast(`${t(lang, 'exportSuccess')} ${kind.toUpperCase()}`, false);
+    } catch (error) {
+      showToast(`${t(lang, 'exportFailed')}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }, [activeLayoutName, drawingColorMode, entities.length, fileName, hiddenLayersRef, lang, showToast]);
 
   useEffect(() => {
     if (!active) return;
@@ -654,6 +729,8 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
             onToggleProperties={() => setShowProperties(v => !v)}
             snapshotMode={snapshotMode}
             onToggleSnapshotMode={() => setSnapshotMode(v => !v)}
+            onExport={handleExport}
+            canExport={entities.length > 0}
             onShowAbout={() => setShowAbout(true)}
           />
         )}

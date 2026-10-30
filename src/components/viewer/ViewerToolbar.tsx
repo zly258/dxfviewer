@@ -25,10 +25,15 @@ interface ViewerToolbarProps {
   onToggleProperties: () => void;
   snapshotMode: boolean;
   onToggleSnapshotMode: () => void;
+  /** 导出（PNG/SVG/PDF/DXF），由 DxfViewer 提供实现 */
+  onExport?: (kind: ExportKind) => void;
+  canExport?: boolean;
   onShowAbout?: () => void;
 }
 
-type MenuKey = 'view';
+export type ExportKind = 'png' | 'svg' | 'pdf' | 'pdfVector' | 'dxf';
+
+type MenuKey = 'view' | 'export';
 
 /** 顶部工具栏只保留常用文件、视图、搜索、设置和关于入口，主题/语言/黑白模式放入视图菜单。 */
 const ViewerToolbar: React.FC<ViewerToolbarProps> = ({
@@ -53,6 +58,8 @@ const ViewerToolbar: React.FC<ViewerToolbarProps> = ({
   onToggleProperties,
   snapshotMode,
   onToggleSnapshotMode,
+  onExport,
+  canExport = false,
   onShowAbout
 }) => {
   const [activeMenu, setActiveMenu] = useState<MenuKey | null>(null);
@@ -183,6 +190,43 @@ const ViewerToolbar: React.FC<ViewerToolbarProps> = ({
           </div>
         )}
       </div>
+
+      {onExport && (
+        <div className={`toolbar-menu ${activeMenu === 'export' ? 'active' : ''}`}>
+          <button
+            type="button"
+            className="toolbar-button toolbar-icon-button"
+            onClick={(event) => toggleMenu(event, 'export')}
+            title={t(lang, 'exportMenu')}
+            aria-label={t(lang, 'exportMenu')}
+            aria-haspopup="menu"
+            aria-expanded={activeMenu === 'export'}
+            disabled={!canExport}
+          >
+            <span className="toolbar-icon" aria-hidden="true"><ViewerIcon name="export" /></span>
+          </button>
+          {activeMenu === 'export' && (
+            <div className="dropdown-menu" role="menu" onClick={(event) => event.stopPropagation()}>
+              {([
+                ['png', 'exportPng'],
+                ['svg', 'exportSvg'],
+                ['pdf', 'exportPdf'],
+                ['pdfVector', 'exportPdfVector'],
+                ['dxf', 'exportDxf'],
+              ] as const).map(([kind, labelKey]) => (
+                <button
+                  key={kind}
+                  type="button"
+                  onClick={() => closeMenuAndRun(() => onExport(kind))}
+                  className="dropdown-item"
+                >
+                  <span>{t(lang, labelKey)}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {onShowAbout && (
         <>
