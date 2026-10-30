@@ -411,7 +411,23 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
         ctx.scale(dpr, dpr);
 
         try {
-            renderEntitiesToCanvas(ctx, entities, layers, blocks, styles, lineTypes, ltScale, viewPort, selectedEntityIds, rect.width, rect.height, theme, drawingColorMode, hiddenLayers, sceneIndex);
+            renderEntitiesToCanvas({
+                ctx,
+                entities,
+                layers,
+                blocks,
+                styles,
+                lineTypes,
+                ltScale,
+                viewPort,
+                selectedIds: selectedEntityIds,
+                width: rect.width,
+                height: rect.height,
+                theme,
+                drawingColorMode,
+                hiddenLayers,
+                sceneIndex,
+            });
             onRenderError?.(null);
 
             // 完整精绘成功后更新快照，供下一次交互期贴图使用

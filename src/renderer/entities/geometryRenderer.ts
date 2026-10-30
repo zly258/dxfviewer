@@ -1,4 +1,5 @@
-﻿import { 
+﻿import type { RenderContext } from '@/renderer/context';
+import { 
   Point2D, 
   DxfLine, 
   DxfRay, 
@@ -26,7 +27,7 @@ export interface RenderTransform {
  * 绘制多段线
  */
 export const drawPolyline = (
-    ctx: CanvasRenderingContext2D, 
+    ctx: RenderContext, 
     points: Point2D[], 
     bulges: number[] | undefined, 
     closed: boolean, 
@@ -58,7 +59,7 @@ export const drawPolyline = (
 /**
  * 绘制普通直线
  */
-export const drawLine = (ctx: CanvasRenderingContext2D, ent: DxfLine, transform: RenderTransform) => {
+export const drawLine = (ctx: RenderContext, ent: DxfLine, transform: RenderTransform) => {
     const s = transform.project(ent.start);
     const e = transform.project(ent.end);
     ctx.beginPath();
@@ -70,7 +71,7 @@ export const drawLine = (ctx: CanvasRenderingContext2D, ent: DxfLine, transform:
 /**
  * 绘制射线
  */
-export const drawRay = (ctx: CanvasRenderingContext2D, ent: DxfRay, transform: RenderTransform, width: number, height: number) => {
+export const drawRay = (ctx: RenderContext, ent: DxfRay, transform: RenderTransform, width: number, height: number) => {
     const diag = Math.sqrt(Math.pow(width, 2) + Math.pow(height, 2));
     const infiniteDist = diag * 2; 
     
@@ -88,7 +89,7 @@ export const drawRay = (ctx: CanvasRenderingContext2D, ent: DxfRay, transform: R
 /**
  * 绘制构造线（双向无限延伸线）
  */
-export const drawXLine = (ctx: CanvasRenderingContext2D, ent: DxfXLine, transform: RenderTransform, width: number, height: number) => {
+export const drawXLine = (ctx: RenderContext, ent: DxfXLine, transform: RenderTransform, width: number, height: number) => {
     const diag = Math.sqrt(Math.pow(width, 2) + Math.pow(height, 2));
     const infiniteDist = diag * 2;
 
@@ -110,7 +111,7 @@ export const drawXLine = (ctx: CanvasRenderingContext2D, ent: DxfXLine, transfor
 /**
  * 绘制点图元
  */
-export const drawPoint = (ctx: CanvasRenderingContext2D, ent: DxfPoint, transform: RenderTransform) => {
+export const drawPoint = (ctx: RenderContext, ent: DxfPoint, transform: RenderTransform) => {
     const p = transform.project(ent.position);
     ctx.beginPath();
     ctx.arc(p.x, p.y, 2, 0, 2 * Math.PI);
@@ -120,7 +121,7 @@ export const drawPoint = (ctx: CanvasRenderingContext2D, ent: DxfPoint, transfor
 /**
  * 绘制圆形
  */
-export const drawCircle = (ctx: CanvasRenderingContext2D, ent: DxfCircle, transform: RenderTransform) => {
+export const drawCircle = (ctx: RenderContext, ent: DxfCircle, transform: RenderTransform) => {
     const c = transform.project(ent.center);
     ctx.beginPath();
     ctx.arc(c.x, c.y, ent.radius * transform.scale, 0, 2 * Math.PI);
@@ -130,7 +131,7 @@ export const drawCircle = (ctx: CanvasRenderingContext2D, ent: DxfCircle, transf
 /**
  * 绘制圆弧
  */
-export const drawArc = (ctx: CanvasRenderingContext2D, ent: DxfArc, transform: RenderTransform) => {
+export const drawArc = (ctx: RenderContext, ent: DxfArc, transform: RenderTransform) => {
     const c = transform.project(ent.center);
     const isCcw = ent.isCounterClockwise !== false;
     const startRad = (ent.startAngle || 0) * Math.PI / 180;
@@ -145,7 +146,7 @@ export const drawArc = (ctx: CanvasRenderingContext2D, ent: DxfArc, transform: R
 /**
  * 绘制椭圆弧
  */
-export const drawEllipse = (ctx: CanvasRenderingContext2D, ent: DxfEllipse, transform: RenderTransform) => {
+export const drawEllipse = (ctx: RenderContext, ent: DxfEllipse, transform: RenderTransform) => {
     const ellipsePoints = sampleEllipsePoints(
         ent.center,
         ent.majorAxis,
@@ -169,7 +170,7 @@ export const drawEllipse = (ctx: CanvasRenderingContext2D, ent: DxfEllipse, tran
 /**
  * 绘制多线 (MLINE)
  */
-export const drawMLine = (ctx: CanvasRenderingContext2D, ent: DxfMLine, transform: RenderTransform) => {
+export const drawMLine = (ctx: RenderContext, ent: DxfMLine, transform: RenderTransform) => {
     if (ent.vertices.length > 1) {
         ctx.beginPath();
         ent.vertices.forEach((point, index) => {
@@ -185,7 +186,7 @@ export const drawMLine = (ctx: CanvasRenderingContext2D, ent: DxfMLine, transfor
 /**
  * 绘制样条曲线 (SPLINE)
  */
-export const drawSpline = (ctx: CanvasRenderingContext2D, ent: DxfSpline, transform: RenderTransform, cachedPoints?: Point2D[]) => {
+export const drawSpline = (ctx: RenderContext, ent: DxfSpline, transform: RenderTransform, cachedPoints?: Point2D[]) => {
     const splinePoints = cachedPoints && cachedPoints.length > 0
         ? cachedPoints
         : ent.calculatedPoints && ent.calculatedPoints.length > 0
@@ -208,7 +209,7 @@ export const drawSpline = (ctx: CanvasRenderingContext2D, ent: DxfSpline, transf
 /**
  * 绘制螺旋线 (HELIX)
  */
-export const drawHelix = (ctx: CanvasRenderingContext2D, ent: DxfHelix, transform: RenderTransform) => {
+export const drawHelix = (ctx: RenderContext, ent: DxfHelix, transform: RenderTransform) => {
     const N = ent.turns || 1;
     const P = ent.pitch || 1;
     const R = ent.radius || 1;
@@ -262,7 +263,7 @@ export const drawHelix = (ctx: CanvasRenderingContext2D, ent: DxfHelix, transfor
 /**
  * 绘制纸张空间视口边框。
  */
-export const drawViewport = (ctx: CanvasRenderingContext2D, ent: DxfViewport, transform: RenderTransform) => {
+export const drawViewport = (ctx: RenderContext, ent: DxfViewport, transform: RenderTransform) => {
     const halfWidth = Math.abs(ent.width || 0) / 2;
     const halfHeight = Math.abs(ent.height || 0) / 2;
     if (halfWidth <= 0 || halfHeight <= 0) return;
@@ -285,7 +286,7 @@ export const drawViewport = (ctx: CanvasRenderingContext2D, ent: DxfViewport, tr
 /**
  * 绘制 SHAPE 占位符。
  */
-export const drawShape = (ctx: CanvasRenderingContext2D, ent: DxfShape, transform: RenderTransform) => {
+export const drawShape = (ctx: RenderContext, ent: DxfShape, transform: RenderTransform) => {
     const point = transform.project(ent.position);
     const size = Math.max(4, Math.min(14, Math.abs(ent.size || 1) * Math.abs(transform.scale)));
     ctx.beginPath();

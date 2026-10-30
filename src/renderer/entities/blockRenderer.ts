@@ -1,4 +1,5 @@
-﻿import { 
+﻿import type { RenderContext } from '@/renderer/context';
+import { 
   DxfInsert, 
   DxfTable, 
   DxfDimension, 
@@ -29,7 +30,7 @@ export interface RenderTransform {
  * 绘制块插入或表格实体。
  */
 export const drawInsertOrTable = (
-    ctx: CanvasRenderingContext2D,
+    ctx: RenderContext,
     ent: DxfInsert | DxfTable,
     transform: RenderTransform,
     blocks: Record<string, DxfBlock>,
@@ -192,7 +193,7 @@ export const drawInsertOrTable = (
  * 绘制尺寸标注 (DIMENSION)
  */
 export const drawDimension = (
-    ctx: CanvasRenderingContext2D,
+    ctx: RenderContext,
     ent: DxfDimension,
     transform: RenderTransform,
     blocks: Record<string, DxfBlock>,

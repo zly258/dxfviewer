@@ -1,3 +1,4 @@
+import type { RenderContext } from '@/renderer/context';
 import { 
   DxfHatch, 
   DxfLeader, 
@@ -32,7 +33,7 @@ export interface RenderTransform {
 /**
  * 绘制箭头
  */
-export const drawArrowHead = (ctx: CanvasRenderingContext2D, tip: Point2D, next: Point2D, transform: RenderTransform, sizeWorld?: number) => {
+export const drawArrowHead = (ctx: RenderContext, tip: Point2D, next: Point2D, transform: RenderTransform, sizeWorld?: number) => {
     const p1 = transform.project(tip);
     const p2 = transform.project(next);
     const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
@@ -50,7 +51,7 @@ export const drawArrowHead = (ctx: CanvasRenderingContext2D, tip: Point2D, next:
 /**
  * 绘制填充环路
  */
-const drawHatchLoop = (ctx: CanvasRenderingContext2D, loop: any, transform: RenderTransform) => {
+const drawHatchLoop = (ctx: RenderContext, loop: any, transform: RenderTransform) => {
     const points = sampleHatchLoop(loop);
     if (points.length === 0) return;
     const start = transform.project(points[0]);
@@ -72,14 +73,27 @@ const drawHatchLoop = (ctx: CanvasRenderingContext2D, loop: any, transform: Rend
  */
 const hatchPatternCache = new Map<string, CanvasPattern>();
 
-const createHatchPattern = (ctx: CanvasRenderingContext2D, color: string) => {
+/** 图案位图载体：浏览器主线程用 <canvas>，Worker/无头环境用 OffscreenCanvas。 */
+const createPatternSurface = (): HTMLCanvasElement | OffscreenCanvas | null => {
+    if (typeof document !== 'undefined') {
+        return document.createElement('canvas');
+    }
+    if (typeof OffscreenCanvas !== 'undefined') {
+        return new OffscreenCanvas(10, 10);
+    }
+    // 两者皆无（例如无画布的 Node 环境）：调用方退化为只描边，不绘制图案。
+    return null;
+};
+
+const createHatchPattern = (ctx: RenderContext, color: string) => {
     const cached = hatchPatternCache.get(color);
     if (cached) return cached;
 
-    const canvas = document.createElement('canvas');
+    const canvas = createPatternSurface();
+    if (!canvas) return null;
     canvas.width = 10;
     canvas.height = 10;
-    const pCtx = canvas.getContext('2d');
+    const pCtx = canvas.getContext('2d') as RenderContext | null;
     if (pCtx) {
         pCtx.strokeStyle = color;
         pCtx.lineWidth = 1;
@@ -88,7 +102,7 @@ const createHatchPattern = (ctx: CanvasRenderingContext2D, color: string) => {
         pCtx.lineTo(10, 0);
         pCtx.stroke();
     }
-    const pattern = ctx.createPattern(canvas, 'repeat');
+    const pattern = ctx.createPattern(canvas as CanvasImageSource, 'repeat');
     if (pattern) {
         if (hatchPatternCache.size >= 64) hatchPatternCache.clear();
         hatchPatternCache.set(color, pattern);
@@ -99,7 +113,7 @@ const createHatchPattern = (ctx: CanvasRenderingContext2D, color: string) => {
 /**
  * 绘制图案/实心填充 (HATCH)
  */
-export const drawHatch = (ctx: CanvasRenderingContext2D, ent: DxfHatch, transform: RenderTransform, color: string) => {
+export const drawHatch = (ctx: RenderContext, ent: DxfHatch, transform: RenderTransform, color: string) => {
     ctx.save();
     ctx.beginPath();
     ent.loops.forEach(loop => drawHatchLoop(ctx, loop, transform));
@@ -122,7 +136,7 @@ export const drawHatch = (ctx: CanvasRenderingContext2D, ent: DxfHatch, transfor
 /**
  * 绘制二维实心填充或三维面图元。
  */
-export const drawSolid = (ctx: CanvasRenderingContext2D, ent: AnyEntity, transform: RenderTransform, type: string) => {
+export const drawSolid = (ctx: RenderContext, ent: AnyEntity, transform: RenderTransform, type: string) => {
     const pts = (ent as any).points as Point2D[];
     if (!pts || pts.length < 3) return;
     
@@ -158,7 +172,7 @@ export const drawSolid = (ctx: CanvasRenderingContext2D, ent: AnyEntity, transfo
  * 绘制引线 (LEADER)
  */
 export const drawLeader = (
-    ctx: CanvasRenderingContext2D,
+    ctx: RenderContext,
     ent: DxfLeader,
     transform: RenderTransform,
     color: string,
@@ -204,7 +218,7 @@ export const drawLeader = (
  * 绘制多重引线 (MLEADER)
  */
 export const drawMLeader = (
-    ctx: CanvasRenderingContext2D,
+    ctx: RenderContext,
     ent: DxfMLeader,
     transform: RenderTransform,
     color: string,
@@ -261,7 +275,7 @@ export const drawMLeader = (
 /**
  * 绘制图像占位框 (IMAGE)
  */
-export const drawImage = (ctx: CanvasRenderingContext2D, ent: DxfImage, transform: RenderTransform) => {
+export const drawImage = (ctx: RenderContext, ent: DxfImage, transform: RenderTransform) => {
     const scale = transform.scale;
     const w = ent.imageSize.x;
     const h = ent.imageSize.y;
@@ -291,7 +305,7 @@ export const drawImage = (ctx: CanvasRenderingContext2D, ent: DxfImage, transfor
 /**
  * 绘制遮罩区域 (WIPEOUT)
  */
-export const drawWipeout = (ctx: CanvasRenderingContext2D, ent: DxfWipeout, transform: RenderTransform, theme: CanvasTheme) => {
+export const drawWipeout = (ctx: RenderContext, ent: DxfWipeout, transform: RenderTransform, theme: CanvasTheme) => {
     if (ent.points.length < 3) return;
     ctx.save();
     ctx.fillStyle = CANVAS_THEME_COLORS[theme];
@@ -310,7 +324,7 @@ export const drawWipeout = (ctx: CanvasRenderingContext2D, ent: DxfWipeout, tran
 /**
  * 绘制几何形位公差文本框 (TOLERANCE)
  */
-export const drawTolerance = (ctx: CanvasRenderingContext2D, ent: DxfTolerance, transform: RenderTransform, color: string) => {
+export const drawTolerance = (ctx: RenderContext, ent: DxfTolerance, transform: RenderTransform, color: string) => {
     ctx.save();
     const p = transform.project(ent.position);
     ctx.translate(p.x, p.y);

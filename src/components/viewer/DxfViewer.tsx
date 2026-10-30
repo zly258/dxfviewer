@@ -15,6 +15,7 @@ import { useViewHistory } from '@/hooks/useViewHistory';
 import { useEntityVisibility } from '@/hooks/useEntityVisibility';
 import { isAbortError, useDxfLoader } from '@/hooks/useDxfLoader';
 import { calculateExtents } from '@/core/geometry/extents';
+import { fitExtentsToBox } from '@/renderer/services/viewportFitting';
 import { AnyEntity, ViewPort, DxfLayer, DxfBlock, EntityType, DxfStyle, DxfLineType, Point2D, CanvasTheme, DrawingColorMode, UiTheme, DxfLayout, ResolvedUiTheme, DxfLoadResult, DxfLoadedData } from '@/types';
 import { CANVAS_THEME_COLORS, DEFAULT_LAYER, DEFAULT_VIEWPORT, LAYOUT_CONFIG, SHORTCUT_CONFIG, VIEWER_DEFAULTS, ZOOM_CONFIG, PANEL_CONFIG, canvasThemeFromUiTheme, getSystemUiTheme, resolveUiTheme } from '@/config/viewerConfig';
 import { Language, t } from '@/config/i18n';
@@ -266,11 +267,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
       && currentHiddenLayers.size === 0;
     const extents = canUseKnownExtents ? knownExtents! : calculateExtents(visibleEnts, blks, currentStyles);
 
-    // 第 2 步：计算世界中心
-    const centerX = extents.center.x;
-    const centerY = extents.center.y;
-
-    // 第 3 步：从 viewerRef 获取实际容器尺寸
+    // 第 2 步：从 viewerRef 获取实际容器尺寸
     let containerW = window.innerWidth;
     let containerH = window.innerHeight;
 
@@ -288,29 +285,12 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
     containerW = Math.max(containerW, LAYOUT_CONFIG.minViewportWidth);
     containerH = Math.max(containerH, LAYOUT_CONFIG.minViewportHeight);
 
-    if (extents.width <= 0 && extents.height <= 0) {
-        setViewPort(prev => ({ ...prev, targetX: centerX, targetY: centerY, zoom: 1 }));
-        return;
-    }
-
-    const worldW = extents.width;
-    const worldH = extents.height;
-
-    const scaleX = (containerW / worldW) * ZOOM_CONFIG.fitViewMarginFactor;
-    const scaleY = (containerH / worldH) * ZOOM_CONFIG.fitViewMarginFactor;
-    let zoom = Math.min(scaleX, scaleY);
-    
-    if (isNaN(zoom) || !isFinite(zoom) || zoom <= 0) {
-        zoom = 1.0;
-    }
-
-    zoom = Math.max(Math.min(zoom, ZOOM_CONFIG.maxZoom), ZOOM_CONFIG.minZoom);
-
-    setViewPort({ 
-        targetX: centerX, 
-        targetY: centerY, 
-        zoom 
-    });
+    // 视口适配数学与导出（PNG/PDF）共用 viewportFitting，保证所见即所得。
+    setViewPort(fitExtentsToBox(extents, containerW, containerH, {
+        marginFactor: ZOOM_CONFIG.fitViewMarginFactor,
+        minZoom: ZOOM_CONFIG.minZoom,
+        maxZoom: ZOOM_CONFIG.maxZoom,
+    }));
   }, [setViewPort]);
 
   const scheduleFitView = useCallback((
