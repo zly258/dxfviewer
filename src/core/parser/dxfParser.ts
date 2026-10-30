@@ -1,4 +1,4 @@
-﻿import {
+import {
   DxfData,
   DxfLayer,
   DxfBlock,
@@ -298,7 +298,7 @@ export const parseDxf = async (
       if (group.code === 0 && group.value === 'TABLE') parseTable(state, layers, styles, lineTypes, blockHandleMap);
     } else if (currentSection === 'BLOCKS') {
       if (group.code === 0 && group.value === 'BLOCK') {
-        const block = parseBlock(state, blockHandleMap);
+        const block = parseBlock(state, blockHandleMap, options.preserveRaw);
         if (block) {
           blocks[block.name] = block;
           if (block.handle) blockHandleMap[block.handle] = block.name;
@@ -307,7 +307,7 @@ export const parseDxf = async (
     } else if (currentSection === 'ENTITIES') {
       if (group.code === 0) {
         if (group.value === 'SEQEND') continue;
-        const entity = parseEntityDispatcher(group.value, state, blockHandleMap);
+        const entity = parseEntityDispatcher(group.value, state, blockHandleMap, options.preserveRaw);
         if (entity) allEntities.push(entity);
       }
     } else if (currentSection === 'OBJECTS') {

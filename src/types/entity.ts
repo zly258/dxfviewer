@@ -1,4 +1,4 @@
-﻿import { Point2D, Point3D } from './core';
+import { Point2D, Point3D } from './core';
 
 export enum EntityType {
   LINE = 'LINE',
@@ -36,6 +36,12 @@ export enum EntityType {
   SHAPE = 'SHAPE'
 }
 
+/** 保真往返用：实体源文件组码快照（code + 原始文本值），仅 preserveRaw 解析时采集。 */
+export interface RawGroupPair {
+  code: number;
+  value: string;
+}
+
 export interface DxfEntity {
   id: string;
   handle?: string;
@@ -53,6 +59,8 @@ export interface DxfEntity {
   ownerHandle?: string;
   extrusion?: Point3D;
   extents?: { min: Point2D, max: Point2D };
+  /** 源文件组码快照（含解析器未消费的组码与 XDATA）；preserveRaw 时采集 */
+  raw?: RawGroupPair[];
 }
 
 export interface DxfLine extends DxfEntity { type: EntityType.LINE; start: Point2D; end: Point2D; }
