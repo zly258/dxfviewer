@@ -1,4 +1,4 @@
-﻿import { AnyEntity, DxfBlock, DxfText, EntityType } from '@/types';
+import { AnyEntity, DxfBlock, DxfText, EntityType } from '@/types';
 import { TEXT_RENDER_CONFIG } from '@/config/viewerConfig';
 
 /** 判断 ATTRIB/ATTDEF 是否为占位符属性文字（位于原点且高度异常大）。 */
@@ -23,15 +23,25 @@ export const isTextLikeEntity = (ent: AnyEntity): boolean => (
 export const isGuideEntity = (ent: AnyEntity): boolean =>
     ent.type === EntityType.RAY || ent.type === EntityType.XLINE;
 
+/**
+ * 判断实体是否为 SHAPE 形引用。
+ *
+ * SHAPE 引用 .shx 形状字体中的字形；本库不加载 .shx，无法渲染真实字形。
+ * 更关键的是：真实图纸中 SHAPE 常位于主图之外（符号库残留位置），若参与
+ * 范围计算会把自动适配视口拉偏（整图缩小偏移），且占位符会形成杂散标记。
+ */
+export const isShapeEntity = (ent: AnyEntity): boolean => ent.type === EntityType.SHAPE;
+
 /** 判断图层名称是否为特殊的 "Defpoints" 图层。 */
 export const isDefpointsLayer = (layerName?: string): boolean =>
     (layerName || '').toLowerCase() === 'defpoints';
 
-/** 判断块内实体是否为可绘制的几何图元（排除文字、点、引导线、表格）。 */
+/** 判断块内实体是否为可绘制的几何图元（排除文字、点、引导线、表格、SHAPE）。 */
 export const isDrawableBlockEntity = (entity: AnyEntity): boolean => {
     if (entity.visible === false) return false;
     if (isTextLikeEntity(entity)) return false;
     if (entity.type === EntityType.POINT || isGuideEntity(entity)) return false;
+    if (isShapeEntity(entity)) return false;
     if (entity.type === EntityType.ACAD_TABLE) return false;
     return true;
 };
@@ -46,6 +56,7 @@ export const isPrimaryGeometryEntity = (ent: AnyEntity, blocks?: Record<string, 
     if (isTextLikeEntity(ent)) return false;
     if (ent.type === EntityType.POINT) return false;
     if (isGuideEntity(ent)) return false;
+    if (isShapeEntity(ent)) return false;
     if (ent.type === EntityType.ACAD_TABLE) {
         return blocks ? isTableWithDrawableBlock(ent, blocks) : false;
     }
