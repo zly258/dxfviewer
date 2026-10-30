@@ -1,4 +1,4 @@
-﻿import { DxfLayer, DxfStyle, DxfLineType, DxfBlock, DxfLayout } from '@/types';
+import { DxfLayer, DxfStyle, DxfLineType, DxfBlock, DxfLayout } from '@/types';
 import { DxfParserState } from './parserState';
 import { DxfImageDef } from '@/types';
 import { parseEntityDispatcher } from './entityParser';
@@ -138,7 +138,11 @@ export const parseTable = (
 /**
  * 解析块段 (BLOCK) 定义，包含内部的实体列表
  */
-export const parseBlock = (state: DxfParserState, blockHandleMap?: Record<string, string>): DxfBlock | null => {
+export const parseBlock = (
+    state: DxfParserState,
+    blockHandleMap?: Record<string, string>,
+    preserveRaw = false,
+): DxfBlock | null => {
     const block: DxfBlock = { name: '', basePoint: {x:0, y:0}, entities: [] };
     while(state.hasNext) {
         const p = state.peek();
@@ -163,7 +167,7 @@ export const parseBlock = (state: DxfParserState, blockHandleMap?: Record<string
                 break;
             }
             state.next(); // 消耗实体类型组。
-            const entity = parseEntityDispatcher(p.value, state, blockHandleMap);
+            const entity = parseEntityDispatcher(p.value, state, blockHandleMap, preserveRaw);
             if (entity) block.entities.push(entity);
         } else {
             state.next();

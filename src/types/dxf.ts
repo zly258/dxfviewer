@@ -1,4 +1,4 @@
-﻿import { Point2D } from './core';
+import { Point2D } from './core';
 import { AnyEntity } from './entity';
 
 export interface DxfBlock {
@@ -101,4 +101,10 @@ export interface ParseDxfOptions {
   yieldIntervalMs?: number;
   /** 两次进度回调之间的最大时间间隔。 */
   progressIntervalMs?: number;
+  /**
+   * 保真模式：为每个实体采集源文件组码快照（`entity.raw`），
+   * 配合 `writeDxf({ preserveRaw: true })` 回放未建模组码（含 XDATA）。
+   * 内存占用约 +40%，仅在「打开→改→另存不丢信息」场景开启。
+   */
+  preserveRaw?: boolean;
 }
