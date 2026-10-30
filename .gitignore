@@ -18,7 +18,9 @@ test-results
 coverage
 *.local
 
-# Generated round-trip outputs (scripts/roundtrip.mjs)
+# DXF 文件一律不入库（用户要求）：夹具由 scripts/fixtures.mjs 运行时生成
+*.dxf
+!**/*.dxf.ignore
 samples/dxf-output
 
 # CLI conversion test outputs (scripts/dxfviewer-cli.mjs)
