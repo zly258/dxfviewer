@@ -1,3 +1,4 @@
+import type { RenderContext } from '@/renderer/context';
 /**
  * 渲染路径专用缓存。
  *
@@ -36,7 +37,7 @@ const MAX_LAYOUT_CACHE_ENTRIES = 30_000;
 const measureCache = new Map<string, Map<string, number>>();
 
 export const getMeasuredTextWidthCached = (
-    ctx: CanvasRenderingContext2D,
+    ctx: RenderContext,
     value: string,
 ): number => {
     if (!value) return 0;
@@ -125,7 +126,7 @@ const REFERENCE_LAYOUT_HEIGHT = 100;
  * Canvas 文本测量相对字号严格线性，因此该映射是精确等价而非近似。
  */
 export const getTextLayoutCached = (
-    ctx: CanvasRenderingContext2D,
+    ctx: RenderContext,
     entity: DxfText,
     styles: Record<string, DxfStyle>,
     screenTextHeight: number,

@@ -1,3 +1,4 @@
+import type { RenderContext } from '@/renderer/context';
 import { DxfStyle, DxfText, EntityType } from '@/types';
 import { TEXT_RENDER_CONFIG } from '@/config/viewerConfig';
 import { resolveCadTextFontProfile } from '@/renderer/services/fontService';
@@ -20,7 +21,7 @@ import {
 export interface CadTextLayoutInput {
   entity: DxfText;
   styles?: Record<string, DxfStyle>;
-  context: CanvasRenderingContext2D;
+  context: RenderContext;
   worldToScreenScale: number;
   noWrap?: boolean;
 }
@@ -146,7 +147,7 @@ const wrapTextByMeasuredWidth = (measureWidth: (value: string) => number, text: 
   return result;
 };
 
-const measureCanvasText = (context: CanvasRenderingContext2D, value: string): number => {
+const measureCanvasText = (context: RenderContext, value: string): number => {
   if (!value) return 0;
   const metrics = context.measureText(value);
   const actual = Math.abs((metrics.actualBoundingBoxRight || 0) - (metrics.actualBoundingBoxLeft || 0));
@@ -154,7 +155,7 @@ const measureCanvasText = (context: CanvasRenderingContext2D, value: string): nu
 };
 
 const measureCanvasTextVerticalMetrics = (
-  context: CanvasRenderingContext2D,
+  context: RenderContext,
   sampleText: string,
   fallbackHeight: number,
 ): { ascent: number; descent: number } => {
@@ -189,7 +190,7 @@ const getMTextLineHeight = (visualScreenHeight: number, lineSpacingFactor: numbe
   return Math.max(rawLineHeight, minLineHeight);
 };
 
-const measureCadText = (context: CanvasRenderingContext2D, value: string): number => {
+const measureCadText = (context: RenderContext, value: string): number => {
   return measureCanvasText(context, value);
 };
 

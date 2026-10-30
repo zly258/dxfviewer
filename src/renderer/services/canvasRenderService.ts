@@ -1,3 +1,4 @@
+import type { RenderContext } from '@/renderer/context';
 import { 
   AnyEntity, 
   EntityType, 
@@ -78,7 +79,7 @@ class CanvasStateTracker {
     private lineWidthValue = -1;
     private dashSignature: string | null = null;
 
-    constructor(private readonly ctx: CanvasRenderingContext2D) {}
+    constructor(private readonly ctx: RenderContext) {}
 
     /** 每帧重置：背景填充等帧首操作会绕过追踪器改动状态，跨帧追踪不可靠。 */
     reset(): void {
@@ -120,28 +121,65 @@ class CanvasStateTracker {
 }
 
 /**
+ * 渲染场景参数。
+ *
+ * 早期版本用 14 个位置参数，导出一旦加入就会继续膨胀且极易错位；
+ * 这里收敛为单个对象，并对可选行为（背景、LOD、选中）给出明确语义。
+ */
+export interface RenderSceneOptions {
+    ctx: RenderContext;
+    entities: AnyEntity[];
+    layers: Record<string, DxfLayer>;
+    blocks: Record<string, DxfBlock>;
+    styles: Record<string, DxfStyle>;
+    lineTypes: Record<string, DxfLineType>;
+    ltScale: number;
+    viewPort: ViewPort;
+    width: number;
+    height: number;
+    theme: CanvasTheme;
+    drawingColorMode?: DrawingColorMode;
+    hiddenLayers?: Set<string>;
+    selectedIds?: Set<string>;
+    sceneIndex?: SceneIndex;
+    /**
+     * 背景色覆盖：
+     * - 省略/undefined：按主题色填充（交互查看器行为）
+     * - 显式字符串：用该颜色填充（导出白底）
+     * - null：不填充（导出透明底，调用方需自行清空画布）
+     */
+    background?: string | null;
+    /** 是否启用 LOD 剔除（包围盒投影小于阈值的实体跳过）。导出应关闭。 */
+    lodCulling?: boolean;
+}
+
+/**
  * 将 DXF 图纸中所有可绘制图元绘制到画布上。
  */
-export const renderEntitiesToCanvas = (
-    ctx: CanvasRenderingContext2D,
-    entities: AnyEntity[],
-    layers: Record<string, DxfLayer>,
-    blocks: Record<string, DxfBlock>,
-    styles: Record<string, DxfStyle>,
-    lineTypes: Record<string, DxfLineType>,
-    ltScale: number,
-    viewPort: ViewPort,
-    selectedIds: Set<string>,
-    width: number,
-    height: number,
-    theme: CanvasTheme,
-    drawingColorMode: DrawingColorMode = 'original',
-    hiddenLayers: Set<string> = new Set(),
-    sceneIndex?: SceneIndex,
-) => {
-    // 使用画布主题背景色填充整个 Canvas
-    ctx.fillStyle = CANVAS_THEME_COLORS[theme];
-    ctx.fillRect(0, 0, width, height);
+export const renderEntitiesToCanvas = ({
+    ctx,
+    entities,
+    layers,
+    blocks,
+    styles,
+    lineTypes,
+    ltScale,
+    viewPort,
+    width,
+    height,
+    theme,
+    drawingColorMode = 'original',
+    hiddenLayers = new Set<string>(),
+    selectedIds = new Set<string>(),
+    sceneIndex,
+    background,
+    lodCulling = true,
+}: RenderSceneOptions) => {
+    // 背景填充：undefined 走主题色，null 表示调用方要求透明底。
+    if (background !== null) {
+        ctx.fillStyle = background ?? CANVAS_THEME_COLORS[theme];
+        ctx.fillRect(0, 0, width, height);
+    }
 
     const stateTracker = new CanvasStateTracker(ctx);
     stateTracker.reset();
@@ -200,7 +238,7 @@ export const renderEntitiesToCanvas = (
         // 直接跳过（缩小看全图时万级实体中大部分命中此路径，剔除后
         // 每帧绘制量骤减）。选中实体永不剔除，保证高亮始终可见。
         const isSelected = selectedIds.has(ent.id) || parentSelected;
-        if (depth === 0 && ent.extents && !isSelected) {
+        if (lodCulling && depth === 0 && ent.extents && !isSelected) {
             const sx = (ent.extents.max.x - ent.extents.min.x) * viewPort.zoom;
             const sy = (ent.extents.max.y - ent.extents.min.y) * viewPort.zoom;
             if (sx < LOD_RENDER_CONFIG.minimumEntityScreenSizePixels &&

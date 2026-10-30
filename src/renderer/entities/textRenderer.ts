@@ -1,3 +1,4 @@
+import type { RenderContext } from '@/renderer/context';
 import { DxfText, DxfStyle, CanvasTheme, Point2D, EntityType } from '@/types';
 import { CANVAS_THEME_COLORS, TEXT_RENDER_CONFIG } from '@/config/viewerConfig';
 import { CAD_BY_LAYER_COLOR } from '@/config/cadConstants';
@@ -18,7 +19,7 @@ export interface RenderTransform {
 }
 
 /** 测量 Canvas 文本宽度，优先使用实际包围盒宽度（结果经全局缓存去重）。 */
-export const getMeasuredTextWidth = (ctx: CanvasRenderingContext2D, value: string): number =>
+export const getMeasuredTextWidth = (ctx: RenderContext, value: string): number =>
     getMeasuredTextWidthCached(ctx, value);
 
 /** 获取下划线相对基准线的偏移。 */
@@ -34,7 +35,7 @@ const getUnderlineOffset = (baseline: CanvasTextBaseline, textHeightPixels: numb
 
 /** 绘制富文本格式段。SHX 样式已映射为浏览器字体，不再依赖真实 SHX 字形文件。 */
 const drawFormattedSegmentsLine = (
-    ctx: CanvasRenderingContext2D,
+    ctx: RenderContext,
     segments: ReturnType<typeof splitCadFormattedText>,
     fallbackText: string,
     xOffset: number,
@@ -82,7 +83,7 @@ const drawFormattedSegmentsLine = (
 
 /** 绘制富文本格式单行文本。 */
 const drawFormattedTextLine = (
-    ctx: CanvasRenderingContext2D,
+    ctx: RenderContext,
     rawText: string,
     fallbackText: string,
     xOffset: number,
@@ -123,7 +124,7 @@ const getCadSingleLineBaselineY = (
  * - 直接路径：屏幕字高布局 → k = 1（与引入缓存前的行为逐像素一致）。
  */
 const drawTextLayout = (
-    ctx: CanvasRenderingContext2D,
+    ctx: RenderContext,
     ent: DxfText,
     theme: CanvasTheme,
     layout: CadTextLayoutResult,
@@ -195,7 +196,7 @@ const drawTextLayout = (
  * 以屏幕字号设置字体、按当前视图缩放构建布局并绘制。
  */
 const drawTextEntityDirect = (
-    ctx: CanvasRenderingContext2D,
+    ctx: RenderContext,
     ent: DxfText,
     styles: Record<string, DxfStyle>,
     theme: CanvasTheme,
@@ -222,7 +223,7 @@ const drawTextEntityDirect = (
 
 /** 绘制文本实体（TEXT、MTEXT、ATTRIB、ATTDEF）。 */
 export const drawTextEntity = (
-    ctx: CanvasRenderingContext2D,
+    ctx: RenderContext,
     ent: DxfText,
     transform: RenderTransform,
     styles: Record<string, DxfStyle>,

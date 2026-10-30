@@ -1,4 +1,4 @@
-﻿import { AnyEntity, DxfLayer, CanvasTheme, DrawingColorMode } from '@/types';
+import { AnyEntity, DxfLayer, CanvasTheme, DrawingColorMode } from '@/types';
 import { DEFAULT_ENTITY_COLOR, MONOCHROME_ENTITY_COLORS } from '@/config/viewerConfig';
 import { CAD_BY_BLOCK_COLOR, CAD_BY_LAYER_COLOR } from '@/config/cadConstants';
 import { getAutoCadColor, trueColorToHex } from './colorUtils';
@@ -12,6 +12,20 @@ export const resolveEntityColor = (
 ): string => {
   if (drawingColorMode === 'monochrome') return MONOCHROME_ENTITY_COLORS[canvasTheme];
 
+  const resolved = resolveOriginalColor(entity, layer, parentColor);
+  // ACI 7 / 纯白在 CAD 中是「前景色」：浅色画布上必须反转为黑色，
+  // 否则白线画在白底上不可见（此前浅色主题与导出都受影响）。
+  if (resolved.toUpperCase() === '#FFFFFF' && canvasTheme === 'white') {
+    return '#000000';
+  }
+  return resolved;
+};
+
+const resolveOriginalColor = (
+  entity: AnyEntity,
+  layer: DxfLayer | undefined,
+  parentColor: string | undefined,
+): string => {
   if (entity.trueColor !== undefined) return trueColorToHex(entity.trueColor);
 
   const entityColor = entity.color;
