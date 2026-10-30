@@ -42,6 +42,11 @@ export interface RenderSceneToCanvasOptions {
   sceneIndex?: SceneIndex;
   /** 自定义画布工厂（Node/测试环境注入） */
   createCanvas?: (width: number, height: number) => HeadlessCanvas;
+  /**
+   * 显式指定视口（「导出当前视图」用）。
+   * 提供时跳过 fit 适配，直接按该视口渲染——所见即所得。
+   */
+  viewPort?: ViewPort;
 }
 
 const DEFAULT_PADDING = 24;
@@ -108,6 +113,7 @@ export const renderSceneToCanvas = (
     lodCulling = false,
     sceneIndex,
     createCanvas = createDefaultCanvas,
+    viewPort: explicitViewPort,
   } = options;
 
   if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
@@ -123,7 +129,7 @@ export const renderSceneToCanvas = (
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.scale(dpr, dpr);
 
-  const scene = resolveSceneView(data, { layout: layoutName, width, height, padding });
+  const scene = resolveSceneView(data, { layout: layoutName, width, height, padding, viewPort: explicitViewPort });
 
   renderEntitiesToCanvas({
     ctx,
@@ -171,13 +177,16 @@ export const resolveSceneView = (
     width: number;
     height: number;
     padding?: number;
+    /** 显式视口（导出当前视图）：提供时跳过 fit 适配 */
+    viewPort?: ViewPort;
   },
 ): SceneView => {
   const layout = resolveLayout(data, options.layout);
   const extents = resolveLayoutExtents(data, layout);
-  const viewPort = layout && !layout.isModel
-    ? fitPaperLayoutToBox(layout, options.width, options.height, { padding: options.padding })
-    : fitExtentsToBox(extents, options.width, options.height, { padding: options.padding });
+  const viewPort = options.viewPort
+    ?? (layout && !layout.isModel
+      ? fitPaperLayoutToBox(layout, options.width, options.height, { padding: options.padding })
+      : fitExtentsToBox(extents, options.width, options.height, { padding: options.padding }));
 
   const entities = layout?.entities?.length
     ? layout.entities
