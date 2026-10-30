@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import DxfViewer from '@/components/viewer/DxfViewer';
 import ViewerIcon from '@/components/common/ViewerIcon';
 import { CANVAS_THEME_COLORS, getSystemUiTheme, resolveUiTheme, SHORTCUT_CONFIG, VIEWER_DEFAULTS, TABS_CONFIG } from '@/config/viewerConfig';
@@ -24,6 +24,9 @@ function DxfWorkspace({ editor = true, initialFiles = [] }: DxfWorkspaceProps) {
   const globalFileInputRef = useRef<HTMLInputElement>(null);
   const [tabContextMenu, setTabContextMenu] = useState<TabContextMenuState | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  /** 标签条实际溢出状态：决定左右箭头是否显示（比按 tab 数量猜测准确） */
+  const [tabOverflow, setTabOverflow] = useState({ left: false, right: false });
+  const tabDragRef = useRef<{ pointerId: number; startX: number; startLeft: number; moved: boolean } | null>(null);
   const {
     tabs,
     activeTabId,
@@ -139,11 +142,29 @@ function DxfWorkspace({ editor = true, initialFiles = [] }: DxfWorkspaceProps) {
   }, [tabContextMenu]);
 
 
+  const updateTabOverflow = useCallback(() => {
+    const el = tabsContainerRef.current;
+    if (!el) {
+      setTabOverflow(prev => (prev.left || prev.right ? { left: false, right: false } : prev));
+      return;
+    }
+    const overflow = el.scrollWidth - el.clientWidth;
+    const next = { left: el.scrollLeft > 1, right: el.scrollLeft < overflow - 1 };
+    setTabOverflow(prev => (prev.left === next.left && prev.right === next.right ? prev : next));
+  }, []);
+
+  useEffect(() => {
+    updateTabOverflow();
+    window.addEventListener('resize', updateTabOverflow);
+    return () => window.removeEventListener('resize', updateTabOverflow);
+  }, [updateTabOverflow, tabs.length]);
+
   useEffect(() => {
     if (!effectiveActiveTabId || !tabsContainerRef.current) return;
     const activeElement = tabsContainerRef.current.querySelector<HTMLElement>(`[data-tab-id="${effectiveActiveTabId}"]`);
     activeElement?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-  }, [effectiveActiveTabId, tabs.length]);
+    updateTabOverflow();
+  }, [effectiveActiveTabId, tabs.length, updateTabOverflow]);
 
   const handleCloseTab = (event: React.MouseEvent, id: string) => {
     event.stopPropagation();
@@ -153,11 +174,57 @@ function DxfWorkspace({ editor = true, initialFiles = [] }: DxfWorkspaceProps) {
   const scrollTabs = (delta: number) => {
     if (!tabsContainerRef.current) return;
     tabsContainerRef.current.scrollBy({ left: delta, behavior: 'smooth' });
+    updateTabOverflow();
   };
 
-  const handleTabScroll = (event: React.WheelEvent<HTMLDivElement>) => {
-    if (!tabsContainerRef.current) return;
-    tabsContainerRef.current.scrollLeft += event.deltaY || event.deltaX;
+  const handleTabWheel = (event: React.WheelEvent<HTMLDivElement>) => {
+    const el = tabsContainerRef.current;
+    if (!el) return;
+    // 竖直滚轮也映射为横向滚动（标签条只有横向溢出）
+    el.scrollLeft += event.deltaX || event.deltaY;
+    updateTabOverflow();
+  };
+
+  // 鼠标按住拖拽横向滚动（触控板/触屏由原生 overflow 处理）
+  const handleTabPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType !== 'mouse' || event.button !== 0) return;
+    const el = tabsContainerRef.current;
+    if (!el) return;
+    tabDragRef.current = { pointerId: event.pointerId, startX: event.clientX, startLeft: el.scrollLeft, moved: false };
+    el.setPointerCapture(event.pointerId);
+  };
+
+  const handleTabPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = tabDragRef.current;
+    const el = tabsContainerRef.current;
+    if (!drag || !el || event.pointerId !== drag.pointerId) return;
+    const dx = event.clientX - drag.startX;
+    if (!drag.moved && Math.abs(dx) > 4) {
+      drag.moved = true;
+      el.classList.add('dragging');
+    }
+    if (drag.moved) {
+      el.scrollLeft = drag.startLeft - dx;
+      updateTabOverflow();
+    }
+  };
+
+  const handleTabPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = tabDragRef.current;
+    const el = tabsContainerRef.current;
+    if (!drag || !el || event.pointerId !== drag.pointerId) return;
+    el.releasePointerCapture?.(event.pointerId);
+    el.classList.remove('dragging');
+    // moved 标记保留到 click 捕获阶段消费，避免拖拽结束误触发 tab 切换
+    window.setTimeout(() => { tabDragRef.current = null; }, 0);
+  };
+
+  const handleTabClickCapture = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (tabDragRef.current?.moved) {
+      event.preventDefault();
+      event.stopPropagation();
+      tabDragRef.current = null;
+    }
   };
 
   const handleTabContextMenu = (event: React.MouseEvent, tabId: string) => {
@@ -178,12 +245,22 @@ function DxfWorkspace({ editor = true, initialFiles = [] }: DxfWorkspaceProps) {
 
   const tabStrip = tabs.length > 0 ? (
     <div className={`tabs-container ${tabDensityClass}`}>
-      {tabs.length > 8 && (
+      {tabOverflow.left && (
         <button type="button" className="tab-scroll-button" onClick={() => scrollTabs(-TABS_CONFIG.scrollStep)} title={t(lang, 'scrollTabsLeft')} aria-label={t(lang, 'scrollTabsLeft')}>
           <ViewerIcon name="chevronLeft" />
         </button>
       )}
-      <div className="tabs-scroll-viewport" ref={tabsContainerRef} onWheel={handleTabScroll}>
+      <div
+        className="tabs-scroll-viewport"
+        ref={tabsContainerRef}
+        onWheel={handleTabWheel}
+        onScroll={updateTabOverflow}
+        onPointerDown={handleTabPointerDown}
+        onPointerMove={handleTabPointerMove}
+        onPointerUp={handleTabPointerUp}
+        onPointerCancel={handleTabPointerUp}
+        onClickCapture={handleTabClickCapture}
+      >
         {tabs.map(tab => (
           <div
             key={tab.id}
@@ -202,7 +279,7 @@ function DxfWorkspace({ editor = true, initialFiles = [] }: DxfWorkspaceProps) {
           </div>
         ))}
       </div>
-      {tabs.length > 8 && (
+      {tabOverflow.right && (
         <button type="button" className="tab-scroll-button" onClick={() => scrollTabs(TABS_CONFIG.scrollStep)} title={t(lang, 'scrollTabsRight')} aria-label={t(lang, 'scrollTabsRight')}>
           <ViewerIcon name="chevronRight" />
         </button>

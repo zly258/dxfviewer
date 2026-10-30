@@ -1,6 +1,8 @@
 .tabs-container {
   display: flex;
   align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
   min-height: 32px;
   background-color: var(--bg-secondary);
   color: var(--text-primary);
@@ -9,6 +11,29 @@
   white-space: nowrap;
   position: relative;
   z-index: 450;
+}
+
+/* 标签滚动视口：必须是真正的滚动容器，滚轮/触控/拖拽/箭头才有效 */
+.tabs-scroll-viewport {
+  display: flex;
+  align-items: stretch;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  cursor: grab;
+}
+
+.tabs-scroll-viewport::-webkit-scrollbar {
+  display: none;
+}
+
+.tabs-scroll-viewport.dragging {
+  cursor: grabbing;
+  scroll-behavior: auto;
 }
 
 .tab-item {

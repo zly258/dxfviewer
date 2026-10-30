@@ -28,6 +28,15 @@
   border-bottom: 0;
 }
 
+/* 工具栏不被标签条挤压；标签条与工具栏之间加分隔线 */
+.menu-tab-row .toolbar {
+  flex-shrink: 0;
+}
+
+.menu-tab-strip {
+  border-left: 1px solid var(--border-color);
+}
+
 .menu-tab-strip {
   flex: 1;
   min-width: 0;
