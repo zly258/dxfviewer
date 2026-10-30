@@ -16,59 +16,66 @@
 
 .toast-container {
   position: absolute;
-  top: 12px;
+  bottom: 48px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 2200;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
+/* MD2 snackbar：反色面、4dp 圆角、6dp elevation */
 .toast {
-  min-width: 280px;
-  max-width: min(520px, calc(100vw - 40px));
-  min-height: 42px;
+  min-width: 288px;
+  max-width: min(560px, calc(100vw - 48px));
+  min-height: 48px;
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 12px 10px 14px;
-  border: 1px solid var(--border-color);
-  border-left: 4px solid var(--error-color);
+  gap: 16px;
+  padding: 14px 16px;
+  border: 0;
   border-radius: var(--radius-medium);
-  background-color: var(--bg-elevated);
-  color: var(--text-primary);
-  box-shadow: var(--shadow-panel);
-  animation: toastIn 0.16s ease-out;
+  background-color: #323232;
+  color: rgba(255, 255, 255, 0.87);
+  box-shadow: 0 3px 5px -1px rgba(0, 0, 0, 0.2), 0 6px 10px 0 rgba(0, 0, 0, 0.14), 0 1px 18px 0 rgba(0, 0, 0, 0.12);
+  animation: toastIn 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.theme-dark .toast {
+  background-color: #e8eaed;
+  color: rgba(0, 0, 0, 0.87);
 }
 
 .toast.success {
-  border-left-color: var(--success-color);
+  border-left: 0;
 }
 
 .toast-message {
   flex: 1;
   min-width: 0;
-  color: var(--text-primary);
-  font-size: 13px;
-  line-height: 1.5;
+  color: inherit;
+  font-size: 14px;
+  line-height: 1.43;
   word-break: break-word;
 }
 
 .toast-close {
-  width: 22px;
-  height: 22px;
+  width: 32px;
+  height: 32px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--radius-small);
-  color: var(--text-secondary);
+  border-radius: var(--radius-full);
+  color: inherit;
+  opacity: 0.7;
   cursor: pointer;
+  transition: opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .toast-close:hover {
-  background-color: var(--bg-hover);
-  color: var(--text-bright);
+  opacity: 1;
+  background-color: rgba(128, 128, 128, 0.2);
 }

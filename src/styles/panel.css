@@ -20,17 +20,18 @@
 
 .layer-panel-header,
 .properties-header {
-  height: 34px;
+  height: 48px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  padding: 0 10px 0 12px;
-  border-bottom: 1px solid var(--border-color);
-  background-color: var(--bg-tertiary);
-  color: var(--text-secondary);
-  font-size: 13px;
-  font-weight: 600;
-  gap: 6px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--divider);
+  background-color: transparent;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  gap: 8px;
 }
 
 .layer-panel-title {
@@ -77,22 +78,22 @@
 }
 
 .layer-row {
-  height: 30px;
-  padding: 0 8px;
-  font-size: 13px;
+  height: 40px;
+  padding: 0 16px;
+  font-size: 14px;
 }
 
 .entity-row {
-  height: 28px;
-  padding: 0 8px 0 28px;
+  height: 36px;
+  padding: 0 16px 0 48px;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .layer-row:hover,
 .entity-row:hover,
 .property-row:hover {
-  background-color: var(--bg-hover);
+  background-color: var(--state-hover);
 }
 
 .entity-row:hover {
@@ -109,7 +110,6 @@
   height: 12px;
   margin-right: 5px;
   color: var(--text-secondary);
-  stroke-width: 3;
   transition: transform 0.12s ease;
 }
 
