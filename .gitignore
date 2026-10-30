@@ -21,6 +21,9 @@ coverage
 # Generated round-trip outputs (scripts/roundtrip.mjs)
 samples/dxf-output
 
+# CLI conversion test outputs (scripts/dxfviewer-cli.mjs)
+samples/cli-out*
+
 # Editors and system files
 .vscode/*
 !.vscode/extensions.json

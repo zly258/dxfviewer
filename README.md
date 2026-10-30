@@ -138,6 +138,23 @@ const dxf = doc.toDxfString();   // { content, skipped }
 const data = doc.toDxfData();    // 可直接喂给 <DxfViewer> 预览
 ```
 
+### 命令行转换（Node CLI）
+
+库附带零依赖 CLI（走 `./parser` `./render` `./export` `./writer` 子入口，无需浏览器）：
+
+```bash
+npm run convert -- <input.dxf> <output.(svg|pdf|dxf)> [选项]
+
+# 示例
+npm run convert -- drawing.dxf drawing.svg --width 1920 --height 1080
+npm run convert -- drawing.dxf drawing.pdf --paper A3 --landscape
+npm run convert -- drawing.dxf drawing.dxf --raw        # 保真另存
+npm run convert -- ./fixtures ./out --format .svg       # 目录批量转换
+npm run convert -- drawing.dxf x.svg --list-layouts     # 查看布局列表
+```
+
+说明：Node 端 PNG 需要 Canvas 原生实现（`skia-canvas` 等），默认不提供——浏览器端 `exportPng` 或 CLI 的 SVG/PDF 已覆盖绝大多数场景；PDF 在 Node 端几何为矢量、文字图层自动省略（浏览器端完整）。
+
 ### 常用脚本
 
 ```bash
@@ -314,6 +331,22 @@ const dxf = doc.toDxfString();   // { content, skipped }
 const data = doc.toDxfData();    // feed directly to <DxfViewer> for preview
 ```
 
+### CLI conversion (Node)
+
+The library ships a zero-dependency CLI built on the `./parser` `./render` `./export` `./writer` subpath entries (no browser required):
+
+```bash
+npm run convert -- <input.dxf> <output.(svg|pdf|dxf)> [options]
+
+# Examples
+npm run convert -- drawing.dxf drawing.svg --width 1920 --height 1080
+npm run convert -- drawing.dxf drawing.pdf --paper A3 --landscape
+npm run convert -- drawing.dxf drawing.dxf --raw        # faithful save
+npm run convert -- ./fixtures ./out --format .svg       # batch-convert a directory
+npm run convert -- drawing.dxf x.svg --list-layouts     # list layouts
+```
+
+Note: Node-side PNG requires a native Canvas implementation (e.g. `skia-canvas`) and is not provided by default — use `exportPng` in the browser, or the CLI's SVG/PDF which cover most cases. In Node the PDF geometry is fully vector; the text layer is omitted automatically (the browser build includes it).
 ### Scripts
 
 ```bash
