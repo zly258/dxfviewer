@@ -1,88 +1,110 @@
+/*
+ * Material Design 2 风格设计令牌。
+ *
+ * 变量名保持历史兼容（--bg-* / --accent-* / --shadow-* 等被各组件引用），
+ * 取值全面对齐 MD2：surface/elevation 体系、state layer（8%/12%/16%）、
+ * 4dp 圆角、Roboto 字体栈、56dp 应用栏、24dp 图标。
+ */
 :root {
-  --font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", Arial, sans-serif;
-  --font-size-base: 13px;
+  --font-family: 'Roboto', 'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", Arial, sans-serif;
+  --font-size-base: 14px;
   --font-size-small: 12px;
-  --control-height: 32px;
+  --control-height: 36px;
 
-  --bg-primary: #f8fafc;
+  /* MD2 light：background #FAFAFA / surface #FFFFFF / 字段 #F5F5F5 */
+  --bg-primary: #fafafa;
   --bg-secondary: #ffffff;
-  --bg-tertiary: #f1f5f9;
+  --bg-tertiary: #f5f5f5;
   --bg-elevated: #ffffff;
-  --bg-hover: #f8fafc;
-  --bg-active: #f1f5f9;
-  --bg-selected: #eff6ff;
-  
+  --bg-hover: rgba(0, 0, 0, 0.04);
+  --bg-active: rgba(0, 0, 0, 0.12);
+  --bg-selected: rgba(25, 118, 210, 0.12);
+
   --bg-glass: var(--bg-secondary);
   --blur-overlay: none;
 
-  --border-color: #f1f5f9;
-  --border-strong: #e2e8f0;
-  --text-primary: #0f172a;
-  --text-secondary: #475569;
-  --text-muted: #94a3b8;
+  --border-color: rgba(0, 0, 0, 0.12);
+  --border-strong: rgba(0, 0, 0, 0.2);
+  --text-primary: rgba(0, 0, 0, 0.87);
+  --text-secondary: rgba(0, 0, 0, 0.6);
+  --text-muted: rgba(0, 0, 0, 0.38);
   --text-bright: #000000;
 
-  --accent-blue: #3b82f6;
-  --accent-blue-hover: #2563eb;
-  --accent-blue-soft: #eff6ff;
-  --success-color: #10b981;
-  --error-color: #ef4444;
-  --warning-color: #f59e0b;
+  /* MD2 state layers */
+  --state-hover: rgba(0, 0, 0, 0.08);
+  --state-active: rgba(0, 0, 0, 0.12);
+  --state-focus: rgba(0, 0, 0, 0.12);
+  --divider: rgba(0, 0, 0, 0.12);
 
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --shadow-menu: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  --shadow-panel: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-  
+  /* MD2 blue 700 主色 */
+  --accent-blue: #1976d2;
+  --accent-blue-hover: #1565c0;
+  --accent-blue-soft: rgba(25, 118, 210, 0.12);
+  --success-color: #2e7d32;
+  --error-color: #d32f2f;
+  --warning-color: #f9a825;
+
+  /* MD2 elevation：1dp / 8dp(menu) / 16dp(panel·dialog) */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.24);
+  --shadow-menu: 0 5px 5px -3px rgba(0, 0, 0, 0.2), 0 8px 10px 1px rgba(0, 0, 0, 0.14), 0 3px 14px 2px rgba(0, 0, 0, 0.12);
+  --shadow-panel: 0 8px 10px -5px rgba(0, 0, 0, 0.2), 0 16px 24px 2px rgba(0, 0, 0, 0.14), 0 6px 30px 5px rgba(0, 0, 0, 0.12);
+
   --radius-small: 2px;
   --radius-medium: 4px;
-  --radius-large: 6px;
+  --radius-large: 4px;
   --radius-full: 9999px;
 
-  --toolbar-height: 48px;
-  --icon-size: 18px;
-  --icon-size-small: 14px;
-  --icon-stroke: 1.5;
-  --icon-button-size: 34px;
+  --toolbar-height: 56px;
+  --icon-size: 24px;
+  --icon-size-small: 18px;
+  --icon-button-size: 40px;
   --icon-button-gap: 4px;
-  --icon-button-radius: var(--radius-medium);
+  --icon-button-radius: var(--radius-full);
   --layer-panel-width: 280px;
   --properties-width: 340px;
   --status-bar-height: 32px;
-  --status-bar-bg: rgba(255, 255, 255, 0.85);
-  --status-bar-text: #475569;
+  --status-bar-bg: #ffffff;
+  --status-bar-text: rgba(0, 0, 0, 0.6);
 }
 
 .theme-dark {
-  --bg-primary: #0f172a;
-  --bg-secondary: #1e293b;
-  --bg-tertiary: #334155;
-  --bg-elevated: #1e293b;
-  --bg-hover: #1e293b;
-  --bg-active: #334155;
-  --bg-selected: #1e3a8a;
+  /* MD2 dark：background/surface #121212，elevation overlay 逐级提亮 */
+  --bg-primary: #121212;
+  --bg-secondary: #1e1e1e;
+  --bg-tertiary: #262626;
+  --bg-elevated: #2c2c2c;
+  --bg-hover: rgba(255, 255, 255, 0.04);
+  --bg-active: rgba(255, 255, 255, 0.12);
+  --bg-selected: rgba(144, 202, 249, 0.16);
 
   --bg-glass: var(--bg-secondary);
 
-  --border-color: #1e293b;
-  --border-strong: #334155;
-  --text-primary: #f1f5f9;
-  --text-secondary: #cbd5e1;
-  --text-muted: #64748b;
+  --border-color: rgba(255, 255, 255, 0.12);
+  --border-strong: rgba(255, 255, 255, 0.2);
+  --text-primary: rgba(255, 255, 255, 0.87);
+  --text-secondary: rgba(255, 255, 255, 0.6);
+  --text-muted: rgba(255, 255, 255, 0.38);
   --text-bright: #ffffff;
 
-  --accent-blue: #3b82f6;
-  --accent-blue-hover: #60a5fa;
-  --accent-blue-soft: #1e3a8a;
-  --success-color: #34d399;
-  --error-color: #f87171;
-  --warning-color: #fbbf24;
+  --state-hover: rgba(255, 255, 255, 0.08);
+  --state-active: rgba(255, 255, 255, 0.12);
+  --state-focus: rgba(255, 255, 255, 0.12);
+  --divider: rgba(255, 255, 255, 0.12);
 
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.5);
-  --shadow-menu: 0 4px 6px -1px rgba(0, 0, 0, 0.5), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
-  --shadow-panel: 0 20px 25px -5px rgba(0, 0, 0, 0.6), 0 10px 10px -5px rgba(0, 0, 0, 0.4);
-  
-  --status-bar-bg: rgba(30, 41, 59, 0.85);
-  --status-bar-text: #cbd5e1;
+  /* MD2 dark 主色 blue 300 */
+  --accent-blue: #90caf9;
+  --accent-blue-hover: #64b5f6;
+  --accent-blue-soft: rgba(144, 202, 249, 0.16);
+  --success-color: #81c784;
+  --error-color: #ef9a9a;
+  --warning-color: #fff176;
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.6);
+  --shadow-menu: 0 5px 5px -3px rgba(0, 0, 0, 0.4), 0 8px 10px 1px rgba(0, 0, 0, 0.3), 0 3px 14px 2px rgba(0, 0, 0, 0.26);
+  --shadow-panel: 0 8px 10px -5px rgba(0, 0, 0, 0.4), 0 16px 24px 2px rgba(0, 0, 0, 0.3), 0 6px 30px 5px rgba(0, 0, 0, 0.26);
+
+  --status-bar-bg: #1e1e1e;
+  --status-bar-text: rgba(255, 255, 255, 0.6);
 }
 
 @keyframes dropdownFadeIn {
@@ -99,7 +121,7 @@
 }
 
 .theme-dark .loading-overlay {
-  background-color: rgba(16, 18, 22, 0.52);
+  background-color: rgba(0, 0, 0, 0.6);
 }
 
 @keyframes loading-spin {
@@ -107,7 +129,7 @@
 }
 
 @keyframes toastIn {
-  from { transform: translateY(-8px); opacity: 0; }
+  from { transform: translateY(16px); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
 }
 

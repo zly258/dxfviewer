@@ -1,3 +1,8 @@
+/*
+ * Material Design 2 工具栏 / 菜单。
+ * 图标统一 filled 风格（fill=currentColor），按钮为 40dp 圆形图标按钮 +
+ * MD state layer（hover 8% / active·focus 12%），下拉为 MD menu（4dp 圆角 + 8dp elevation）。
+ */
 .toolbar-icon svg,
 .text-search-icon,
 .text-search-nav svg,
@@ -14,10 +19,8 @@
 .layer-search-clear svg,
 .layer-checkbox-icon,
 .chevron {
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+  fill: currentColor;
+  stroke: none;
 }
 
 .toolbar {
@@ -26,11 +29,16 @@
   align-items: center;
   flex-shrink: 0;
   gap: var(--icon-button-gap);
-  padding: 0 6px;
+  padding: 0 8px;
   background-color: transparent;
   box-sizing: border-box;
   user-select: none;
   z-index: 501;
+}
+
+/* MD2 app bar elevation 4dp */
+.menu-tab-row {
+  box-shadow: 0 2px 4px -1px rgba(0, 0, 0, 0.2), 0 4px 5px 0 rgba(0, 0, 0, 0.14), 0 1px 10px 0 rgba(0, 0, 0, 0.12);
 }
 
 .toolbar-button {
@@ -40,17 +48,18 @@
   align-items: center;
   justify-content: center;
   gap: 4px;
-  padding: 0 7px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-small);
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--icon-button-radius);
   background: transparent;
   color: var(--text-secondary);
   font-family: inherit;
-  font-size: 13px;
-  line-height: calc(var(--icon-button-size) - 2px);
+  font-size: 14px;
+  letter-spacing: 0.02em;
+  line-height: var(--icon-button-size);
   cursor: pointer;
   box-sizing: border-box;
-  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  transition: background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1), color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .toolbar-icon-button {
@@ -58,25 +67,30 @@
   padding: 0;
 }
 
-.toolbar-button:hover:not(:disabled),
-.toolbar-button.active,
-.toolbar-menu.active > .toolbar-button {
-  background-color: var(--bg-hover);
-  border-color: transparent;
-  color: var(--text-bright);
+/* MD state layers */
+.toolbar-button:hover:not(:disabled) {
+  background-color: var(--state-hover);
+  color: var(--text-primary);
+}
+
+.toolbar-button:active:not(:disabled) {
+  background-color: var(--state-active);
+}
+
+.toolbar-button:focus-visible {
+  outline: none;
+  background-color: var(--state-focus);
 }
 
 .toolbar-button.active,
 .toolbar-menu.active > .toolbar-button {
   background-color: var(--accent-blue-soft);
-  border-color: transparent;
   color: var(--accent-blue);
 }
 
 .toolbar-button:disabled {
   color: var(--text-muted);
   cursor: default;
-  opacity: 0.48;
 }
 
 .toolbar-icon {
@@ -91,7 +105,6 @@
 .toolbar-icon svg {
   width: var(--icon-size);
   height: var(--icon-size);
-  stroke-width: var(--icon-stroke);
 }
 
 .toolbar-menu {
@@ -101,63 +114,59 @@
 
 .toolbar-separator {
   width: 1px;
-  height: 22px;
-  margin: 0 4px;
-  background-color: var(--border-color);
+  height: 24px;
+  margin: 0 6px;
+  background-color: var(--divider);
   flex-shrink: 0;
 }
 
 .menu-item {
   position: relative;
-  height: 28px;
+  height: 32px;
   display: flex;
   align-items: center;
-  padding: 0 12px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-small);
+  padding: 0 16px;
+  border: 0;
+  border-radius: var(--radius-medium);
   color: var(--text-primary);
-  font-size: 13px;
-  line-height: 28px;
+  font-size: 14px;
+  line-height: 32px;
   cursor: pointer;
   box-sizing: border-box;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .menu-item:hover,
 .menu-item.active {
-  background-color: var(--bg-hover);
-  border-color: var(--border-color);
-  color: var(--text-bright);
+  background-color: var(--state-hover);
+  color: var(--text-primary);
 }
 
 .menu-item.active {
   background-color: var(--accent-blue-soft);
-  border-color: transparent;
   color: var(--accent-blue);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
+/* MD2 menu：4dp 圆角、8dp elevation、上下 8dp 内边距、项高 36dp */
 .dropdown-menu {
   position: absolute;
   top: calc(100% + 4px);
   left: 0;
   z-index: 900;
-  min-width: 190px;
-  padding: 4px;
-  border: 1px solid var(--border-color);
+  min-width: 196px;
+  padding: 8px 0;
+  border: 0;
   border-radius: var(--radius-medium);
   background-color: var(--bg-elevated);
   box-shadow: var(--shadow-menu);
   box-sizing: border-box;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  animation: dropdownFadeIn 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: dropdownFadeIn 0.15s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .dropdown-item,
 .dropdown-header {
   width: 100%;
-  height: 28px;
+  height: 36px;
   display: flex;
   align-items: center;
   box-sizing: border-box;
@@ -171,41 +180,47 @@
 .dropdown-item {
   position: relative;
   justify-content: space-between;
-  padding: 0 28px 0 10px;
-  border-radius: var(--radius-small);
+  padding: 0 16px;
+  border-radius: 0;
   color: var(--text-primary);
+  font-size: 14px;
+  letter-spacing: 0.01em;
   cursor: pointer;
-  transition: background-color 0.15s ease, color 0.15s ease;
+  transition: background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .dropdown-item:hover:not(:disabled) {
-  background-color: var(--bg-hover);
-  color: var(--text-bright);
+  background-color: var(--state-hover);
+}
+
+.dropdown-item:active:not(:disabled) {
+  background-color: var(--state-active);
 }
 
 .dropdown-item:disabled {
   color: var(--text-muted);
   cursor: default;
-  opacity: 0.55;
 }
 
 .dropdown-item.checked::after {
   content: '✓';
   position: absolute;
-  right: 10px;
+  right: 12px;
   color: var(--accent-blue);
-  font-weight: 700;
+  font-weight: 500;
 }
 
 .dropdown-header {
-  padding: 0 10px;
-  color: var(--text-muted);
+  padding: 0 16px;
+  color: var(--text-secondary);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .divider {
   height: 1px;
-  margin: 4px 4px;
-  background-color: var(--border-color);
+  margin: 8px 0;
+  background-color: var(--divider);
 }

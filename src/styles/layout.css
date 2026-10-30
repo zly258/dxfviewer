@@ -278,7 +278,6 @@
   .mobile-view-item svg {
     width: var(--icon-size);
     height: var(--icon-size);
-    stroke-width: var(--icon-stroke);
   }
 
   .mobile-tool-button:active:not(:disabled),

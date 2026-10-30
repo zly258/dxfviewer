@@ -167,7 +167,6 @@
 .tab-scroll-button svg {
   width: var(--icon-size-small);
   height: var(--icon-size-small);
-  stroke-width: 2.2;
 }
 
 .tab-scroll-button:hover {
@@ -183,5 +182,4 @@
   width: var(--icon-size-small);
   height: var(--icon-size-small);
   flex-shrink: 0;
-  stroke-width: 2.3;
 }
