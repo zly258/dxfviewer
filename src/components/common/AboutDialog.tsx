@@ -26,7 +26,18 @@ function AboutDialog({ lang, onClose }: AboutDialogProps) {
           <div className="about-info-grid">
             <div className="about-info-label">{t(lang, 'contactEmail')}</div>
             <div className="about-info-value">
-              <a href="mailto:zhangly1403@qq.com" className="about-email-link">zhangly1403@qq.com</a>
+              <a href="mailto:zhangly1403@qq.com" className="about-link">zhangly1403@qq.com</a>
+            </div>
+            <div className="about-info-label">{t(lang, 'repository')}</div>
+            <div className="about-info-value">
+              <a
+                href="https://github.com/zly258/dxfviewer"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="about-link"
+              >
+                github.com/zly258/dxfviewer
+              </a>
             </div>
             <div className="about-info-label">{t(lang, 'license')}</div>
             <div className="about-info-value">MIT License</div>

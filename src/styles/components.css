@@ -366,14 +366,14 @@
   font-weight: 500;
 }
 
-.about-email-link {
+.about-link {
   color: var(--accent-blue);
   text-decoration: none;
   font-weight: 600;
   transition: color 0.15s ease;
 }
 
-.about-email-link:hover {
+.about-link:hover {
   text-decoration: underline;
   color: var(--accent-blue-hover);
 }
