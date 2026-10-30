@@ -18,6 +18,9 @@ test-results
 coverage
 *.local
 
+# Generated round-trip outputs (scripts/roundtrip.mjs)
+samples/dxf-output
+
 # Editors and system files
 .vscode/*
 !.vscode/extensions.json
