@@ -1,13 +1,12 @@
 # 演进计划：DXF 读写 + 渲染 + 导出（PNG / PDF）
 
-> 状态：**执行中**（2026-10-30）—— M0–M8 已完成并通过自动化校验
-> （`npm run check`：夹具解析 7/7、渲染+PNG/PDF/SVG/矢量PDF 冒烟 7/7、读写往返 7/7 + 构建器 + **保真往返（preserveRaw 采集→回放→再解析逐实体一致）**、句柄与引用完整性、矢量内容流断言、Flate 解压验证通过）。
-> M5：HATCH 图案库、DIMENSION 无块降级、`createDocument` 构建器。
-> M6：`RenderContext` 后端抽象、SVG 后端、`exportSvg`；修复 ACI 7 浅色画布不可见。
-> M7：`PdfRenderContext` 内容流后端、`buildVectorPdf`、文字光栅化 + /SMask、`exportPdfVector`。
-> M8：`parseDxf({preserveRaw})` 组码快照（解析前快照→对快照解析，绕开解析器全量消费）+ `writeDxf({preserveRaw})` 原样回放（句柄/归属重编、102 扩展块整体回放、R12 自动走重建）。
-> 剩余：M9（Node CLI，可选）、DisplayList 交互缓存（可选优化）。
-> 基准版本：`@zhangly1403/dxfviewer` 1.5.4
+> 状态：**已完成**（2026-10-30）—— M0–M9 全部交付并通过自动化校验
+> （`npm run check`：夹具解析 7/7、渲染+PNG/PDF/SVG/矢量PDF 冒烟 7/7、读写往返 7/7 + 构建器 + 保真往返、句柄与引用完整性、矢量内容流断言、Flate 解压验证通过）。
+> 交付摘要：渲染解耦（RenderContext/viewportFitting/headless）、exportPng/exportPdf/exportPdfVector/exportSvg、
+> DXF 写出器（AC1015 骨架+15 类实体+R12 降级+HATCH 图案库+DIMENSION 降级）、createDocument 构建器、
+> 保真往返（preserveRaw 采集/回放）、dxfviewer convert CLI（svg/pdf/dxf、批量、--raw）。
+> 可选后续：DisplayList 交互缓存、Node 端 PNG（需 Canvas 原生实现）、工具栏导出菜单（D6）。
+> 基准版本：`@zhangly1403/dxfviewer` 1.5.4（5 个新子入口待随版本发布）
 > 制定日期：2026-10-30
 
 ---
