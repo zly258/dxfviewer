@@ -14,13 +14,11 @@
  * 运行：node scripts/render-smoke.mjs（需先 npm run build:lib）
  */
 import { inflateSync } from 'node:zlib';
-import { readdirSync, readFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { materializeFixtures } from './fixtures.mjs';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
-const root = resolve(here, '..');
-const samplesDir = join(root, 'samples', 'dxf');
 
 const { parseDxf } = await import(new URL('../dist/parser.js', import.meta.url).href);
 const { exportPng, exportPdfBytes, exportSvg, exportPdfVectorBytes } = await import(new URL('../dist/export.js', import.meta.url).href);
@@ -149,9 +147,11 @@ const validatePdfStructure = (bytes, { expectPages, expectImages }) => {
   return { pageCount, size };
 };
 
-const files = readdirSync(samplesDir).filter(name => name.endsWith('.dxf')).sort();
+// 夹具运行时生成到临时目录（DXF 不入库）
+const fixtures = await materializeFixtures('dxfviewer-smoke-');
+const files = Object.keys(fixtures.files).sort();
 if (files.length === 0) {
-  console.error('未找到夹具文件：samples/dxf/*.dxf');
+  console.error('夹具生成失败');
   process.exit(1);
 }
 
@@ -159,7 +159,7 @@ let failed = 0;
 const rows = [];
 
 for (const name of files) {
-  const text = readFileSync(join(samplesDir, name), 'utf8');
+  const text = readFileSync(fixtures.files[name], 'utf8');
   try {
     const data = await parseDxf(text, undefined, { yieldIntervalMs: 0 });
 
@@ -237,7 +237,7 @@ for (const row of rows) {
 // PDF 尺寸断言：A4 横向页面应为 841.89 × 595.28 pt。
 const sizeCheck = createFakeCanvas(1, 1);
 const a4Landscape = await exportPdfBytes(
-  await parseDxf(readFileSync(join(samplesDir, 'line-circle.dxf'), 'utf8'), undefined, { yieldIntervalMs: 0 }),
+  await parseDxf(readFileSync(fixtures.files['line-circle.dxf'], 'utf8'), undefined, { yieldIntervalMs: 0 }),
   { paperSize: 'A4', orientation: 'landscape', dpi: 36, createCanvas: () => sizeCheck.canvas },
 );
 const mediaBox = /\/MediaBox \[0 0 ([\d.]+) ([\d.]+)\]/.exec(new TextDecoder('latin1').decode(a4Landscape));
@@ -307,7 +307,7 @@ let vectorStats;
 try {
   // line-circle 含直线与整圆（贝塞尔化后应有 m/c 操作符）
   const sampleData = await parseDxf(
-    readFileSync(join(samplesDir, 'line-circle.dxf'), 'utf8'),
+    readFileSync(fixtures.files['line-circle.dxf'], 'utf8'),
     undefined,
     { yieldIntervalMs: 0 },
   );
@@ -333,4 +333,5 @@ try {
 }
 
 console.log(`共 ${files.length} 个夹具，失败 ${failed} 项。`);
+await fixtures.cleanup();
 process.exit(failed === 0 ? 0 : 1);

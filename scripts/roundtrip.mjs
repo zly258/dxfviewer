@@ -14,14 +14,15 @@
  * 7. AC1009 (R12) 降级模式可解析、不崩溃
  *
  * 运行：node scripts/roundtrip.mjs（需先 npm run build:lib）
+ * 夹具运行时生成到临时目录（DXF 不入库），结束自动清理。
  */
-import { readdirSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, mkdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { materializeFixtures } from './fixtures.mjs';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 const root = resolve(here, '..');
-const samplesDir = join(root, 'samples', 'dxf');
 const outputDir = join(root, 'samples', 'dxf-output');
 
 const { parseDxf } = await import(new URL('../dist/parser.js', import.meta.url).href);
@@ -224,9 +225,11 @@ const runR12Check = async (text, name) => {
   return { entities: reparsed.entities.length, skipped: skipped.length };
 };
 
-const files = readdirSync(samplesDir).filter(name => name.endsWith('.dxf')).sort();
-if (files.length === 0) {
-  console.error('未找到夹具文件：samples/dxf/*.dxf');
+// 夹具运行时生成到临时目录（DXF 不入库）
+const fixtures = await materializeFixtures('dxfviewer-roundtrip-');
+const fileNames = Object.keys(fixtures.files).sort();
+if (fileNames.length === 0) {
+  console.error('夹具生成失败');
   process.exit(1);
 }
 
@@ -239,8 +242,8 @@ try {
 let failed = 0;
 const rows = [];
 
-for (const name of files) {
-  const sourceText = readFileSync(join(samplesDir, name), 'utf8');
+for (const name of fileNames) {
+  const sourceText = (await import('node:fs')).readFileSync(fixtures.files[name], 'utf8');
   try {
     const before = await parseDxf(sourceText, undefined, { yieldIntervalMs: 0 });
     const { content, skipped, version } = writeDxf(before);
@@ -356,5 +359,6 @@ try {
   console.error(`✘ builder: ${error instanceof Error ? error.message : String(error)}`);
 }
 
-console.log(`\n共 ${files.length} 个夹具，失败 ${failed} 个。输出目录：samples/dxf-output/`);
+console.log(`\n共 ${fileNames.length} 个夹具，失败 ${failed} 个。输出目录：samples/dxf-output/`);
+await fixtures.cleanup();
 process.exit(failed === 0 ? 0 : 1);
