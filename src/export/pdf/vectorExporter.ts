@@ -215,6 +215,8 @@ export const exportPdfVectorBytes = async (
       selectedIds: new Set<string>(),
       lodCulling: false,
       background: null, // 底色由页面矩形（导出器追加）负责，避免叠加两层
+      // 线宽补偿：PDF 内容坐标为 pt（约 1.333px/pt），按视口宽度换算补偿
+      lineWidthScale: Math.max(1, contentWidthPt / 960),
     });
 
     // 底色矩形：透明页时跳过
