@@ -471,16 +471,29 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
     };
 
     try {
-      if (kind === 'png') {
-        const blob = await exportPng(data, { ...viewOptions, width: 1280, height: 800, background: '#ffffff', padding: 24 });
+      if (kind === 'pngView' || kind === 'svgView') {
+        // 所见即所得：按查看器当前视口与画布尺寸导出（放大查看局部时最清晰）
+        const rect = viewerRef.current?.getBoundingClientRect();
+        const w = Math.max(320, Math.round(rect?.width ?? 1280));
+        const h = Math.max(240, Math.round(rect?.height ?? 800));
+        const viewOpts = { ...viewOptions, width: w, height: h, padding: 0, viewPort };
+        if (kind === 'pngView') {
+          const blob = await exportPng(data, { ...viewOpts, background: '#ffffff', devicePixelRatio: 2 });
+          download(blob, `${baseName}-view.png`);
+        } else {
+          const svg = exportSvg(data, { ...viewOpts, background: '#ffffff' });
+          download(new Blob([svg], { type: 'image/svg+xml' }), `${baseName}-view.svg`);
+        }
+      } else if (kind === 'png') {
+        const blob = await exportPng(data, { ...viewOptions, width: 2560, height: 1600, background: '#ffffff', padding: 32 });
         download(blob, `${baseName}.png`);
       } else if (kind === 'svg') {
-        const svg = exportSvg(data, { ...viewOptions, width: 1280, height: 800, background: '#ffffff', padding: 24 });
+        const svg = exportSvg(data, { ...viewOptions, width: 2560, height: 1600, background: '#ffffff', padding: 32 });
         download(new Blob([svg], { type: 'image/svg+xml' }), `${baseName}.svg`);
       } else if (kind === 'pdf') {
         const blob = await exportPdf(data, {
           ...viewOptions,
-          paperSize: 'A4', orientation: 'landscape', marginMm: 8, dpi: 220,
+          paperSize: 'A4', orientation: 'landscape', marginMm: 8, dpi: 300,
           title: baseName,
         });
         download(blob, `${baseName}.pdf`);
@@ -489,6 +502,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
           ...viewOptions,
           paperSize: 'A4', orientation: 'landscape', marginMm: 8,
           title: baseName,
+          textRasterScale: 3,
         });
         download(blob, `${baseName}-vector.pdf`);
       } else {
@@ -507,7 +521,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
     } catch (error) {
       showToast(`${t(lang, 'exportFailed')}: ${error instanceof Error ? error.message : String(error)}`);
     }
-  }, [activeLayoutName, drawingColorMode, entities.length, fileName, hiddenLayersRef, lang, showToast]);
+  }, [activeLayoutName, drawingColorMode, entities.length, fileName, hiddenLayersRef, lang, showToast, viewPort]);
 
   useEffect(() => {
     if (!active) return;

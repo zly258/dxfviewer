@@ -31,7 +31,7 @@ interface ViewerToolbarProps {
   onShowAbout?: () => void;
 }
 
-export type ExportKind = 'png' | 'svg' | 'pdf' | 'pdfVector' | 'dxf';
+export type ExportKind = 'png' | 'svg' | 'pdf' | 'pdfVector' | 'dxf' | 'pngView' | 'svgView';
 
 type MenuKey = 'view' | 'export';
 
@@ -212,6 +212,8 @@ const ViewerToolbar: React.FC<ViewerToolbarProps> = ({
                 ['svg', 'exportSvg'],
                 ['pdf', 'exportPdf'],
                 ['pdfVector', 'exportPdfVector'],
+                ['pngView', 'exportPngView'],
+                ['svgView', 'exportSvgView'],
                 ['dxf', 'exportDxf'],
               ] as const).map(([kind, labelKey]) => (
                 <button

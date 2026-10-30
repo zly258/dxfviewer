@@ -4,7 +4,7 @@
  * 只做「尺寸/背景/布局/边距」这类与输出相关的事，渲染交给无头渲染入口，
  * 保证与交互查看器同一套绘制管线（所见即所得）。
  */
-import { CanvasTheme, DrawingColorMode, DxfData } from '@/types';
+import { CanvasTheme, DrawingColorMode, DxfData, ViewPort } from '@/types';
 import { HeadlessCanvas, renderSceneToCanvas } from '@/renderer/headless';
 import { assertCanvasSize } from '@/export/limits';
 import { blobToDataUrl, canvasToBlob } from '@/export/canvasUtils';
@@ -31,6 +31,8 @@ export interface PngExportOptions {
   maxPixels?: number;
   /** 自定义画布工厂（Node/测试环境注入，浏览器无需传） */
   createCanvas?: (width: number, height: number) => HeadlessCanvas;
+  /** 显式视口：提供时不做 fit 适配，按该视口渲染（导出当前视图） */
+  viewPort?: ViewPort;
 }
 
 const renderForExport = (data: DxfData, options: PngExportOptions): HeadlessCanvas => {
@@ -56,6 +58,7 @@ const renderForExport = (data: DxfData, options: PngExportOptions): HeadlessCanv
     // 导出必须完整：LOD 剔除会让小尺寸实体消失，只存在于交互性能优化。
     lodCulling: false,
     createCanvas: options.createCanvas,
+    viewPort: options.viewPort,
   });
 };
 

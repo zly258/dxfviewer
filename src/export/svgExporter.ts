@@ -8,7 +8,7 @@
  * 文字以 <text> 输出（字体名沿用 fontResolver 的系统字体映射），
  * 大多数矢量场景够用；需要「绝对一致」的出版级输出走 M7 矢量 PDF（文字轮廓化）。
  */
-import { CanvasTheme, DrawingColorMode, DxfData } from '@/types';
+import { CanvasTheme, DrawingColorMode, DxfData, ViewPort } from '@/types';
 import { resolveSceneView } from '@/renderer/headless';
 import { renderEntitiesToCanvas } from '@/renderer/services/canvasRenderService';
 import { SvgRenderContext } from '@/export/svg/svgContext';
@@ -27,6 +27,8 @@ export interface SvgExportOptions {
   theme?: CanvasTheme;
   drawingColorMode?: DrawingColorMode;
   hiddenLayers?: Iterable<string>;
+  /** 显式视口：提供时不做 fit 适配（导出当前视图） */
+  viewPort?: ViewPort;
 }
 
 /**
@@ -47,13 +49,14 @@ export const exportSvg = (
     theme = 'white',
     drawingColorMode = 'original',
     hiddenLayers,
+    viewPort,
   } = options;
 
   if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
     throw new Error(`无效的导出尺寸：${width}×${height}`);
   }
 
-  const scene = resolveSceneView(data, { layout, width, height, padding });
+  const scene = resolveSceneView(data, { layout, width, height, padding, viewPort });
   const svg = new SvgRenderContext(width, height, background);
 
   renderEntitiesToCanvas({
