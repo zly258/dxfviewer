@@ -151,6 +151,14 @@ export interface RenderSceneOptions {
     background?: string | null;
     /** 是否启用 LOD 剔除（包围盒投影小于阈值的实体跳过）。导出应关闭。 */
     lodCulling?: boolean;
+    /**
+     * 线宽补偿系数。
+     *
+     * CAD 线宽在渲染时被钳制在「屏幕可见」区间（0.5–4px）；导出画布大于交互
+     * 视口时，同样 0.5px 的线在更大的图里视觉上更细。传 `width / 1280` 之类的
+     * 比例让线宽随输出尺寸同步放大。默认 1（交互行为不变）。
+     */
+    lineWidthScale?: number;
 }
 
 /**
@@ -174,6 +182,8 @@ export const renderEntitiesToCanvas = ({
     sceneIndex,
     background,
     lodCulling = true,
+    /** 线宽补偿系数：导出画布大于交互视口时按比例放大线宽，避免高分导出线迹过细。 */
+    lineWidthScale = 1,
 }: RenderSceneOptions) => {
     // 背景填充：undefined 走主题色，null 表示调用方要求透明底。
     if (background !== null) {
@@ -277,6 +287,15 @@ export const renderEntitiesToCanvas = ({
                     LINE_RENDER_CONFIG.minimumScreenLineWidth,
                     Math.min((ent as any).constantWidth * Math.abs(transform.scale), maxScreenPixels),
                 ),
+            };
+        }
+
+        // 导出补偿：最小线宽保护带按输出缩放同步放大（如 2400px 导出 ≈ 交互 800px 的 3 倍），
+        // 让「屏幕上恰好可见」的细线在导出图里同样可见。
+        if (lineWidthScale !== 1) {
+            strokeStyle = {
+                ...strokeStyle,
+                lineWidth: strokeStyle.lineWidth * lineWidthScale,
             };
         }
 

@@ -13,10 +13,15 @@ export const resolveEntityColor = (
   if (drawingColorMode === 'monochrome') return MONOCHROME_ENTITY_COLORS[canvasTheme];
 
   const resolved = resolveOriginalColor(entity, layer, parentColor);
-  // ACI 7 / 纯白在 CAD 中是「前景色」：浅色画布上必须反转为黑色，
-  // 否则白线画在白底上不可见（此前浅色主题与导出都受影响）。
-  if (resolved.toUpperCase() === '#FFFFFF' && canvasTheme === 'white') {
-    return '#000000';
+  if (canvasTheme === 'white') {
+    // 浅色画布对比度保障（CAD 惯例 + 打印可读性）：
+    // - ACI 7 / 纯白是前景色 → 反转为黑；
+    // - ACI 2 黄、4 青、8 灰在白底上过浅 → 压暗为可打印的深色变体。
+    const upper = resolved.toUpperCase();
+    if (upper === '#FFFFFF') return '#000000';
+    if (upper === '#FFFF00') return '#B8860B'; // 黄 → 暗金
+    if (upper === '#00FFFF') return '#008B8B'; // 青 → 暗青
+    if (upper === '#C0C0C0') return '#696969'; // 浅灰 → 中灰
   }
   return resolved;
 };

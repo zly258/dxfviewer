@@ -74,6 +74,8 @@ export const exportSvg = (
     // 导出必须完整
     lodCulling: false,
     background: null, // 背景由 SvgRenderContext 构造函数绘制，避免双重底色
+    // 线宽补偿：大尺寸导出时线条保持视觉粗细
+    lineWidthScale: Math.max(1, width / 1280),
   });
 
   return svg.toString();

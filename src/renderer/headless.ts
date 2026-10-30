@@ -143,6 +143,10 @@ export const renderSceneToCanvas = (
     sceneIndex,
     background,
     lodCulling,
+    // 导出补偿：以 1280 物理像素为基准放大线宽。
+    // PNG 默认 dpr=2（1280 CSS px → 2560 物理像素），必须按物理像素算，
+    // 否则高分辨率图里线条只有屏幕视觉粗细的一半。
+    lineWidthScale: Math.max(1, (width * dpr) / 1280),
   });
 
   return canvas;
