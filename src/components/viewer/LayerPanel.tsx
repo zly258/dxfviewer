@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { AnyEntity, EntityType, DxfLayer } from '@/types';
 import { getAutoCadColor } from '@/utils/colorUtils';
 import { Language, UI_TRANSLATIONS, ENTITY_TYPE_NAMES, t as translate } from '@/config/i18n';
@@ -43,8 +43,20 @@ const LayerPanel: React.FC<LayerPanelProps> = ({
   const [hideEmptyLayers, setHideEmptyLayers] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
   const t = UI_TRANSLATIONS[lang];
   const entNames = ENTITY_TYPE_NAMES[lang];
+
+  // 点击菜单外部关闭
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) setMenuOpen(false);
+    };
+    window.addEventListener('click', close);
+    return () => window.removeEventListener('click', close);
+  }, [menuOpen]);
 
   // 将实体按图层分组
   const entitiesByLayer = useMemo(() => {
@@ -54,16 +66,6 @@ const LayerPanel: React.FC<LayerPanelProps> = ({
       return acc;
     }, {} as Record<string, AnyEntity[]>);
   }, [entities]);
-
-  // 切换排序方向
-  const handleSortToggle = useCallback((key: SortKey) => {
-    if (sortKey === key) {
-      setSortDir(d => d === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortKey(key);
-      setSortDir(key === 'count' ? 'desc' : 'asc');
-    }
-  }, [sortKey]);
 
   // 生成扁平化的列表用于虚拟滚动
   const flatList = useMemo(() => {
@@ -172,11 +174,6 @@ const LayerPanel: React.FC<LayerPanelProps> = ({
   // 获取图层颜色十六进制
   const getLayerColorHex = (layer: DxfLayer) => getAutoCadColor(layer.color);
 
-  const renderSortIndicator = (key: SortKey) => {
-    if (sortKey !== key) return null;
-    return <ViewerIcon className="layer-tool-sort-indicator" name={sortDir === 'asc' ? 'sortAsc' : 'sortDesc'} />;
-  };
-
   const layerCount = Object.keys(layers).length;
   const filteredCount = flatList.filter(i => i.type === 'layer').length;
 
@@ -187,9 +184,64 @@ const LayerPanel: React.FC<LayerPanelProps> = ({
         {layerCount > 0 && (
           <span className="layer-panel-header-count">{filteredCount}/{layerCount}</span>
         )}
+        {/* 排序/过滤收进 MD 溢出菜单，搜索行保持干净 */}
+        <div className="layer-header-menu" ref={menuRef}>
+          <button
+            type="button"
+            className={`layer-tool-btn ${menuOpen ? 'active' : ''}`}
+            title={translate(lang, 'layerOptions')}
+            aria-label={translate(lang, 'layerOptions')}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            onClick={(event) => { event.stopPropagation(); setMenuOpen(v => !v); }}
+          >
+            <ViewerIcon name="more" />
+          </button>
+          {menuOpen && (
+            <div className="dropdown-menu layer-panel-menu" role="menu" onClick={(event) => event.stopPropagation()}>
+              <button
+                type="button"
+                className={`dropdown-item ${hideEmptyLayers ? 'checked' : ''}`}
+                onClick={() => setHideEmptyLayers(v => !v)}
+              >
+                <span>{t.layerFilterEmpty}</span>
+              </button>
+              <div className="divider" />
+              <button
+                type="button"
+                className={`dropdown-item ${sortKey === 'name' ? 'checked' : ''}`}
+                onClick={() => setSortKey('name')}
+              >
+                <span>{t.layerSortName}</span>
+              </button>
+              <button
+                type="button"
+                className={`dropdown-item ${sortKey === 'count' ? 'checked' : ''}`}
+                onClick={() => setSortKey('count')}
+              >
+                <span>{t.layerSortCount}</span>
+              </button>
+              <div className="divider" />
+              <button
+                type="button"
+                className={`dropdown-item ${sortDir === 'asc' ? 'checked' : ''}`}
+                onClick={() => setSortDir('asc')}
+              >
+                <span>{t.layerSortAsc}</span>
+              </button>
+              <button
+                type="button"
+                className={`dropdown-item ${sortDir === 'desc' ? 'checked' : ''}`}
+                onClick={() => setSortDir('desc')}
+              >
+                <span>{t.layerSortDesc}</span>
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* 搜索 & 工具栏 */}
+      {/* 搜索行：仅 MD filled 搜索框 */}
       <div className="layer-toolbar">
         <div className="layer-search-box">
           <ViewerIcon className="layer-search-icon" name="search" />
@@ -212,37 +264,6 @@ const LayerPanel: React.FC<LayerPanelProps> = ({
               <ViewerIcon name="close" />
             </button>
           )}
-        </div>
-
-        <div className="layer-toolbar-actions">
-          {/* 隐藏空图层 */}
-          <button
-            className={`layer-tool-btn ${hideEmptyLayers ? 'active' : ''}`}
-            title={t.layerFilterEmpty || 'Hide empty layers'}
-            onClick={() => setHideEmptyLayers(v => !v)}
-          >
-            <ViewerIcon name="filterEmpty" />
-          </button>
-
-          {/* 按名称排序 */}
-          <button
-            className={`layer-tool-btn ${sortKey === 'name' ? 'active' : ''}`}
-            title={t.layerSortName || 'Sort by name'}
-            onClick={() => handleSortToggle('name')}
-          >
-            <ViewerIcon name="sortName" />
-            {renderSortIndicator('name')}
-          </button>
-
-          {/* 按数量排序 */}
-          <button
-            className={`layer-tool-btn ${sortKey === 'count' ? 'active' : ''}`}
-            title={t.layerSortCount || 'Sort by count'}
-            onClick={() => handleSortToggle('count')}
-          >
-            <ViewerIcon name="sortCount" />
-            {renderSortIndicator('count')}
-          </button>
         </div>
       </div>
       
