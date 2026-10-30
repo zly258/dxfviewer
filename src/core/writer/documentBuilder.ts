@@ -100,6 +100,21 @@ export interface SolidHatchSpec extends CommonSpec {
   outer: Point2D[];
   patternName?: string;
 }
+export interface DimensionSpec extends CommonSpec {
+  /** 引用的标注几何块名（通常为匿名 *D 块，需先 addBlock 注册） */
+  blockName: string;
+  definitionPoint: Point2D;
+  textMidPoint: Point2D;
+  /** 70 组码：0-6 为类型位，|32 表示引用外部几何块 */
+  dimType?: number;
+  text?: string;
+  styleName?: string;
+  measurement?: number;
+  linearP1?: Point2D;
+  linearP2?: Point2D;
+  arcP1?: Point2D;
+  arcP2?: Point2D;
+}
 export interface BlockSpec {
   name: string;
   basePoint?: Point2D;
@@ -280,6 +295,31 @@ export class EntitySink {
         points: spec.outer.map(point => ({ ...point })),
         bulges: spec.outer.map(() => 0),
       }],
+    } as AnyEntity);
+    return this;
+  }
+
+  /**
+   * 添加标注实体。
+   *
+   * 注意：DIMENSION 的可见几何存放在 `blockName` 指向的块（通常匿名 *D 块），
+   * 需先 `addBlock({ name: '*D1', ... })` 注册几何；`dimType|32` 表示引用外部块。
+   */
+  addDimension(spec: DimensionSpec): this {
+    this.collected.push({
+      ...buildCommon(spec),
+      type: EntityType.DIMENSION,
+      blockName: spec.blockName,
+      definitionPoint: { ...spec.definitionPoint },
+      textMidPoint: { ...spec.textMidPoint },
+      dimType: spec.dimType ?? 0,
+      text: spec.text,
+      styleName: spec.styleName || 'Standard',
+      measurement: spec.measurement,
+      linearP1: spec.linearP1 ? { ...spec.linearP1 } : undefined,
+      linearP2: spec.linearP2 ? { ...spec.linearP2 } : undefined,
+      arcP1: spec.arcP1 ? { ...spec.arcP1 } : undefined,
+      arcP2: spec.arcP2 ? { ...spec.arcP2 } : undefined,
     } as AnyEntity);
     return this;
   }
