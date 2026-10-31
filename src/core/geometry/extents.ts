@@ -615,7 +615,11 @@ export const calculateExtents = (entities: AnyEntity[], blocks: Record<string, D
 
     entities.forEach(ent => {
         if (!shouldUseEntityForDrawingExtents(ent, hasPrimaryGeometry, blocks)) return;
-        const ext = getEntityExtents(ent, blocks, styles);
+        // 复用已有范围：解析期 calculateStableOffset 已计算、offsetEntity 已同步平移，
+        // 且所有范围对平移线性（平移后的值与重算一致）。失效/缺失时才重算。
+        const ext = ent.extents && isValidExtents(ent.extents)
+            ? ent.extents
+            : getEntityExtents(ent, blocks, styles);
         if (!ext || !isValidExtents(ext)) return;
         ent.extents = ext;
 

@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { Language, t } from '@/config/i18n';
 import { DxfLoadResult } from '@/types';
+import { createAbortError, isAbortError } from '@/utils/abortError';
 import type { ParseWorkerResponse } from './dxfLoader.worker';
 
 interface ActiveLoadJob {
@@ -13,14 +14,6 @@ interface ActiveLoadJob {
 }
 
 class ParsedDxfError extends Error {}
-
-const createAbortError = (): Error => {
-  const error = new Error('DXF loading was cancelled');
-  error.name = 'AbortError';
-  return error;
-};
-
-export const isAbortError = (error: unknown): boolean => error instanceof Error && error.name === 'AbortError';
 
 export const useDxfLoader = (lang: Language, onError?: (err: Error) => void) => {
   const [isLoading, setIsLoading] = useState(false);
