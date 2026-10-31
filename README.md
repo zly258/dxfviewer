@@ -13,6 +13,9 @@ DXF Viewer 是一个基于 React 和 HTML5 Canvas 的 DXF 查看组件，提供�
 ### 主要功能
 
 - 支持 `Model` 模型空间和多个 `Layout` 图纸空间，空图纸空间不显示且不可切换。
+- 支持拖拽 DXF 文件到窗口直接打开。
+- 图纸空间实体从 `*Paper_Space` 块归属到对应布局，有内容的布局可像 CAD 一样直接切换。
+- 属性面板显示块引用的属性（ATTRIB 标记 → 值）。
 - 支持多 Tab 工作区 `DxfWorkspace`，也支持单独嵌入核心查看器 `DxfViewer`。
 - 支持桌面端顶部工具栏和移动端右侧工具栏，移动端不使用底部抽屉。
 - 支持系统主题、浅色主题、深色主题，以及图纸原色 / 黑白模式。
@@ -21,6 +24,7 @@ DXF Viewer 是一个基于 React 和 HTML5 Canvas 的 DXF 查看组件，提供�
 - 支持当前空间文字搜索和定位，搜索结果使用内缩式轻量高亮。
 - 支持常用 DXF 实体渲染：线、射线、构造线、点、圆、圆弧、椭圆、多段线、样条、填充、文字、多行文字、属性、块参照、标注、引线、多重引线、表格、图片、遮罩、视口等。
 - 兼容 SHX 字体名，但不加载真实 `.shx` 字形文件，统一映射到系统字体渲染。
+- 面向大图纸的性能设计：场景索引在 Web Worker 中构建、交互期快照超阈值自动重拍（限制位图模糊）、解析逐行零分配扫描、布局缓存与 LOD 剔除。
 - 保留早期稳定的文字对齐链路：非 MTEXT 文字按 72 / 73 组码解析水平和垂直对齐，FIT / ALIGNED 使用第二对齐点。
 
 ### 安装
@@ -161,10 +165,13 @@ npm run convert -- drawing.dxf x.svg --list-layouts     # 查看布局列表
 npm ci
 npm run typecheck        # tsc --noEmit
 npm run build            # 构建库（含 .d.ts）
-npm run check            # 构建 + 夹具解析 + 渲染/导出冒烟 + 读写往返校验
-npm run check:fixtures   # 解析 samples/dxf/*.dxf
+npm run check            # 构建 + 夹具解析 + 渲染/导出冒烟 + 隐藏/隔离渲染回归 + 读写往返校验
+npm run check:fixtures   # 解析运行时生成的夹具（含图纸空间与 LEADER/SHAPE）
 npm run check:render     # 无头渲染 + PNG/PDF 结构与尺寸校验
+npm run check:visibility # 隐藏/隔离渲染等价性 + 扁平 BVH 与参考实现一致性
 npm run check:roundtrip  # parse → writeDxf → parse 逐实体几何比对
+npm run test:real        # 对指定目录的真实施工图做全链路批量测试（只读源目录）
+npm run bench-parse      # 合成大图解析/建索引/渲染基准（手动运行）
 npm run dev              # 启动示例工程
 npm run build:example
 npm run build:all
@@ -186,15 +193,16 @@ src/
   styles/          统一样式
   types/           公共类型定义
   utils/           颜色、线型、字体、搜索和实体辅助函数
-samples/dxf/       解析与读写往返测试夹具
-scripts/           自动化自检脚本（check:*）
+samples/           读写往返等自检的输出目录（gitignore，运行时生成）
+scripts/           自动化自检脚本（check:*）、夹具生成、基准与真实图纸批量测试
 ```
 
 ### 限制说明
 
 - 查看与渲染专注浏览，不提供 CAD 编辑能力；`writeDxf` 为重建式写出，不保留源文件未建模的信息。
+- 写出覆盖 LINE/CIRCLE/ARC/ELLIPSE/LWPOLYLINE/POLYLINE/SPLINE/TEXT/MTEXT/ATTRIB/SOLID/3DFACE/HATCH/INSERT/DIMENSION/RAY/XLINE/LEADER/SHAPE；REGION 等 ACIS 元数据与部分代理对象无法重建，经 `skipped` 显式报告（`preserveRaw` 保真模式可原样回放）。
 - 图纸空间已支持实体切换，但复杂 `VIEWPORT` 的模型空间投影视口仍属于后续增强方向。
-- SHX 只做字体名兼容和系统字体映射，不加载真实 SHX 字形文件。
+- SHX 只做字体名兼容和系统字体映射，不加载真实 SHX 字形文件；居中文字按实际字形宽度居中，与 AutoCAD 原字体存在字符级细微差异。
 - 源码和 README 使用 UTF-8 with BOM；`package.json`、`package-lock.json` 等 npm 配置文件保持标准 UTF-8，避免 npm / Vite 解析问题。
 
 ---
@@ -206,6 +214,9 @@ DXF Viewer is a React and HTML5 Canvas based DXF viewing component. It provides 
 ### Features
 
 - Supports `Model` space and multiple `Layout` paper spaces. Empty paper spaces are hidden and cannot be switched to.
+- Supports drag-and-drop of DXF files onto the window to open them.
+- Paper-space entities are resolved from the `*Paper_Space` block into their layouts; layouts with content can be switched like in CAD software.
+- The property panel shows block-reference attributes (ATTRIB tag → value).
 - Provides `DxfWorkspace` for multi-tab viewing and `DxfViewer` for direct embedding.
 - Provides a desktop top toolbar and a mobile right-side toolbar. Mobile mode does not use bottom drawers.
 - Supports system, light, and dark UI themes, plus original / monochrome drawing color modes.
@@ -214,6 +225,7 @@ DXF Viewer is a React and HTML5 Canvas based DXF viewing component. It provides 
 - Supports text search and navigation in the current space, with compact inset highlight.
 - Renders common DXF entities: line, ray, xline, point, circle, arc, ellipse, polyline, spline, hatch, text, mtext, attribute, block reference, dimension, leader, multileader, table, image, wipeout, viewport, and more.
 - Recognizes SHX font names but does not load real `.shx` glyph files. Fonts are mapped to system font stacks.
+- Performance design for large drawings: scene indexing in a Web Worker, snapshot re-capture when zoom drift exceeds a threshold (bounds bitmap blur), allocation-free line scanning in the parser, layout caching, and LOD culling.
 - Keeps the earlier stable text-alignment path: non-MTEXT text uses group codes 72 / 73 for horizontal and vertical alignment, and FIT / ALIGNED text uses the second alignment point.
 
 ### Installation
@@ -353,10 +365,13 @@ Note: Node-side PNG requires a native Canvas implementation (e.g. `skia-canvas`)
 npm ci
 npm run typecheck        # tsc --noEmit
 npm run build            # Build the library (with .d.ts)
-npm run check            # Build + fixture parsing + render/export smoke + read/write round-trip
-npm run check:fixtures   # Parse samples/dxf/*.dxf
+npm run check            # Build + fixture parsing + render/export smoke + hide/isolate regression + read/write round-trip
+npm run check:fixtures   # Parse runtime-generated fixtures (incl. paper space and LEADER/SHAPE)
 npm run check:render     # Headless render + PNG/PDF structure and size checks
+npm run check:visibility # Hide/isolate render equivalence + flat BVH vs reference consistency
 npm run check:roundtrip  # parse → writeDxf → parse per-entity geometry comparison
+npm run test:real        # Full-pipeline batch test of real drawings in a directory (read-only)
+npm run bench-parse      # Synthetic large-drawing parse/index/render benchmark (manual)
 npm run dev              # Start the example workspace
 npm run build:example
 npm run build:all
@@ -378,13 +393,14 @@ src/
   styles/          Shared styles
   types/           Public types
   utils/           Color, linetype, font, search, and entity helpers
-samples/dxf/       Fixtures for parsing and read/write round-trip tests
-scripts/           Automated self-check scripts (check:*)
+samples/           Output directory for self-check artifacts (gitignored, generated at runtime)
+scripts/           Automated self-check scripts (check:*), fixture generation, benchmarks, real-drawing batch tests
 ```
 
 ### Limitations
 
 - Viewing and rendering focus on browsing; CAD editing is not provided. `writeDxf` is reconstructive writing and does not preserve information that the parser does not model.
+- Write coverage includes LINE/CIRCLE/ARC/ELLIPSE/LWPOLYLINE/POLYLINE/SPLINE/TEXT/MTEXT/ATTRIB/SOLID/3DFACE/HATCH/INSERT/DIMENSION/RAY/XLINE/LEADER/SHAPE; REGION (ACIS metadata) and some proxy objects cannot be rebuilt and are reported via `skipped` (the `preserveRaw` fidelity mode replays them verbatim).
 - Paper-space switching is supported, but full `VIEWPORT` model-space projection is still a future enhancement.
-- SHX is handled as font-name compatibility only. Real SHX glyph files are not loaded.
+- SHX is handled as font-name compatibility only. Real SHX glyph files are not loaded; centered text is centered by actual glyph width, which can differ from the original CAD fonts at character level.
 - Source files and README use UTF-8 with BOM. npm configuration files such as `package.json` and `package-lock.json` remain standard UTF-8 to avoid npm / Vite parsing issues.
