@@ -11,6 +11,7 @@ import {
   DxfLine,
   DxfPoint,
   DxfRay,
+  DxfShape,
   DxfSpline,
   DxfXLine,
   Point2D,
@@ -310,4 +311,26 @@ export const writeRayXLine = (
   state.writeGroup(11, ent.direction.x);
   state.writeGroup(21, ent.direction.y);
   state.writeGroup(31, 0);
+};
+
+/**
+ * SHAPE 形引用（遗留实体：R2000 下无 100 子类标记）。
+ * 与解析器（geometryEntityParser.parseShape）捕获的组码对称：
+ * 2 名称、10/20/30 插入点、40 大小、41 X 比例、50 旋转、51 斜切。
+ */
+export const writeShape = (
+  state: WriterState,
+  ent: DxfShape,
+  ownerHandle: string,
+): void => {
+  writeEntityCommon(state, 'SHAPE', '', ent, ownerHandle);
+  state.writeGroup(2, ent.name);
+  const position = applyOffsetToPoint(ent.position, state.offset);
+  state.writeGroup(10, position.x);
+  state.writeGroup(20, position.y);
+  state.writeGroup(30, 0);
+  state.writeGroup(40, ent.size ?? 1);
+  state.writeGroup(41, ent.xScale ?? 1);
+  state.writeGroup(50, ent.rotation ?? 0);
+  state.writeGroup(51, ent.oblique ?? 0);
 };
