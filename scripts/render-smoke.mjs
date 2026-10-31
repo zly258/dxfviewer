@@ -17,75 +17,12 @@ import { inflateSync } from 'node:zlib';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { materializeFixtures } from './fixtures.mjs';
+import { createFakeCanvas } from './canvas-mock.mjs';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
 
 const { parseDxf } = await import(new URL('../dist/parser.js', import.meta.url).href);
 const { exportPng, exportPdfBytes, exportSvg, exportPdfVectorBytes } = await import(new URL('../dist/export.js', import.meta.url).href);
-
-/** 记录绘制调用次数的 Canvas2D 影子上下文。 */
-const createFakeCanvas = (width, height) => {
-  const counter = {
-    stroke: 0,
-    fill: 0,
-    fillText: 0,
-    strokeText: 0,
-    drawImage: 0,
-    fillRect: 0,
-    moveTo: 0,
-    lineTo: 0,
-    arc: 0,
-    bezierCurveTo: 0,
-  };
-  const noop = () => {};
-  let font = '10px sans-serif';
-
-  const canvas = {
-    width,
-    height,
-    getContext: () => ctx,
-    toBlob: (callback, type = 'image/png') => callback(new Blob([new Uint8Array(16)], { type })),
-    toDataURL: type => `data:${type};base64,AAAAAAAAAAAAAAAAAAAAAA==`,
-    convertToBlob: async ({ type = 'image/png' } = {}) => new Blob([new Uint8Array(16)], { type }),
-  };
-
-  const ctx = new Proxy(
-    {},
-    {
-      get(_target, prop) {
-        if (prop === 'canvas') return canvas;
-        if (prop === 'font') return font;
-        if (prop === 'measureText') {
-          return text => {
-            const size = Number.parseFloat(font) || 10;
-            const value = String(text);
-            const w = [...value].reduce((acc, ch) => acc + (ch.codePointAt(0) > 255 ? size : size * 0.55), 0);
-            return {
-              width: w,
-              actualBoundingBoxLeft: 0,
-              actualBoundingBoxRight: w,
-              actualBoundingBoxAscent: size * 0.8,
-              actualBoundingBoxDescent: size * 0.2,
-            };
-          };
-        }
-        if (prop === 'createPattern') return () => ({});
-        if (prop === 'createLinearGradient' || prop === 'createRadialGradient') {
-          return () => ({ addColorStop: noop });
-        }
-        if (prop === 'getImageData') return () => ({ data: new Uint8ClampedArray(4) });
-        if (prop in counter) return () => { counter[prop]++; };
-        return noop;
-      },
-      set(_target, prop, value) {
-        if (prop === 'font') font = String(value);
-        return true;
-      },
-    },
-  );
-
-  return { canvas, counter };
-};
 
 /** 按字节校验 PDF 交叉引用表：每个 n 项偏移必须正好指向 "N 0 obj"。 */
 const validatePdfStructure = (bytes, { expectPages, expectImages }) => {

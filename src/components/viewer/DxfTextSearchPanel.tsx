@@ -1,7 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { AnyEntity, DxfBlock } from '@/types';
 import { ENTITY_TYPE_NAMES, Language, t } from '@/config/i18n';
-import { buildEntityTextSearchIndex, searchEntityTextIndex, TextSearchMatch } from '@/utils/entityTextSearch';
+import {
+  buildEntityTextSearchIndex,
+  EntityTextSearchEntry,
+  searchEntityTextIndex,
+  TextSearchMatch,
+} from '@/utils/entityTextSearch';
 import ViewerIcon from '@/components/common/ViewerIcon';
 
 interface DxfTextSearchPanelProps {
@@ -11,6 +16,10 @@ interface DxfTextSearchPanelProps {
   onLocate: (match: TextSearchMatch) => void;
   onClose: () => void;
 }
+
+/** 小图纸直接同步建索引（无感知）；之上的图纸防抖后构建，避免阻塞首帧输入。 */
+const SEARCH_INDEX_SYNC_LIMIT = 5_000;
+const SEARCH_INDEX_BUILD_DEBOUNCE_MS = 200;
 
 
 const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -33,7 +42,23 @@ const DxfTextSearchPanel: React.FC<DxfTextSearchPanelProps> = ({ entities, block
   const [activeIndex, setActiveIndex] = useState(0);
   const entityTypeNames = ENTITY_TYPE_NAMES[lang];
 
-  const searchIndex = useMemo(() => buildEntityTextSearchIndex(entities, blocks), [blocks, entities]);
+  // 索引构建防抖：小图同步；大图延迟构建（键入前就绪即可），期间结果为空。
+  const [searchIndex, setSearchIndex] = useState<EntityTextSearchEntry[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    if (entities.length <= SEARCH_INDEX_SYNC_LIMIT) {
+      setSearchIndex(buildEntityTextSearchIndex(entities, blocks));
+      return () => { cancelled = true; };
+    }
+    const timer = window.setTimeout(() => {
+      if (cancelled) return;
+      setSearchIndex(buildEntityTextSearchIndex(entities, blocks));
+    }, SEARCH_INDEX_BUILD_DEBOUNCE_MS);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [blocks, entities]);
   const matches = useMemo(() => searchEntityTextIndex(searchIndex, query), [query, searchIndex]);
 
   useEffect(() => {
