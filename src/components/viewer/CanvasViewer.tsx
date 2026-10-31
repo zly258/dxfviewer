@@ -29,12 +29,19 @@ interface CanvasViewerProps {
   onMouseMoveWorld?: (x: number, y: number) => void; // 鼠标移动时的世界坐标回调
   onRenderError?: (message: string | null) => void; // 渲染异常回调
   hiddenLayers?: Set<string>; // 隐藏图层集合
+  /** 被用户临时隐藏的顶层实体 ID（右键隐藏）。 */
+  hiddenEntityIds?: ReadonlySet<string>;
+  /** 非空时仅渲染集合内的顶层实体（隔离模式）。 */
+  isolatedEntityIds?: ReadonlySet<string> | null;
   onShowAll?: () => void; // 显示全部实体与图层
   onHideSelected?: (ids?: Set<string>) => void; // 隐藏当前选择
   onIsolateSelected?: (ids?: Set<string>) => void; // 隔离当前选择
   onHideSelectedLayers?: (ids?: Set<string>) => void; // 关闭当前选择所在图层
   snapshotMode?: boolean; // 快照平移缩放（性能模式）：交互期间用快照位图贴图
 }
+
+/** 稳定的空集合默认值：未传可见性集合时避免每次渲染新建对象。 */
+const EMPTY_ENTITY_IDS: ReadonlySet<string> = new Set<string>();
 
 const CanvasViewer: React.FC<CanvasViewerProps> = ({ 
     active = true,
@@ -56,6 +63,8 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
     onMouseMoveWorld,
     onRenderError,
     hiddenLayers = new Set(),
+    hiddenEntityIds = EMPTY_ENTITY_IDS,
+    isolatedEntityIds = null,
     onShowAll,
     onHideSelected,
     onIsolateSelected,
@@ -226,8 +235,13 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
   contextMenuRef.current = contextMenu;
 
   const getPickableEntities = useCallback((bounds: SceneBounds) => {
-    return sceneIndex.query(bounds).filter(entity => entity.visible !== false && !hiddenLayers.has(entity.layer));
-  }, [hiddenLayers, sceneIndex]);
+    return sceneIndex.query(bounds).filter(entity => {
+      if (entity.visible === false || hiddenLayers.has(entity.layer)) return false;
+      if (hiddenEntityIds.has(entity.id)) return false;
+      if (isolatedEntityIds && !isolatedEntityIds.has(entity.id)) return false;
+      return true;
+    });
+  }, [hiddenEntityIds, hiddenLayers, isolatedEntityIds, sceneIndex]);
 
   const scheduleViewPortChange = useCallback((nextViewPort: ViewPort) => {
     pendingViewPortRef.current = nextViewPort;
@@ -426,6 +440,8 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
                 theme,
                 drawingColorMode,
                 hiddenLayers,
+                hiddenEntityIds,
+                isolatedEntityIds,
                 sceneIndex,
             });
             onRenderError?.(null);
@@ -447,7 +463,7 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
      return () => {
         if (renderRef.current) cancelAnimationFrame(renderRef.current);
      };
-  }, [active, entities, layers, blocks, styles, lineTypes, ltScale, viewPort, selectedEntityIds, worldOffset, theme, drawingColorMode, onRenderError, hiddenLayers, canvasSizeVersion, sceneIndex, captureSnapshot]);
+  }, [active, entities, layers, blocks, styles, lineTypes, ltScale, viewPort, selectedEntityIds, worldOffset, theme, drawingColorMode, onRenderError, hiddenLayers, hiddenEntityIds, isolatedEntityIds, canvasSizeVersion, sceneIndex, captureSnapshot]);
 
   // 处理滚轮和触控事件
   useEffect(() => {
