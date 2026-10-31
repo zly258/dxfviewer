@@ -257,6 +257,12 @@ export const INTERACTION_CONFIG = {
   touchHitToleranceMultiplier: 2.5,
   // 交互（平移/缩放）停止后多久触发一次全量精绘（freeze + refine 模式）。
   interactionRefineDelayMs: 150,
+  // 快照模式：持续缩放时快照位图相对当前视图的放大比超过该阈值，
+  // 就地做一次全量重拍（限制 blit 的模糊上限）。仅作用于放大方向——
+  // 缩小是降采样，本身清晰。
+  snapshotResnapshotZoomFactor: 1.3,
+  // 两次重拍之间的最小间隔（ms），避免连续滚轮时每帧都全量渲染。
+  snapshotResnapshotIntervalMs: 300,
 };
 
 /**
