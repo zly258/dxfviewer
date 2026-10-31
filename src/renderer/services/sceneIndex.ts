@@ -29,7 +29,8 @@ export interface SceneIndex {
 
 const LEAF_SIZE = 32;
 
-const isFiniteBounds = (bounds: SceneBounds | undefined): bounds is SceneBounds => {
+/** 判定实体是否携带可用于建树的有限包围盒。 */
+export const isFiniteBounds = (bounds: SceneBounds | undefined): bounds is SceneBounds => {
   if (!bounds) return false;
   return [bounds.min.x, bounds.min.y, bounds.max.x, bounds.max.y].every(Number.isFinite)
     && bounds.min.x <= bounds.max.x

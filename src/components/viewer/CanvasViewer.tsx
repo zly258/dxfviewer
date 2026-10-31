@@ -1,9 +1,11 @@
-import React, { useRef, useState, WheelEvent, MouseEvent, useEffect, useLayoutEffect, useCallback, useMemo } from 'react';
+import React, { useRef, useState, WheelEvent, MouseEvent, useEffect, useLayoutEffect, useCallback } from 'react';
 import { AnyEntity, ViewPort, DxfLayer, DxfBlock, DxfStyle, DxfLineType, Point2D, CanvasTheme, DrawingColorMode } from '@/types';
 import { renderEntitiesToCanvas, hitTest, hitTestBox } from '@/renderer/services/canvasRenderService';
 import { Language, t } from '@/config/i18n';
 import { CANVAS_THEME_COLORS, SELECTION_CONFIG, SHORTCUT_CONFIG, VIEWER_DEFAULTS, ZOOM_CONFIG, BREAKPOINTS, INTERACTION_CONFIG, CONTEXT_MENU_CONFIG } from '@/config/viewerConfig';
-import { boxQueryBounds, createSceneIndex, pointQueryBounds, SceneBounds } from '@/renderer/services/sceneIndex';
+import { boxQueryBounds, createSceneIndex, pointQueryBounds, SceneBounds, SceneIndex } from '@/renderer/services/sceneIndex';
+import { SCENE_INDEX_ASYNC_THRESHOLD } from '@/renderer/services/sceneIndexBuilder';
+import type { SceneIndexBuildHandle } from '@/hooks/sceneIndexAsync';
 
 /**
  * Canvas 渲染核心组件
@@ -125,7 +127,35 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
   };
 
   const renderRef = useRef<number | undefined>(undefined);
-  const sceneIndex = useMemo(() => createSceneIndex(entities), [entities]);
+
+  // 场景索引：实体数组只在加载/布局切换时变化（可见性隐藏/隔离不触发重建）。
+  // 小图同步构建（与旧 useMemo 行为一致）；大图（≥阈值）改在 Worker 中异步
+  // 建树与样条采样，期间 sceneIndex 为 undefined，渲染/拾取回退全量剔除，
+  // 构建完成后 setState 触发一次精绘。Worker 失败回退同步构建。
+  const [sceneIndex, setSceneIndex] = useState<SceneIndex | undefined>(undefined);
+  useEffect(() => {
+    if (entities.length < SCENE_INDEX_ASYNC_THRESHOLD) {
+      setSceneIndex(createSceneIndex(entities));
+      return undefined;
+    }
+    let cancelled = false;
+    let handle: SceneIndexBuildHandle | undefined;
+    setSceneIndex(undefined);
+    // 动态导入：Worker 编排与其内嵌的 Worker 资源保持独立懒加载 chunk，
+    // 仅大图纸异步建索引时才下载（与 useDxfLoader 的加载 Worker 同策略）。
+    void import('@/hooks/sceneIndexAsync').then(({ buildSceneIndexAsync }) => {
+      if (cancelled) return;
+      handle = buildSceneIndexAsync(
+        entities,
+        index => { if (!cancelled) setSceneIndex(index); },
+        () => { if (!cancelled) setSceneIndex(createSceneIndex(entities)); },
+      );
+    });
+    return () => {
+      cancelled = true;
+      handle?.cancel();
+    };
+  }, [entities]);
 
   // ---- 交互期快照渲染（freeze + refine，CAD 常用技巧）----
   // 平移/缩放进行中：只把上一帧完整画面按视图增量变换后 drawImage 贴出
@@ -235,13 +265,15 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
   contextMenuRef.current = contextMenu;
 
   const getPickableEntities = useCallback((bounds: SceneBounds) => {
-    return sceneIndex.query(bounds).filter(entity => {
+    // 索引未就绪（大图异步构建中）时回退为全量候选，结果一致，仅本次查询 O(n)。
+    const candidates = sceneIndex ? sceneIndex.query(bounds) : entities;
+    return candidates.filter(entity => {
       if (entity.visible === false || hiddenLayers.has(entity.layer)) return false;
       if (hiddenEntityIds.has(entity.id)) return false;
       if (isolatedEntityIds && !isolatedEntityIds.has(entity.id)) return false;
       return true;
     });
-  }, [hiddenEntityIds, hiddenLayers, isolatedEntityIds, sceneIndex]);
+  }, [entities, hiddenEntityIds, hiddenLayers, isolatedEntityIds, sceneIndex]);
 
   const scheduleViewPortChange = useCallback((nextViewPort: ViewPort) => {
     pendingViewPortRef.current = nextViewPort;
@@ -317,7 +349,7 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
       blocks,
       layers,
       styles,
-      sceneIndex.splineSamples,
+      sceneIndex?.splineSamples,
     );
     const position = clampContextMenuPosition(mouseX, mouseY);
 
@@ -627,7 +659,7 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
             blocks,
             layers,
             styles,
-            sceneIndex.splineSamples,
+            sceneIndex?.splineSamples,
           );
           
           if (hitId) {
@@ -655,7 +687,7 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
       container.removeEventListener('touchend', onTouchEnd);
       clearLongPressTimer();
     };
-  }, [active, blocks, getPickableEntities, layers, onSelectIds, scheduleViewPortChange, sceneIndex.splineSamples, styles]);
+  }, [active, blocks, getPickableEntities, layers, onSelectIds, scheduleViewPortChange, sceneIndex, styles]);
 
   const handleContextMenu = (e: MouseEvent) => {
     e.preventDefault();
@@ -757,7 +789,7 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
              blocks,
              layers,
              styles,
-             sceneIndex.splineSamples,
+             sceneIndex?.splineSamples,
          );
          
          if (hitId) {
