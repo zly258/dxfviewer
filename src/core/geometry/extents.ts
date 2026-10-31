@@ -547,7 +547,15 @@ const isAnnotationExtentsNearGeometry = (annotationExtents: { min: Point2D; max:
 /** 获取数组的中位数。 */
 const getMedian = (values: number[]): number => {
     if (values.length === 0) return 0;
-    const sorted = values.filter(Number.isFinite).sort((a, b) => a - b);
+    // 调用方传入的均为一次性数组（map/filter 产物）；全为有限值时原地排序，
+    // 省去一次 O(n) 复制（大图纸上该路径每轮范围计算调用多次）。
+    let allFinite = true;
+    for (let i = 0; i < values.length; i++) {
+        if (!Number.isFinite(values[i])) { allFinite = false; break; }
+    }
+    const sorted = allFinite
+        ? values.sort((a, b) => a - b)
+        : values.filter(Number.isFinite).sort((a, b) => a - b);
     if (sorted.length === 0) return 0;
     const middle = Math.floor(sorted.length / 2);
     return sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle];
