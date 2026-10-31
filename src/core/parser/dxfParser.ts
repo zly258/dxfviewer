@@ -149,6 +149,48 @@ const buildLayouts = (
     layout.entities.push(entity);
   });
 
+  // 图纸空间：R2000 起图纸空间实体存放于 *Paper_Space 块（ENTITIES 段只有模型空间）。
+  // 按 LAYOUT 对象的 blockRecordHandle 关联到对应布局；关联不上时按名称顺序兜底，
+  // 把未使用的纸张块分配给尚无实体的布局。有"外形"（实体）的布局才会进入切换栏。
+  const paperBlocks = Object.values(blocks).filter(b => b.isPaperSpace && b.entities.length > 0);
+  const usedPaperBlocks = new Set<string>();
+  const attachPaperBlock = (layout: DxfLayout, paperBlock: DxfBlock) => {
+    paperBlock.entities.forEach(entity => {
+      entity.layoutName = layout.name;
+      layout.entities.push(entity);
+    });
+    usedPaperBlocks.add(paperBlock.name);
+  };
+  layoutRecords.forEach(record => {
+    if (isModelLayoutName(record.name)) return;
+    const layout = layoutMap.get(normalizeLayoutName(record.name));
+    if (!layout || layout.entities.length > 0) return;
+    const blockName = record.blockRecordHandle ? blockHandleMap[record.blockRecordHandle] : undefined;
+    const paperBlock = blockName ? blocks[blockName] : undefined;
+    if (paperBlock?.isPaperSpace && paperBlock.entities.length > 0 && !usedPaperBlocks.has(paperBlock.name)) {
+      attachPaperBlock(layout, paperBlock);
+    }
+  });
+  let fallbackIndex = 0;
+  for (const layout of layoutMap.values()) {
+    if (fallbackIndex >= paperBlocks.length) break;
+    if (layout.isModel || layout.entities.length > 0) continue;
+    const paperBlock = paperBlocks[fallbackIndex++];
+    if (!usedPaperBlocks.has(paperBlock.name)) attachPaperBlock(layout, paperBlock);
+  }
+
+  // 兜底：ENTITIES 段为空时回退 *Model_Space 块（部分导出器把实体只写进块段）。
+  const modelLayoutForFallback = layoutMap.get(MODEL_LAYOUT_NAME);
+  if (modelLayoutForFallback && modelLayoutForFallback.entities.length === 0) {
+    const modelBlock = Object.values(blocks).find(b => b.isModelSpace && b.entities.length > 0);
+    if (modelBlock) {
+      modelBlock.entities.forEach(entity => {
+        entity.layoutName = MODEL_LAYOUT_NAME;
+        modelLayoutForFallback.entities.push(entity);
+      });
+    }
+  }
+
   const layouts = Array.from(layoutMap.values()).map(layout => ({
     ...layout,
     extents: calculateExtents(layout.entities, blocks, styles),
