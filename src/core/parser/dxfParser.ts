@@ -14,6 +14,7 @@ import {
 import { DxfParserState, parsePoint } from './parserState';
 import { parseTable, parseBlock, parseLayoutObject, parseImageDefObject } from './sectionParser';
 import { parseEntityDispatcher } from './entityParser';
+import { createAbortError } from '@/utils/abortError';
 import { offsetEntity } from '@/core/geometry/offset';
 import { calculateExtents, getEntityExtents, precomputeBlockExtents } from '@/core/geometry/extents';
 import {
@@ -183,6 +184,9 @@ const calculateStableOffset = (
     if (entity.visible === false || entity.type === EntityType.ATTDEF || entity.type === EntityType.ATTRIB) return;
     const extents = getEntityExtents(entity, blocks, styles);
     if (!extents) return;
+    // 挂到实体上：offsetEntity 会同步平移 ent.extents，
+    // buildLayouts 的 calculateExtents 即可复用，省去第二次全量范围计算。
+    entity.extents = extents;
     const centerX = (extents.min.x + extents.max.x) / 2;
     const centerY = (extents.min.y + extents.max.y) / 2;
     if (isValid(centerX) && isValid(centerY)) {
@@ -207,12 +211,6 @@ const calculateStableOffset = (
 /**
  * DXF 文件解析核心主函数。
  */
-const createAbortError = (): Error => {
-  const error = new Error('DXF parsing was cancelled');
-  error.name = 'AbortError';
-  return error;
-};
-
 const getNow = (): number => typeof performance !== 'undefined' ? performance.now() : Date.now();
 
 export const parseDxf = async (
@@ -246,7 +244,7 @@ export const parseDxf = async (
   let lastYieldAt = lastProgressAt;
 
   while (state.hasNext) {
-    if (options.signal?.aborted) throw createAbortError();
+    if (options.signal?.aborted) throw createAbortError('DXF parsing was cancelled');
 
     if (state.linesRead > linesProcessed + 500) {
       linesProcessed = state.linesRead;
@@ -321,7 +319,7 @@ export const parseDxf = async (
     }
   }
 
-  if (options.signal?.aborted) throw createAbortError();
+  if (options.signal?.aborted) throw createAbortError('DXF parsing was cancelled');
   if (onProgress) onProgress(100);
 
   precomputeBlockExtents(blocks, styles);

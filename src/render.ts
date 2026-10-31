@@ -27,7 +27,5 @@ export type { FlatBvh } from '@/renderer/services/flatBvh';
 export {
   collectSceneIndexBuildInput,
   createFlatSceneIndex,
-  finalizeSceneIndex,
-  SCENE_INDEX_ASYNC_THRESHOLD,
 } from '@/renderer/services/sceneIndexBuilder';
 export type { SceneIndexBuildInput } from '@/renderer/services/sceneIndexBuilder';

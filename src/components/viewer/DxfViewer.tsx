@@ -15,7 +15,8 @@ const PropertiesPanel = lazy(() => import('@/components/viewer/PropertiesPanel')
 import { useIsMobile } from '@/hooks/useMediaQuery';
 import { useViewHistory } from '@/hooks/useViewHistory';
 import { useEntityVisibility } from '@/hooks/useEntityVisibility';
-import { isAbortError, useDxfLoader } from '@/hooks/useDxfLoader';
+import { useDxfLoader } from '@/hooks/useDxfLoader';
+import { isAbortError } from '@/utils/abortError';
 import { calculateExtents } from '@/core/geometry/extents';
 import { fitExtentsToBox } from '@/renderer/services/viewportFitting';
 import { AnyEntity, ViewPort, DxfLayer, DxfBlock, DxfData, EntityType, DxfStyle, DxfLineType, Point2D, CanvasTheme, DrawingColorMode, UiTheme, DxfLayout, ResolvedUiTheme, DxfLoadResult, DxfLoadedData } from '@/types';
