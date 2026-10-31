@@ -140,6 +140,10 @@ export interface RenderSceneOptions {
     theme: CanvasTheme;
     drawingColorMode?: DrawingColorMode;
     hiddenLayers?: Set<string>;
+    /** 被用户临时隐藏的顶层实体 ID。 */
+    hiddenEntityIds?: ReadonlySet<string>;
+    /** 非空时，仅渲染集合内的顶层实体。 */
+    isolatedEntityIds?: ReadonlySet<string> | null;
     selectedIds?: Set<string>;
     sceneIndex?: SceneIndex;
     /**
@@ -178,6 +182,8 @@ export const renderEntitiesToCanvas = ({
     theme,
     drawingColorMode = 'original',
     hiddenLayers = new Set<string>(),
+    hiddenEntityIds = new Set<string>(),
+    isolatedEntityIds = null,
     selectedIds = new Set<string>(),
     sceneIndex,
     background,
@@ -234,7 +240,8 @@ export const renderEntitiesToCanvas = ({
         depth: number = 0, 
         noMTextWrap: boolean = false
     ) => {
-        if (ent.visible === false || depth > SELECTION_CONFIG.maxNestedEntityDepth) return;
+        const isTopLevelHidden = depth === 0 && (hiddenEntityIds.has(ent.id) || (isolatedEntityIds && !isolatedEntityIds.has(ent.id)));
+        if (ent.visible === false || isTopLevelHidden || depth > SELECTION_CONFIG.maxNestedEntityDepth) return;
 
         // 可见区域裁剪剔除
         if (depth === 0 && ent.extents) {

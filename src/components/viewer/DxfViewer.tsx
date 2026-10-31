@@ -85,7 +85,9 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
     hiddenLayers,
     setHiddenLayers,
     hiddenLayersRef,
+    hiddenEntityIds,
     setHiddenEntityIds,
+    isolatedEntityIds,
     setIsolatedEntityIds,
     toggleLayerVisibility,
     displayEntities,
@@ -780,7 +782,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
           )}
           <CanvasViewer
             active={active}
-            entities={displayEntities}
+            entities={entities}
             layers={layers}
             blocks={blocks}
             styles={styles}
@@ -802,6 +804,8 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
             onMouseMoveWorld={handleMouseMoveWorld}
             onRenderError={setRenderErrorMessage}
             hiddenLayers={hiddenLayers}
+            hiddenEntityIds={hiddenEntityIds}
+            isolatedEntityIds={isolatedEntityIds}
             snapshotMode={snapshotMode}
           />
 
