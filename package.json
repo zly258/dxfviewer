@@ -52,13 +52,9 @@
     "test:real": "node scripts/real-dxf-test.mjs",
     "build:example": "npm run build:lib && npm --workspace dxfviewer-example run build",
     "build:all": "npm run build:lib && npm --workspace dxfviewer-example run build",
-    "preview:example": "npm --workspace dxfviewer-example run preview",
-    "tauri": "tauri",
-    "tauri:dev": "tauri dev",
-    "tauri:build": "npm run build:example && tauri build"
+    "preview:example": "npm --workspace dxfviewer-example run preview"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.12.4",
     "@types/node": "^22.14.0",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
