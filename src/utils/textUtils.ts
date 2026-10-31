@@ -1,4 +1,4 @@
-﻿import { TEXT_RENDER_CONFIG } from '@/config/viewerConfig';
+import { TEXT_RENDER_CONFIG } from '@/config/viewerConfig';
 import { CAD_DEFAULT_TEXT_HEIGHT, CAD_DEFAULT_TEXT_STYLE } from '@/config/cadConstants';
 import { DxfStyle, DxfText, EntityType, Point2D } from '@/types';
 import { resolveCadTextFontProfile } from '@/renderer/services/fontService';
@@ -474,10 +474,10 @@ export function getCadTextAnchorPosition(ent: DxfText): Point2D {
   const hAlign = ent.hAlign || 0;
   const vAlign = ent.vAlign || 0;
   if (ent.type !== EntityType.MTEXT && (hAlign !== 0 || vAlign !== 0) && ent.secondPosition && hAlign !== 3 && hAlign !== 5) {
-    return {
-      x: hAlign !== 0 ? ent.secondPosition.x : ent.position.x,
-      y: vAlign !== 0 || hAlign === 4 ? ent.secondPosition.y : ent.position.y,
-    };
+    // DXF 规范：对齐方式不是"左/基线"时，第二对齐点 (11,21) 是唯一定位点，
+    // 两个轴都取它。第一对齐点 (10,20) 是创建期的陈旧值——第三方导出器常
+    // 不同步（实测图纸中旋转 270° 的居中文字两点相差半个文字长度）。
+    return ent.secondPosition;
   }
   return ent.position;
 }
