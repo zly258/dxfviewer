@@ -49,6 +49,7 @@
     "check:visibility": "node scripts/check-visibility.mjs",
     "check": "npm run build:lib && npm run check:fixtures && npm run check:render && npm run check:visibility && npm run check:roundtrip",
     "convert": "node scripts/dxfviewer-cli.mjs",
+    "test:real": "node scripts/real-dxf-test.mjs",
     "build:example": "npm run build:lib && npm --workspace dxfviewer-example run build",
     "build:all": "npm run build:lib && npm --workspace dxfviewer-example run build",
     "preview:example": "npm --workspace dxfviewer-example run preview"
