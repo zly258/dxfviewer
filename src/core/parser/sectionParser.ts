@@ -210,6 +210,10 @@ export const parseLayoutObject = (state: DxfParserState): DxfLayout | null => {
             case 71:
                 layout.tabOrder = parseInt(g.value, 10);
                 break;
+            case 330:
+                // LAYOUT 的 330 指向其关联的 BLOCK_RECORD（*Paper_Space 块记录）
+                layout.blockRecordHandle = g.value;
+                break;
             case 331:
             case 340:
                 if (!layout.blockRecordHandle) layout.blockRecordHandle = g.value;

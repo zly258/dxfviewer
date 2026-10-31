@@ -567,6 +567,25 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
     await handleLoadFromFile(files[0]);
   };
 
+  // ---- 拖拽打开 DXF ----
+  const [isDragOver, setIsDragOver] = useState(false);
+  const handleDragOver = useCallback((event: React.DragEvent) => {
+    if (!Array.from(event.dataTransfer.types).includes('Files')) return;
+    event.preventDefault();
+    setIsDragOver(true);
+  }, []);
+  const handleDragLeave = useCallback((event: React.DragEvent) => {
+    if (event.currentTarget.contains(event.relatedTarget as Node)) return;
+    setIsDragOver(false);
+  }, []);
+  const handleDrop = useCallback((event: React.DragEvent) => {
+    event.preventDefault();
+    setIsDragOver(false);
+    const files = Array.from(event.dataTransfer.files).filter(file => /\.dxf$/i.test(file.name));
+    if (files.length === 0) return;
+    void handleImport(files);
+  }, [handleImport]);
+
   const handleMobileFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files ? Array.from(event.target.files) : [];
     event.target.value = '';
@@ -709,7 +728,11 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
   ) : null;
 
   return (
-    <div ref={containerRef} className={`app-container ${effectiveUiTheme === 'dark' ? 'theme-dark' : ''} ${isMobile ? 'is-mobile' : ''}`} style={{ height: '100%', display: 'flex', flexDirection: 'column', '--canvas-bg': canvasBgColor } as React.CSSProperties}>
+    <div ref={containerRef} className={`app-container ${effectiveUiTheme === 'dark' ? 'theme-dark' : ''} ${isMobile ? 'is-mobile' : ''} ${isDragOver ? 'drag-over' : ''}`} style={{ height: '100%', display: 'flex', flexDirection: 'column', '--canvas-bg': canvasBgColor } as React.CSSProperties}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
       <input
         ref={mobileFileInputRef}
         type="file"

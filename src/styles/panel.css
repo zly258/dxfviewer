@@ -304,3 +304,27 @@
   background-color: var(--accent-blue);
   height: 56px;
 }
+/* 块引用属性（ATTRIB）列表 */
+.attribute-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.attribute-row {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.attribute-tag {
+  color: var(--md-on-surface-variant, #9aa0a6);
+  white-space: nowrap;
+  min-width: 64px;
+}
+.attribute-value {
+  color: var(--md-on-surface, #e8eaed);
+  word-break: break-all;
+}

@@ -92,6 +92,30 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, styles = {}
   };
 
   /**
+   * 渲染块引用的属性列表（ATTRIB：标记 → 值）。
+   */
+  const renderAttributeList = (attributes: AnyEntity[]) => {
+    const rows = attributes
+      .map((attr, index) => {
+        const tag = (attr as { tag?: string }).tag || `#${index + 1}`;
+        const value = String((attr as { value?: string }).value || '').trim();
+        return { tag, value, key: `${tag}-${index}` };
+      })
+      .filter(row => row.value.length > 0);
+    if (rows.length === 0) return <span className="property-muted">N/A</span>;
+    return (
+      <div className="attribute-list">
+        {rows.map(row => (
+          <div key={row.key} className="attribute-row">
+            <span className="attribute-tag">{row.tag}</span>
+            <span className="attribute-value">{row.value}</span>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  /**
    * 渲染实体特定的属性
    */
   const renderEntityProperties = (ent: AnyEntity) => {
@@ -183,6 +207,24 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, styles = {}
                   ent.type === EntityType.INSERT && renderPropertyRow("Scale", `${ent.scale.x.toFixed(2)}, ${ent.scale.y.toFixed(2)}`),
                   ent.type === EntityType.INSERT && renderPropertyRow("Rotation", `${ent.rotation.toFixed(1)}°`),
               ];
+
+              // 块引用属性（ATTRIB）：标记 → 值
+              if (ent.type === EntityType.INSERT && ent.attributes && ent.attributes.length > 0) {
+                  specificRows.push(
+                      <tr key="attribs-header" className="property-row property-section-row">
+                          <td colSpan={2} className="property-section-cell">
+                              {t.attributes || '块属性 (Attributes)'}
+                          </td>
+                      </tr>,
+                  );
+                  specificRows.push(
+                      <tr key="attribs-body" className="property-row">
+                          <td colSpan={2} className="property-value-cell">
+                              {renderAttributeList(ent.attributes)}
+                          </td>
+                      </tr>,
+                  );
+              }
               
               if (ent.type === EntityType.ACAD_TABLE) {
                    const table = ent as any;
