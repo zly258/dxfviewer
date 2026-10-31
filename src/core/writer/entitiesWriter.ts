@@ -12,12 +12,14 @@ import {
   writePoint,
   writePolylineLegacy,
   writeRayXLine,
+  writeShape,
   writeSpline,
 } from './entity/basicWriter';
 import { writeMText, writeText } from './entity/textWriter';
 import { write3DFace, writeHatch, writeSolid } from './entity/fillWriter';
 import { writeInsert } from './entity/blockWriter';
 import { writeDimension } from './entity/dimensionWriter';
+import { writeLeader } from './entity/leaderWriter';
 
 /**
  * 保真回放：实体带 raw 组码快照时原样输出。
@@ -118,6 +120,12 @@ export const writeEntity = (state: WriterState, ent: AnyEntity, ownerHandle: str
     case EntityType.RAY:
     case EntityType.XLINE:
       writeRayXLine(state, ent, ownerHandle);
+      break;
+    case EntityType.LEADER:
+      writeLeader(state, ent, ownerHandle);
+      break;
+    case EntityType.SHAPE:
+      writeShape(state, ent, ownerHandle);
       break;
     default:
       state.addSkipped((ent as any).type || 'UNKNOWN', '写出器暂未覆盖该实体类型', ent.id);
