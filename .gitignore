@@ -39,3 +39,7 @@ samples/cli-out*
 
 # Hidden directories (dot-prefixed folders, e.g. .workbuddy)
 .*/
+
+# Tauri desktop build
+src-tauri/target
+src-tauri/gen/schemas
