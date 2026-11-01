@@ -2070,7 +2070,104 @@ ENDSEC
 0
 EOF
 `,
+
+  'accuracy-grid.dxf': generateAccuracyGrid,
+
+  'special-codes.dxf': generateSpecialCodes,
 };
+
+/**
+ * 渲染准确性校验夹具：3×3 已知答案网格。每格对角 LINE + 居中 CIRCLE +
+ * 居中 TEXT（hAlign=1，第二对齐点 = 单元中心；第一对齐点故意写偏 6 单位，
+ * 回归"锚点必须取第二对齐点"的修复）。
+ * 供 check-accuracy.mjs 断言绘制位置与已知几何一致。
+ */
+function generateAccuracyGrid() {
+  const g = [];
+  const put = (code, v) => { g.push(String(code), String(v)); };
+  let handle = 0x300;
+  const hex = () => (++handle).toString(16).toUpperCase();
+  put(0, 'SECTION'); put(2, 'HEADER');
+  put(9, '$ACADVER'); put(1, 'AC1015');
+  put(9, '$EXTMIN'); put(10, '0.0'); put(20, '0.0'); put(30, '0.0');
+  put(9, '$EXTMAX'); put(10, '300.0'); put(20, '300.0'); put(30, '0.0');
+  put(0, 'ENDSEC');
+  put(0, 'SECTION'); put(2, 'TABLES');
+  put(0, 'TABLE'); put(2, 'LTYPE'); put(70, 1);
+  put(0, 'LTYPE'); put(2, 'CONTINUOUS'); put(70, 64); put(73, 0); put(40, '0.0');
+  put(0, 'ENDTAB');
+  put(0, 'TABLE'); put(2, 'LAYER'); put(70, 1);
+  put(0, 'LAYER'); put(2, '0'); put(70, 0); put(62, 7); put(6, 'CONTINUOUS');
+  put(0, 'ENDTAB');
+  put(0, 'TABLE'); put(2, 'STYLE'); put(70, 1);
+  put(0, 'STYLE'); put(2, 'STANDARD'); put(70, 0); put(40, '0.0'); put(41, '1.0'); put(50, '0.0'); put(71, 0); put(42, '2.5'); put(3, 'txt');
+  put(0, 'ENDTAB');
+  put(0, 'ENDSEC');
+  put(0, 'SECTION'); put(2, 'ENTITIES');
+  for (let row = 0; row < 3; row++) {
+    for (let col = 0; col < 3; col++) {
+      const x0 = col * 100;
+      const y0 = (2 - row) * 100;
+      const cx = x0 + 50;
+      const cy = y0 + 50;
+      put(0, 'LINE'); put(5, hex()); put(8, '0');
+      put(10, `${x0 + 10}.0`); put(20, `${y0 + 10}.0`); put(30, '0.0');
+      put(11, `${x0 + 90}.0`); put(21, `${y0 + 90}.0`); put(31, '0.0');
+      put(0, 'CIRCLE'); put(5, hex()); put(8, '0');
+      put(10, `${cx}.0`); put(20, `${cy}.0`); put(30, '0.0'); put(40, '30.0');
+      put(0, 'TEXT'); put(5, hex()); put(8, '0');
+      put(10, `${cx - 6}.0`); put(20, `${cy - 12}.0`); put(30, '0.0');
+      put(11, `${cx}.0`); put(21, `${cy}.0`); put(31, '0.0');
+      put(40, '12.0'); put(1, `C${col}${row}`);
+      put(72, 1); put(73, 0);
+    }
+  }
+  put(0, 'ENDSEC'); put(0, 'EOF');
+  return g.join('\n') + '\n';
+}
+
+/**
+ * 特殊格式文字夹具：%%c/d/p/u/nnn、\U+XXXX、\S 堆叠、\P 换行的已知转换答案。
+ * 供 check-accuracy.mjs 断言 fillText 内容为转换后的符号。
+ */
+function generateSpecialCodes() {
+  const g = [];
+  const put = (code, v) => { g.push(String(code), String(v)); };
+  let handle = 0x400;
+  const hex = () => (++handle).toString(16).toUpperCase();
+  put(0, 'SECTION'); put(2, 'HEADER');
+  put(9, '$ACADVER'); put(1, 'AC1015');
+  put(0, 'ENDSEC');
+  put(0, 'SECTION'); put(2, 'TABLES');
+  put(0, 'TABLE'); put(2, 'LTYPE'); put(70, 1);
+  put(0, 'LTYPE'); put(2, 'CONTINUOUS'); put(70, 64); put(73, 0); put(40, '0.0');
+  put(0, 'ENDTAB');
+  put(0, 'TABLE'); put(2, 'LAYER'); put(70, 1);
+  put(0, 'LAYER'); put(2, '0'); put(70, 0); put(62, 7); put(6, 'CONTINUOUS');
+  put(0, 'ENDTAB');
+  put(0, 'TABLE'); put(2, 'STYLE'); put(70, 1);
+  put(0, 'STYLE'); put(2, 'STANDARD'); put(70, 0); put(40, '0.0'); put(41, '1.0'); put(50, '0.0'); put(71, 0); put(42, '2.5'); put(3, 'txt');
+  put(0, 'ENDTAB');
+  put(0, 'ENDSEC');
+  put(0, 'SECTION'); put(2, 'ENTITIES');
+  put(0, 'TEXT'); put(5, hex()); put(8, '0');
+  put(10, '0.0'); put(20, '240.0'); put(30, '0.0'); put(40, '8.0');
+  put(1, '直径%%c50%%p0.2%%d');
+  put(0, 'TEXT'); put(5, hex()); put(8, '0');
+  put(10, '0.0'); put(20, '220.0'); put(30, '0.0'); put(40, '8.0');
+  put(1, '%%u下划线%%u恢复');
+  put(0, 'TEXT'); put(5, hex()); put(8, '0');
+  put(10, '0.0'); put(20, '200.0'); put(30, '0.0'); put(40, '8.0');
+  put(1, '%%65%%66%%67');
+  put(0, 'TEXT'); put(5, hex()); put(8, '0');
+  put(10, '0.0'); put(20, '180.0'); put(30, '0.0'); put(40, '8.0');
+  put(1, '温度%%d\\U+2205');
+  put(0, 'MTEXT'); put(5, hex()); put(8, '0');
+  put(10, '0.0'); put(20, '150.0'); put(30, '0.0'); put(40, '8.0'); put(41, '200.0'); put(71, '1');
+  put(1, '公差%%c100\\U+00B0%%p0.1\\S3/4;\\P第二行\\U+2205');
+  put(0, 'ENDSEC'); put(0, 'EOF');
+  return g.join('\n') + '\n';
+}
 
 /**
  * 把夹具写入临时目录并返回 { 文件名 → 绝对路径 }。
@@ -2084,8 +2181,9 @@ export const materializeFixtures = async (prefix = 'dxfviewer-test-') => {
   const dir = await mkdtemp(join(tmpdir(), prefix));
   const files = {};
   for (const [name, content] of Object.entries(FIXTURES)) {
+    const text = typeof content === 'function' ? content() : content;
     const path = join(dir, name);
-    await writeFile(path, content, 'utf8');
+    await writeFile(path, text, 'utf8');
     files[name] = path;
   }
   return {

@@ -62,6 +62,7 @@ export const exportSvg = (
   renderEntitiesToCanvas({
     ctx: svg,
     entities: scene.entities,
+    modelEntities: scene.layout?.isModel ? undefined : data.entities,
     layers: data.layers ?? {},
     blocks: data.blocks ?? {},
     styles: data.styles ?? {},

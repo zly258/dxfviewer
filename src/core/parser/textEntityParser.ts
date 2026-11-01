@@ -2,7 +2,7 @@ import { DxfText, EntityType, Point2D } from '@/types';
 import { CAD_DEFAULT_TEXT_STYLE } from '@/config/cadConstants';
 import { PARSER_LIMITS } from '@/config/parserConfig';
 import { getOcsToWcsMatrix, applyOcs, getWcsRotation } from '@/core/geometry/ocs';
-import { DxfParserState, applyCommonGroup } from './parserState';
+import { DxfParserState, applyCommonGroupFrom } from './parserState';
 
 export const parseText = (state: DxfParserState, common: any, type: EntityType): DxfText => {
     const entity: any = {
@@ -22,23 +22,30 @@ export const parseText = (state: DxfParserState, common: any, type: EntityType):
     const valueParts: string[] = [];
     let secondPos: Point2D | undefined;
     let direction: Point2D | undefined;
+    // MTEXT 的 "Embedded Object" 专有数据段（组码 101 之后）：其中含有
+    // 与正文同号的 10/20/11/21 组码（方向向量、包围盒等），若继续解析
+    // 会覆盖真实的插入点——实测导致中心线标注全部堆到原点附近呈乱码堆。
+    // 该段是 AutoCAD 内部缓存，跳过直到实体结束。
+    let skipEmbeddedObject = false;
 
     while (state.hasNext) {
         const p = state.peek();
         if (!p || p.code === 0) break;
         const g = state.next()!;
-        applyCommonGroup(entity, g.code, g.value);
+        if (g.code === 101) { skipEmbeddedObject = true; continue; }
+        if (skipEmbeddedObject) continue;
+        applyCommonGroupFrom(entity, g);
         switch (g.code) {
             case 1: valueParts.push(g.value); break;
             case 3: valueParts.push(g.value); break;
-            case 10: entity.position.x = parseFloat(g.value); break;
-            case 20: entity.position.y = parseFloat(g.value); break;
-            case 30: z = parseFloat(g.value); break;
-            case 40: entity.height = parseFloat(g.value); break;
-            case 50: entity.rotation = parseFloat(g.value); break;
+            case 10: entity.position.x = g.float; break;
+            case 20: entity.position.y = g.float; break;
+            case 30: z = g.float; break;
+            case 40: entity.height = g.float; break;
+            case 50: entity.rotation = g.float; break;
             case 41:
-                if (type === EntityType.MTEXT) entity.width = parseFloat(g.value);
-                else entity.widthFactor = parseFloat(g.value);
+                if (type === EntityType.MTEXT) entity.width = g.float;
+                else entity.widthFactor = g.float;
                 break;
             case 72:
                 if (type === EntityType.MTEXT) entity.drawingDirection = parseInt(g.value, 10);
@@ -51,35 +58,35 @@ export const parseText = (state: DxfParserState, common: any, type: EntityType):
             case 11:
                 if (type === EntityType.MTEXT) {
                     if (!direction) direction = { x: 0, y: 0 };
-                    direction.x = parseFloat(g.value);
+                    direction.x = g.float;
                 } else {
                     if (!secondPos) secondPos = { x: 0, y: 0 };
-                    secondPos.x = parseFloat(g.value);
+                    secondPos.x = g.float;
                 }
                 break;
             case 21:
                 if (type === EntityType.MTEXT) {
                     if (!direction) direction = { x: 0, y: 0 };
-                    direction.y = parseFloat(g.value);
+                    direction.y = g.float;
                 } else {
                     if (!secondPos) secondPos = { x: 0, y: 0 };
-                    secondPos.y = parseFloat(g.value);
+                    secondPos.y = g.float;
                 }
                 break;
-            case 31: z2 = parseFloat(g.value); break;
+            case 31: z2 = g.float; break;
             case 71:
                 if (type === EntityType.MTEXT) entity.attachmentPoint = parseInt(g.value, 10);
                 else entity.textGenerationFlags = parseInt(g.value, 10);
                 break;
-            case 42: if (type === EntityType.MTEXT) entity.actualWidth = parseFloat(g.value); break;
-            case 43: entity.boxHeight = parseFloat(g.value); break;
-            case 44: if (type === EntityType.MTEXT) entity.lineSpacingFactor = parseFloat(g.value); break;
+            case 42: if (type === EntityType.MTEXT) entity.actualWidth = g.float; break;
+            case 43: entity.boxHeight = g.float; break;
+            case 44: if (type === EntityType.MTEXT) entity.lineSpacingFactor = g.float; break;
             case 2: if (type === EntityType.ATTDEF || type === EntityType.ATTRIB) entity.tag = g.value; break;
             case 70: if (type === EntityType.ATTDEF) entity.flags = parseInt(g.value, 10); break;
-            case 63: if (type === EntityType.MTEXT) entity.bgColor = parseInt(g.value); break;
+            case 63: if (type === EntityType.MTEXT) entity.bgColor = (g.float | 0); break;
             case 90:
                 if (type === EntityType.MTEXT) {
-                    const mask = parseInt(g.value);
+                    const mask = (g.float | 0);
                     entity.bgFill = (mask & 1) === 1 || (mask & 2) === 2;
                 }
                 break;

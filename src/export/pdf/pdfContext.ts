@@ -233,6 +233,8 @@ export class PdfRenderContext implements RenderContext {
 
   // ---- 变换（JS 侧矩阵，坐标输出前变换） ----
   save(): void {
+    // q：压入 PDF 图形状态（clip 等可随 Q 恢复）；样式与矩阵同时压入 JS 栈
+    this.ops.push('q');
     this.styleStack.push(
       JSON.stringify([
         this.strokeStyleValue, this.fillStyleValue, this.lineWidthValue,
@@ -244,6 +246,8 @@ export class PdfRenderContext implements RenderContext {
   }
 
   restore(): void {
+    // Q：弹出 PDF 图形状态（恢复 clip）；样式与矩阵由 JS 栈恢复
+    this.ops.push('Q');
     // 先弹矩阵标记，再弹样式
     for (let i = 0; i < 2; i++) {
       const top = this.styleStack.pop();
@@ -331,6 +335,13 @@ export class PdfRenderContext implements RenderContext {
 
   closePath(): void {
     this.currentPath.push('h');
+  }
+
+  /** 裁剪：当前路径作为后续绘制的剪裁区域（PDF W n 算子，随 q/Q 恢复）。 */
+  clip(): void {
+    if (this.currentPath.length === 0) return;
+    this.ops.push(...this.currentPath, 'W n');
+    this.currentPath = [];
   }
 
   // ---- 样式与绘制 ----

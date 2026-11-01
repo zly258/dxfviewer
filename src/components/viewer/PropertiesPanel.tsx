@@ -345,6 +345,20 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, styles = {}
                <div className="property-empty-title">
                  {t.selectedCount ? t.selectedCount.replace('{count}', entities.length.toString()) : `已选择 ${entities.length} 个对象`}
                </div>
+                <div className="property-type-summary">
+                  {Object.entries(
+                    entities.reduce((acc, e) => {
+                      const name = entNames[e.type] || e.type;
+                      acc[name] = (acc[name] || 0) + 1;
+                      return acc;
+                    }, {} as Record<string, number>)
+                  ).sort((a, b) => b[1] - a[1]).map(([typeName, count]) => (
+                    <div key={typeName} className="property-type-row">
+                      <span className="property-type-name">{typeName}</span>
+                      <span className="property-type-count">× {count}</span>
+                    </div>
+                  ))}
+                </div>
                <div className="property-empty-subtitle">
                  {t.selectSingle || "选择单个对象以查看详细属性"}
                </div>

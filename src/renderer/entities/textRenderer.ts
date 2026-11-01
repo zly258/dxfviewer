@@ -204,10 +204,13 @@ const drawTextEntityDirect = (
     screenScale: number,
     screenTextHeight: number,
 ) => {
-    const originalHeight = ent.height;
-    ent.height = screenTextHeight;
-    ctx.font = getCanvasFont(ent, styles);
-    ent.height = originalHeight;
+    // 顺序约束：buildCadTextLayout 的 measureText/字体边界测量依赖
+    // ctx.font —— 必须先按屏幕字号设置字体再构建布局。
+    // ent.height 不能污染（布局内部经 getEffectiveTextHeight 再读它，
+    // 二次叠加 \H 与缩放会使字号/行距失真），因此用局部副本设置字体：
+    // getCanvasFont 只读 ent.height 与 style，传副本即可。
+    const fontProbe: DxfText = { ...ent, height: screenTextHeight };
+    ctx.font = getCanvasFont(fontProbe, styles);
 
     const layout = buildCadTextLayout({
         entity: ent,

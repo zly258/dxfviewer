@@ -33,6 +33,7 @@ interface SvgState {
   textBaseline: CanvasTextBaseline;
   dash: number[];
   matrix: [number, number, number, number, number, number];
+  openClipGroups?: number;
 }
 
 const IDENTITY: SvgState['matrix'] = [1, 0, 0, 1, 0, 0];
@@ -78,6 +79,9 @@ export class SvgRenderContext implements RenderContext {
   private readonly parts: string[] = [];
   private readonly patternInfos = new Map<CanvasPattern, SvgPatternInfo>();
   private patternCounter = 0;
+  private clipCounter = 0;
+  /** 当前打开的裁剪分组数（save/restore 平衡开合）。 */
+  private openClipGroups = 0;
 
   private currentPath: string[] = [];
   private state: SvgState;
@@ -159,12 +163,28 @@ export class SvgRenderContext implements RenderContext {
   }
 
   save(): void {
-    this.states.push({ ...this.state, dash: [...this.state.dash], matrix: [...this.state.matrix] as SvgState['matrix'] });
+    this.states.push({ ...this.state, dash: [...this.state.dash], matrix: [...this.state.matrix] as SvgState['matrix'], openClipGroups: this.openClipGroups });
   }
 
   restore(): void {
     const previous = this.states.pop();
-    if (previous) this.state = previous;
+    if (!previous) return;
+    // 关闭本次 save 之后打开的裁剪分组
+    while (this.openClipGroups > (previous.openClipGroups ?? 0)) {
+      this.parts.push('</g>');
+      this.openClipGroups--;
+    }
+    this.state = previous;
+  }
+
+  /** 裁剪：当前路径作为后续绘制内容的剪裁区域（clipPath + 分组包裹）。 */
+  clip(): void {
+    if (this.currentPath.length === 0) return;
+    const id = `dxfviewer-clip-${++this.clipCounter}`;
+    this.parts.splice(2, 0, `<clipPath id="${id}"><path d="${this.currentPath.join(' ')}"/></clipPath>`);
+    this.parts.push(`<g clip-path="url(#${id})">`);
+    this.openClipGroups++;
+    this.currentPath = [];
   }
 
   translate(x: number, y: number): void { this.multiply([1, 0, 0, 1, x, y]); }
@@ -340,6 +360,8 @@ export class SvgRenderContext implements RenderContext {
 
   /** 串接最终 SVG 文档。 */
   toString(): string {
-    return `${this.parts.join('\n')}\n</svg>\n`;
+    const closers = '</g>'.repeat(this.openClipGroups);
+    this.openClipGroups = 0;
+    return `${this.parts.join('\n')}${closers}\n</svg>\n`;
   }
 }

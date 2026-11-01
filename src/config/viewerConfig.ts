@@ -137,7 +137,11 @@ export const TEXT_RENDER_CONFIG = {
   maximumWidthFactor: 100,
   // 文字低于该屏幕高度时直接跳过绘制，不再使用填充占位块。
   // 判定基于真实缩放后的像素高度，避免远距离视图出现固定大小的假文字。
-  minimumTextRenderPixelHeight: 0.35,
+  // 文字渲染的最小投影高度（px）：低于该值的文字跳过不画。
+  // 0.35px 只过滤"不可见"；实测 CJK 文字在 1.9px 字号下仍是乱码字形
+  // （中心线标注"R1主电机中心线" @1.92px 渲染为绿色乱码堆）——
+  // CJK 可读下限约 4px，低于它跳过即消除乱码堆，放大后自然显现。
+  minimumTextRenderPixelHeight: 4,
   // 画布字体大小不允许为 0，极小字号仍保持数值稳定。
   minimumCanvasFontPixelHeight: 0.1,
   // 对齐和适配文字按目标宽度 / 测量宽度做缩放，当测量值在亚像素级别不可靠时
@@ -153,9 +157,16 @@ export const TEXT_RENDER_CONFIG = {
   spaceCharacterWidthFactor: 0.32,
   textWidthPaddingFactor: 0.02,
   alphabeticBaselineOffsetFactor: 0.8,
-  mtextDefaultLineSpacingFactor: 1.25,
+  // MTEXT 缺省行距：AutoCAD 的"行距倍数 1.0"= 字高的 5/3 ≈ 1.66×
+  // （DXF 组码 73/44 的倍数以"一个行距"为单位，一个行距 = 1.66×字高）。
+  // 旧值 1.25 使多行文字行距比 AutoCAD 偏小约 25%。
+  mtextDefaultLineSpacingFactor: 1.66,
   mtextBackgroundPaddingFactor: 0.1,
-  trueTypeFontHeightFactor: 1.28,
+  // DXF 组码 40 的"字高"是 cap height（大写字母高度）语义；Canvas 的
+  // font size 是 em size。换算系数 = 1/capRatio：典型 CAD 字体（gbenor/
+  // SimSun/Arial）的 capHeight ≈ 0.70~0.73em → 系数 ≈ 1.39。
+  // 旧值 1.28 使文字比 AutoCAD 偏小约 12%（实测用户反馈）。
+  trueTypeFontHeightFactor: 1.39,
   shxFontHeightFactor: 1.0,
   trueTypeRenderWidthFactor: 1.0,
   shxRenderWidthFactor: 1.0,
@@ -255,14 +266,10 @@ export const INTERACTION_CONFIG = {
   touchLongPressDelayMs: 560,
   touchTapMaxDurationMs: 300,
   touchHitToleranceMultiplier: 2.5,
-  // 交互（平移/缩放）停止后多久触发一次全量精绘（freeze + refine 模式）。
+  // 交互（平移/缩放）停止后多久触发一次渲染（防抖）。
+  // 交互期间画布保持上一帧（平移为精确位移贴图，缩放保持不动），
+  // 停止后在离屏画布一次性渲染当前屏幕范围，完成后原子呈现。
   interactionRefineDelayMs: 150,
-  // 快照模式：持续缩放时快照位图相对当前视图的放大比超过该阈值，
-  // 就地做一次全量重拍（限制 blit 的模糊上限）。仅作用于放大方向——
-  // 缩小是降采样，本身清晰。
-  snapshotResnapshotZoomFactor: 1.3,
-  // 两次重拍之间的最小间隔（ms），避免连续滚轮时每帧都全量渲染。
-  snapshotResnapshotIntervalMs: 300,
 };
 
 /**

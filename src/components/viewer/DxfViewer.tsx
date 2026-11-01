@@ -17,7 +17,7 @@ import { useViewHistory } from '@/hooks/useViewHistory';
 import { useEntityVisibility } from '@/hooks/useEntityVisibility';
 import { useDxfLoader } from '@/hooks/useDxfLoader';
 import { isAbortError } from '@/utils/abortError';
-import { calculateExtents } from '@/core/geometry/extents';
+import { calculateExtents, calculatePaperLayoutExtents } from '@/core/geometry/extents';
 import { fitExtentsToBox } from '@/renderer/services/viewportFitting';
 import { AnyEntity, ViewPort, DxfLayer, DxfBlock, DxfData, EntityType, DxfStyle, DxfLineType, Point2D, CanvasTheme, DrawingColorMode, UiTheme, DxfLayout, ResolvedUiTheme, DxfLoadResult, DxfLoadedData } from '@/types';
 import { CANVAS_THEME_COLORS, DEFAULT_LAYER, DEFAULT_VIEWPORT, LAYOUT_CONFIG, SHORTCUT_CONFIG, VIEWER_DEFAULTS, ZOOM_CONFIG, PANEL_CONFIG, canvasThemeFromUiTheme, getSystemUiTheme, resolveUiTheme } from '@/config/viewerConfig';
@@ -76,6 +76,9 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
   const [entities, setEntities] = useState<AnyEntity[]>([]);
   const [layouts, setLayouts] = useState<DxfLayout[]>([]);
   const [activeLayoutName, setActiveLayoutName] = useState('Model');
+  // 当前布局名镜像：供不参与依赖链的回调读取（避免触发重新加载）
+  const activeLayoutNameRef = useRef('Model');
+  useEffect(() => { activeLayoutNameRef.current = activeLayoutName; }, [activeLayoutName]);
   const [layers, setLayers] = useState<Record<string, DxfLayer>>({ [DEFAULT_LAYER.name]: DEFAULT_LAYER });
   const [showAbout, setShowAbout] = useState(false);
   const [showTextSearch, setShowTextSearch] = useState(false);
@@ -156,6 +159,12 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
   }, [propertiesWidth]);
   
   const [selectedEntityIds, setSelectedEntityIds] = useState<Set<string>>(new Set());
+
+  // 视口投影用：模型空间布局的实体引用（当前布局即模型空间时由 CanvasViewer 自引用防护禁用）
+  const modelLayoutEntities = useMemo(
+    () => layouts.find(l => l.isModel)?.entities ?? [],
+    [layouts],
+  );
   
   const {
     viewPort,
@@ -272,7 +281,17 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
     const canUseKnownExtents = Boolean(knownExtents)
       && ents.every(entity => entity.visible !== false)
       && currentHiddenLayers.size === 0;
-    const extents = canUseKnownExtents ? knownExtents! : calculateExtents(visibleEnts, blks, currentStyles);
+    // 纸张空间布局按图框取景：视口矩形可能远大于图纸（初始 1:1 视口），
+    // 直接用实体范围会被空白拉小。
+    // 用 ref 镜像当前布局名：若把 activeLayoutName 放进依赖链，
+    // 会连带 scheduleFitView → applyLoadResult → 加载 effect 重跑，
+    // 导致切换布局后文件被重新加载、布局被重置回模型空间。
+    const isPaperLayout = activeLayoutNameRef.current !== 'Model';
+    const extents = canUseKnownExtents
+      ? knownExtents!
+      : (isPaperLayout
+          ? calculatePaperLayoutExtents(visibleEnts, blks, currentStyles)
+          : calculateExtents(visibleEnts, blks, currentStyles));
 
     // 第 2 步：从 viewerRef 获取实际容器尺寸
     let containerW = window.innerWidth;
@@ -830,6 +849,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
             hiddenLayers={hiddenLayers}
             hiddenEntityIds={hiddenEntityIds}
             isolatedEntityIds={isolatedEntityIds}
+            modelEntities={modelLayoutEntities}
             snapshotMode={snapshotMode}
           />
 

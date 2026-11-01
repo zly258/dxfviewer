@@ -61,6 +61,13 @@ import { SceneIndex } from '@/renderer/services/sceneIndex';
 
 const SELECTION_COLOR = SELECTION_CONFIG.selectionBorderColor;
 
+/** Path2D 缓存覆盖的简单几何类型（与 pathCache 模块的可缓存类型一致）。 */
+const PATH_CACHE_COVERED_TYPES: ReadonlySet<string> = new Set([
+    EntityType.LINE, EntityType.LWPOLYLINE, EntityType.POLYLINE,
+    EntityType.CIRCLE, EntityType.ARC,
+]);
+const isPathCacheCoveredType = (type: string): boolean => PATH_CACHE_COVERED_TYPES.has(type);
+
 /**
  * Canvas 状态去重追踪器。
  *
@@ -129,6 +136,8 @@ class CanvasStateTracker {
 export interface RenderSceneOptions {
     ctx: RenderContext;
     entities: AnyEntity[];
+    /** 模型空间实体：渲染纸张空间布局时供视口投影使用（当前布局为模型空间时不传）。 */
+    modelEntities?: AnyEntity[];
     layers: Record<string, DxfLayer>;
     blocks: Record<string, DxfBlock>;
     styles: Record<string, DxfStyle>;
@@ -163,12 +172,16 @@ export interface RenderSceneOptions {
      * 比例让线宽随输出尺寸同步放大。默认 1（交互行为不变）。
      */
     lineWidthScale?: number;
+    /** Path2D 缓存已覆盖的实体 id：其简单几何已按样式组批量 stroke，
+     *  逐实体路径跳过（文字/标注/INSERT/填充仍绘制）。 */
+    pathCacheCovered?: Set<string>;
 }
 
 /**
- * 将 DXF 图纸中所有可绘制图元绘制到画布上。
+ * 创建可分块续绘的渲染会话：背景与视图变换就绪后，按时间预算逐批绘制实体。
+ * 用于交互查看器的渐进精绘——大批次绘制拆入多个 rAF 帧，消除单帧长冻结。
  */
-export const renderEntitiesToCanvas = ({
+export const createRenderSession = ({
     ctx,
     entities,
     layers,
@@ -186,11 +199,15 @@ export const renderEntitiesToCanvas = ({
     isolatedEntityIds = null,
     selectedIds = new Set<string>(),
     sceneIndex,
+    /** 模型空间实体（渲染纸张空间布局的视口投影时提供）。 */
+    modelEntities,
     background,
     lodCulling = true,
     /** 线宽补偿系数：导出画布大于交互视口时按比例放大线宽，避免高分导出线迹过细。 */
     lineWidthScale = 1,
-}: RenderSceneOptions) => {
+    /** Path2D 缓存已覆盖的实体 id（其简单几何跳过逐实体绘制）。 */
+    pathCacheCovered,
+}: RenderSceneOptions): RenderSession => {
     // 背景填充：undefined 走主题色，null 表示调用方要求透明底。
     if (background !== null) {
         ctx.fillStyle = background ?? CANVAS_THEME_COLORS[theme];
@@ -228,6 +245,64 @@ export const renderEntitiesToCanvas = ({
         });
     }
 
+    // 视口投影的模型实体：当前布局本身就是模型空间时禁用（防自引用递归）
+    const viewportModelEntities = modelEntities && modelEntities !== entities ? modelEntities : undefined;
+
+    // ── 同样式连续段批渲染状态 ──
+    // key = 「颜色|虚线|线宽」；pending = 路径已开启待 stroke。
+    const batchState: { key: string | null; pending: boolean } = { key: null, pending: false };
+    /** 参与路径合并的简单几何类型（纯描边、无填充、无嵌套变换）。 */
+    const BATCHABLE_PATH_TYPES: ReadonlySet<string> = new Set([
+        EntityType.LINE, EntityType.LWPOLYLINE, EntityType.POLYLINE,
+        EntityType.CIRCLE, EntityType.ARC,
+    ]);
+    /** 把可批处理实体的几何追加到当前路径（与各自 draw 函数的路径逻辑一致）。 */
+    const appendBatchGeometry = (ctx: RenderContext, ent: AnyEntity, transform: RenderTransform): void => {
+        switch (ent.type) {
+            case EntityType.LINE: {
+                const s = transform.project(ent.start);
+                const e = transform.project(ent.end);
+                ctx.moveTo(s.x, s.y);
+                ctx.lineTo(e.x, e.y);
+                break;
+            }
+            case EntityType.LWPOLYLINE:
+            case EntityType.POLYLINE:
+                if (ent.points.length > 1) {
+                    drawPolyline(ctx, ent.points, ent.bulges, ent.closed, transform);
+                }
+                break;
+            case EntityType.CIRCLE: {
+                const c = transform.project(ent.center);
+                const r = ent.radius * transform.scale;
+                // moveTo 到弧起点：canvas 的 arc 会从当前点画连接线，
+                // 批渲染中前一实体的端点会以寄生线连到圆——零长度 moveTo 消除之。
+                ctx.moveTo(c.x + r, c.y);
+                ctx.arc(c.x, c.y, r, 0, 2 * Math.PI);
+                break;
+            }
+            case EntityType.ARC: {
+                const c = transform.project(ent.center);
+                const r = ent.radius * transform.scale;
+                const isCcw = ent.isCounterClockwise !== false;
+                const startRad = (ent.startAngle || 0) * Math.PI / 180;
+                const endRad = (ent.endAngle || 0) * Math.PI / 180;
+                // 屏幕空间 Y 翻转：起点角度取负
+                ctx.moveTo(c.x + r * Math.cos(-startRad), c.y + r * Math.sin(-startRad));
+                ctx.arc(c.x, c.y, r, -startRad, -endRad, isCcw);
+                break;
+            }
+        }
+    };
+    /** 冲刷当前批次：stroke 累积路径并复位批次状态。 */
+    const flushBatch = (ctx: RenderContext): void => {
+        if (batchState.pending) {
+            ctx.stroke();
+            batchState.pending = false;
+        }
+        batchState.key = null;
+    };
+
     /**
      * 渲染单个 DXF 图元的核心调度器
      */
@@ -242,6 +317,13 @@ export const renderEntitiesToCanvas = ({
     ) => {
         const isTopLevelHidden = depth === 0 && (hiddenEntityIds.has(ent.id) || (isolatedEntityIds && !isolatedEntityIds.has(ent.id)));
         if (ent.visible === false || isTopLevelHidden || depth > SELECTION_CONFIG.maxNestedEntityDepth) return;
+
+        // Path2D 缓存覆盖的简单几何已批量 stroke，这里跳过（选中实体例外：
+        // 高亮重绘需要独立描边）。
+        if (pathCacheCovered && depth === 0 && !selectedIds.has(ent.id)
+            && isPathCacheCoveredType(ent.type)) {
+            return;
+        }
 
         // 可见区域裁剪剔除
         if (depth === 0 && ent.extents) {
@@ -306,12 +388,37 @@ export const renderEntitiesToCanvas = ({
             };
         }
 
+        // ── 同样式连续段批渲染 ──
+        // 简单几何（LINE/LWPOLYLINE/CIRCLE/ARC）按「颜色|虚线|线宽」分组：
+        // 同组实体追加到当前路径，遇到样式变化或不可合并实体时一次性
+        // stroke 冲刷。绘制顺序严格保持（段按序冲刷），描边调用数大幅减少。
+        // 仅顶层非选中实体参与（块内/选中实体需独立着色与变换）。
+        const batchable = !isSelected && lineWidthScale === 1
+            && BATCHABLE_PATH_TYPES.has(ent.type);
+        const batchKey = batchable
+            ? `${color}\u0000${strokeStyle.dashPattern.join(',')}\u0000${strokeStyle.lineWidth}`
+            : null;
+        if (batchKey !== null && batchKey === batchState.key) {
+            // 同批次：直接追加几何（样式已应用于上下文）
+            appendBatchGeometry(ctx, ent, transform);
+            return;
+        }
+        flushBatch(ctx);
+        batchState.key = batchKey;
+
         stateTracker.setLineWidth(strokeStyle.lineWidth);
         stateTracker.setLineDash(strokeStyle.dashPattern);
 
         switch (ent.type) {
             case EntityType.LINE:
-                drawLine(ctx, ent, transform);
+                if (batchKey !== null) {
+                    // 批次首实体：开启路径并追加几何（stroke 延迟到冲刷）
+                    ctx.beginPath();
+                    appendBatchGeometry(ctx, ent, transform);
+                    batchState.pending = true;
+                } else {
+                    drawLine(ctx, ent, transform);
+                }
                 break;
             case EntityType.RAY:
                 drawRay(ctx, ent, transform, width, height);
@@ -323,10 +430,22 @@ export const renderEntitiesToCanvas = ({
                 drawPoint(ctx, ent, transform);
                 break;
             case EntityType.CIRCLE:
-                drawCircle(ctx, ent, transform);
+                if (batchKey !== null) {
+                    ctx.beginPath();
+                    appendBatchGeometry(ctx, ent, transform);
+                    batchState.pending = true;
+                } else {
+                    drawCircle(ctx, ent, transform);
+                }
                 break;
             case EntityType.ARC:
-                drawArc(ctx, ent, transform);
+                if (batchKey !== null) {
+                    ctx.beginPath();
+                    appendBatchGeometry(ctx, ent, transform);
+                    batchState.pending = true;
+                } else {
+                    drawArc(ctx, ent, transform);
+                }
                 break;
             case EntityType.ELLIPSE:
                 drawEllipse(ctx, ent, transform);
@@ -334,9 +453,15 @@ export const renderEntitiesToCanvas = ({
             case EntityType.LWPOLYLINE:
             case EntityType.POLYLINE:
                 if (ent.points.length > 1) {
-                    ctx.beginPath();
-                    drawPolyline(ctx, ent.points, ent.bulges, ent.closed, transform);
-                    ctx.stroke();
+                    if (batchKey !== null) {
+                        ctx.beginPath();
+                        appendBatchGeometry(ctx, ent, transform);
+                        batchState.pending = true;
+                    } else {
+                        ctx.beginPath();
+                        drawPolyline(ctx, ent.points, ent.bulges, ent.closed, transform);
+                        ctx.stroke();
+                    }
                 }
                 break;
             case EntityType.MLINE:
@@ -349,7 +474,7 @@ export const renderEntitiesToCanvas = ({
                 drawHelix(ctx, ent, transform);
                 break;
             case EntityType.VIEWPORT:
-                drawViewport(ctx, ent, transform);
+                drawViewport(ctx, ent, transform, { modelEntities: viewportModelEntities, drawEntity });
                 break;
             case EntityType.SHAPE:
                 drawShape(ctx, ent, transform);
@@ -401,7 +526,39 @@ export const renderEntitiesToCanvas = ({
         min: { x: vMinX, y: vMinY },
         max: { x: vMaxX, y: vMaxY },
     }) || entities;
-    visibleCandidates.forEach(ent => drawEntity(ent, transform, undefined, undefined, false, 0, false));
+    let index = 0;
+    return {
+        get done() { return index >= visibleCandidates.length; },
+        /** 绘制下一批实体；budgetMs 为时间预算（毫秒），Infinity 表示一次画完。返回是否完成。 */
+        drawChunk(budgetMs: number): boolean {
+            const start = performance.now();
+            while (index < visibleCandidates.length) {
+                drawEntity(visibleCandidates[index], transform, undefined, undefined, false, 0, false);
+                index++;
+                if (performance.now() - start >= budgetMs) break;
+            }
+            // 冲刷跨块累积的批次路径（分段驱动时每块都要完整呈现）
+            flushBatch(ctx);
+            return index >= visibleCandidates.length;
+        },
+    };
+};
+
+export interface RenderSession {
+    readonly done: boolean;
+    /** 绘制下一批实体；budgetMs 为时间预算（毫秒），Infinity 表示一次画完。返回是否完成。 */
+    drawChunk(budgetMs: number): boolean;
+}
+
+/**
+ * 将 DXF 图纸中所有可绘制图元绘制到画布上（同步一次性渲染）。
+ * 交互查看器的渐进精绘请使用 createRenderSession 分块驱动。
+ */
+export const renderEntitiesToCanvas = (options: RenderSceneOptions): void => {
+    const session = createRenderSession(options);
+    while (!session.drawChunk(Number.POSITIVE_INFINITY)) {
+        // 同步跑完
+    }
 };
 
 /**

@@ -25,9 +25,16 @@ export function cleanMText(text: string): string {
 
   // 多行文字常用转义符。段落属性 \p...; 只移除格式，不作为换行；段落换行 \P 才转为换行。
   result = result.replace(/\\U\\+([0-9A-Fa-f]{4})/g, decodeUnicodeEscape);
+  // 标准 \U+XXXX 转义（单反斜杠形式，CJK 图纸中最常见的特殊字符写法）
+  result = result.replace(/\\U\+([0-9A-Fa-f]{4})/g, decodeUnicodeEscape);
+  // 单行文字 %% 特殊码：%%c/%%d/%%p → 符号；%%% → %；%%nnn → ASCII 字符；
+  // %%u/%%o 为下划线/上划线开关（纯文本路径无法表达装饰，直接去除）
   result = result.replace(/%%[cC]/g, 'Ø');
   result = result.replace(/%%[dD]/g, '°');
   result = result.replace(/%%[pP]/g, '±');
+  result = result.replace(/%%%/g, '%');
+  result = result.replace(/%%([0-9]{1,3})/g, (_, code) => String.fromCharCode(parseInt(code, 10)));
+  result = result.replace(/%%[uUoO]/g, '');
   result = result.replace(/\\P/g, '\n');
   result = result.replace(/\\[Xx]/g, '\n');
   result = result.replace(/\\p[^;]*;/g, '');
@@ -233,12 +240,57 @@ export function splitCadFormattedText(rawText: string): CadFormattedTextSegment[
 
   for (let index = 0; index < rawText.length; index++) {
     const char = rawText[index];
+    // 单行文字 %% 特殊码：%%u 下划线开关、%%o 上划线（去除）、%%% 百分号、%%nnn ASCII 字符
+    if (char === '%' && rawText[index + 1] === '%') {
+      const third = rawText[index + 2];
+      if (third === 'u' || third === 'U') {
+        flush();
+        underline = !underline;
+        index += 2;
+        continue;
+      }
+      if (third === 'o' || third === 'O') {
+        // 上划线暂不支持渲染，去除开关码
+        index += 2;
+        continue;
+      }
+      if (third === '%') {
+        buffer += '%';
+        index += 2;
+        continue;
+      }
+      if (third && third >= '0' && third <= '9') {
+        // %%nnn：最多读取 3 位数字（AutoCAD 语义，%%65 → A）
+        let code = third;
+        let j = index + 3;
+        while (j < rawText.length && code.length < 3 && rawText[j] >= '0' && rawText[j] <= '9') {
+          code += rawText[j];
+          j++;
+        }
+        buffer += String.fromCharCode(parseInt(code, 10));
+        index = j - 1;
+        continue;
+      }
+      // 其余 %% 形式交给 cleanCadText 的符号转换（Ø/°/±）：两个 '%' 都入缓冲，
+      // 后续字符留给下一轮（for 循环的 index++ 会再 +1）
+      buffer += '%%';
+      index += 1;
+      continue;
+    }
     if (char !== '\\') {
       buffer += char;
       continue;
     }
 
     const next = rawText[index + 1];
+    if (next === 'U' && rawText[index + 2] === '+') {
+      const hex = rawText.slice(index + 3, index + 7);
+      if (/^[0-9A-Fa-f]{4}$/.test(hex)) {
+        buffer += String.fromCharCode(parseInt(hex, 16));
+        index += 7;
+        continue;
+      }
+    }
     if (next === 'L' || next === 'l') {
       flush();
       underline = next === 'L';
@@ -311,6 +363,40 @@ export function splitCadFormattedLines(rawText: string): CadFormattedTextLine[] 
 
   for (let index = 0; index < rawText.length; index++) {
     const char = rawText[index];
+    // 单行 %% 特殊码在 MTEXT 中同样可能出现（legacy 内容）：%%u 开关、%%% 百分号、%%nnn ASCII
+    if (char === '%' && rawText[index + 1] === '%') {
+      const third = rawText[index + 2];
+      if (third === 'u' || third === 'U') {
+        flush();
+        underline = !underline;
+        index += 2;
+        continue;
+      }
+      if (third === 'o' || third === 'O') {
+        index += 2;
+        continue;
+      }
+      if (third === '%') {
+        buffer.value += '%';
+        index += 2;
+        continue;
+      }
+      if (third && third >= '0' && third <= '9') {
+        // %%nnn：最多读取 3 位数字（AutoCAD 语义，%%65 → A）
+        let code = third;
+        let j = index + 3;
+        while (j < rawText.length && code.length < 3 && rawText[j] >= '0' && rawText[j] <= '9') {
+          code += rawText[j];
+          j++;
+        }
+        buffer.value += String.fromCharCode(parseInt(code, 10));
+        index = j - 1;
+        continue;
+      }
+      buffer.value += '%%';
+      index += 1;
+      continue;
+    }
     if (char !== '\\') {
       buffer.value += char;
       continue;

@@ -27,7 +27,13 @@ import { getCanvasFont } from '@/utils/fontResolver';
 
 /** 缓存上限：超出后整体清空。按图纸切换时由调用方显式清空，平时很难触顶。 */
 const MAX_MEASURE_CACHE_ENTRIES = 200_000;
-const MAX_LAYOUT_CACHE_ENTRIES = 30_000;
+/**
+ * 布局缓存上限。文字数超过旧上限（30k）的大图纸会触发"填满→整体清空"的
+ * 颠簸——每帧大量 cache miss，cleanMText/measureText 反复重算（实测占
+ * 文字密集图纸帧耗时的 1/3）。改为 LRU 逐出并扩容：文字密集图纸可全量
+ * 常驻（单条目约数百字节，12 万条 ≈ 数十 MB，切换图纸时整体清空）。
+ */
+const MAX_LAYOUT_CACHE_ENTRIES = 120_000;
 
 /**
  * 字符串测量宽度缓存（按 font 分桶）。
@@ -151,6 +157,9 @@ export const getTextLayoutCached = (
 
     const cached = layoutCache.get(key);
     if (cached) {
+        // LRU 置尾：Map 迭代序 = 插入序，重插即刷新新鲜度
+        layoutCache.delete(key);
+        layoutCache.set(key, cached);
         return { layout: cached.reference, scaleFactor: screenTextHeight / cached.referenceEffectiveHeight };
     }
 
@@ -191,8 +200,12 @@ export const getTextLayoutCached = (
     }
     if (!reference) return null;
 
-    if (layoutCache.size >= MAX_LAYOUT_CACHE_ENTRIES) {
-        layoutCache.clear();
+    // LRU 逐出：超出容量时淘汰最旧条目（Map 首键），避免整体清空造成的
+    // 每帧缓存颠簸；切换图纸时由 clearAllRenderCaches 统一清空。
+    while (layoutCache.size >= MAX_LAYOUT_CACHE_ENTRIES) {
+        const oldest = layoutCache.keys().next().value;
+        if (oldest === undefined) break;
+        layoutCache.delete(oldest);
     }
     layoutCache.set(key, { reference, referenceEffectiveHeight: effRef });
 

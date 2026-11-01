@@ -2,7 +2,7 @@ import { DxfImage, DxfLeader, DxfMLeader, DxfTolerance, DxfWipeout, EntityType, 
 import { LEADER_RENDER_CONFIG } from '@/config/viewerConfig';
 import { PARSER_LIMITS } from '@/config/parserConfig';
 import { getOcsToWcsMatrix, applyOcs } from '@/core/geometry/ocs';
-import { DxfParserState, applyCommonGroup } from './parserState';
+import { DxfParserState, applyCommonGroupFrom } from './parserState';
 import { isFiniteNumberInRange, parseFiniteNumber } from './groupValue';
 
 export const parseLeader = (state: DxfParserState, common: any): DxfLeader => {
@@ -19,14 +19,14 @@ export const parseLeader = (state: DxfParserState, common: any): DxfLeader => {
         const p = state.peek();
         if (!p || p.code === 0) break;
         const g = state.next()!;
-        applyCommonGroup(entity, g.code, g.value);
+        applyCommonGroupFrom(entity, g);
         switch(g.code) {
-            case 71: entity.arrowHeadFlag = parseInt(g.value); break;
-            case 72: entity.pathType = parseInt(g.value); break;
-            case 75: entity.hasHookLine = parseInt(g.value) !== 0; break;
+            case 71: entity.arrowHeadFlag = (g.float | 0); break;
+            case 72: entity.pathType = (g.float | 0); break;
+            case 75: entity.hasHookLine = (g.float | 0) !== 0; break;
             case 340: entity.annotationHandle = g.value; break;
-            case 10: currX = parseFloat(g.value); break;
-            case 20: if (currX !== null) { entity.points.push({x: currX, y: parseFloat(g.value)}); currX = null; } break;
+            case 10: currX = g.float; break;
+            case 20: if (currX !== null) { entity.points.push({x: currX, y: g.float}); currX = null; } break;
         }
     }
     const ocs = getOcsToWcsMatrix(entity.extrusion.x, entity.extrusion.y, entity.extrusion.z);
@@ -63,7 +63,7 @@ export const parseMLeader = (state: DxfParserState, common: any): DxfMLeader => 
         const p = state.peek();
         if (!p || p.code === 0) break;
         const g = state.next()!;
-        applyCommonGroup(entity, g.code, g.value);
+        applyCommonGroupFrom(entity, g);
 
         const valueUpper = String(g.value || '').toUpperCase();
         if (g.code === 302 && valueUpper.includes('LEADER')) {
@@ -83,11 +83,11 @@ export const parseMLeader = (state: DxfParserState, common: any): DxfMLeader => 
 
         switch (g.code) {
             case 10:
-                pendingX = parseFloat(g.value);
+                pendingX = g.float;
                 break;
             case 20:
                 if (pendingX !== null) {
-                    const point = { x: pendingX, y: parseFloat(g.value) };
+                    const point = { x: pendingX, y: g.float };
                     if (activeLine) activeLine.push(point);
                     else {
                         fallbackPoints.push(point);
@@ -98,11 +98,11 @@ export const parseMLeader = (state: DxfParserState, common: any): DxfMLeader => 
                 }
                 break;
             case 11:
-                pendingDoglegX = parseFloat(g.value);
+                pendingDoglegX = g.float;
                 break;
             case 21:
                 if (pendingDoglegX !== null) {
-                    entity.doglegVector = { x: pendingDoglegX, y: parseFloat(g.value) };
+                    entity.doglegVector = { x: pendingDoglegX, y: g.float };
                     pendingDoglegX = null;
                 }
                 break;
@@ -182,19 +182,19 @@ export const parseImage = (state: DxfParserState, common: any): DxfImage => {
         const p = state.peek();
         if (!p || p.code === 0) break;
         const g = state.next()!;
-        applyCommonGroup(entity, g.code, g.value);
+        applyCommonGroupFrom(entity, g);
         switch (g.code) {
-            case 10: entity.position.x = parseFloat(g.value); break;
-            case 20: entity.position.y = parseFloat(g.value); break;
-            case 30: z = parseFloat(g.value); break;
-            case 11: entity.uVector!.x = parseFloat(g.value); break;
-            case 21: entity.uVector!.y = parseFloat(g.value); break;
-            case 31: entity.uVector!.z = parseFloat(g.value); break;
-            case 12: entity.vVector!.x = parseFloat(g.value); break;
-            case 22: entity.vVector!.y = parseFloat(g.value); break;
-            case 32: entity.vVector!.z = parseFloat(g.value); break;
-            case 13: entity.imageSize.x = parseFloat(g.value); break;
-            case 23: entity.imageSize.y = parseFloat(g.value); break;
+            case 10: entity.position.x = g.float; break;
+            case 20: entity.position.y = g.float; break;
+            case 30: z = g.float; break;
+            case 11: entity.uVector!.x = g.float; break;
+            case 21: entity.uVector!.y = g.float; break;
+            case 31: entity.uVector!.z = g.float; break;
+            case 12: entity.vVector!.x = g.float; break;
+            case 22: entity.vVector!.y = g.float; break;
+            case 32: entity.vVector!.z = g.float; break;
+            case 13: entity.imageSize.x = g.float; break;
+            case 23: entity.imageSize.y = g.float; break;
             case 340: entity.imageRef = g.value; break;
             case 281: entity.brightness = parseInt(g.value, 10); break;
             case 282: entity.contrast = parseInt(g.value, 10); break;
@@ -220,10 +220,10 @@ export const parseWipeout = (state: DxfParserState, common: any): DxfWipeout => 
         const p = state.peek();
         if (!p || p.code === 0) break;
         const g = state.next()!;
-        applyCommonGroup(entity, g.code, g.value);
+        applyCommonGroupFrom(entity, g);
         switch (g.code) {
-            case 10: currX = parseFloat(g.value); break;
-            case 20: if (currX !== null) { entity.points.push({ x: currX, y: parseFloat(g.value) }); currX = null; } break;
+            case 10: currX = g.float; break;
+            case 20: if (currX !== null) { entity.points.push({ x: currX, y: g.float }); currX = null; } break;
             case 70: entity.closed = (parseInt(g.value, 10) & 1) === 1; break;
         }
     }
@@ -247,15 +247,15 @@ export const parseTolerance = (state: DxfParserState, common: any): DxfTolerance
         const p = state.peek();
         if (!p || p.code === 0) break;
         const g = state.next()!;
-        applyCommonGroup(entity, g.code, g.value);
+        applyCommonGroupFrom(entity, g);
         switch (g.code) {
             case 1: entity.text = g.value; break;
-            case 10: entity.position.x = parseFloat(g.value); break;
-            case 20: entity.position.y = parseFloat(g.value); break;
-            case 30: z = parseFloat(g.value); break;
-            case 11: entity.direction!.x = parseFloat(g.value); break;
-            case 21: entity.direction!.y = parseFloat(g.value); break;
-            case 31: entity.direction!.z = parseFloat(g.value); break;
+            case 10: entity.position.x = g.float; break;
+            case 20: entity.position.y = g.float; break;
+            case 30: z = g.float; break;
+            case 11: entity.direction!.x = g.float; break;
+            case 21: entity.direction!.y = g.float; break;
+            case 31: entity.direction!.z = g.float; break;
         }
     }
     entity.position.z = z;
