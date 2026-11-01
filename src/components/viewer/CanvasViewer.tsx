@@ -1,11 +1,17 @@
 import React, { useRef, useState, WheelEvent, MouseEvent, useEffect, useLayoutEffect, useCallback } from 'react';
 import { AnyEntity, ViewPort, DxfLayer, DxfBlock, DxfStyle, DxfLineType, Point2D, CanvasTheme, DrawingColorMode } from '@/types';
 import { renderEntitiesToCanvas, hitTest, hitTestBox } from '@/renderer/services/canvasRenderService';
+import { buildPathCache, PathCache } from '@/renderer/services/pathCache';
 import { Language, t } from '@/config/i18n';
 import { CANVAS_THEME_COLORS, SELECTION_CONFIG, SHORTCUT_CONFIG, VIEWER_DEFAULTS, ZOOM_CONFIG, BREAKPOINTS, INTERACTION_CONFIG, CONTEXT_MENU_CONFIG } from '@/config/viewerConfig';
 import { boxQueryBounds, createSceneIndex, pointQueryBounds, SceneBounds, SceneIndex } from '@/renderer/services/sceneIndex';
 import { SCENE_INDEX_ASYNC_THRESHOLD } from '@/renderer/services/sceneIndexBuilder';
 import type { SceneIndexBuildHandle } from '@/hooks/sceneIndexAsync';
+
+/** Path2D 缓存的使用门控：缓存几何无 LOD 剔除——zoom × 可入缓存的实体数
+ *  低于该值（全图视图下投影过小）时走逐实体 LOD 路径更快。
+ *  zoom × entities ≈ 全部线段的像素长度量级，量级上等同于"内容像素总长"。 */
+const PATH_CACHE_MIN_COVERAGE = 5000;
 
 /**
  * Canvas 渲染核心组件
@@ -14,6 +20,8 @@ import type { SceneIndexBuildHandle } from '@/hooks/sceneIndexAsync';
 interface CanvasViewerProps {
   active?: boolean;
   entities: AnyEntity[]; // 要渲染的实体列表
+  /** 模型空间实体：渲染纸张空间布局时供视口投影使用（当前布局为模型空间时不传/传同数组）。 */
+  modelEntities?: AnyEntity[];
   layers: Record<string, DxfLayer>; // 图层信息
   blocks?: Record<string, DxfBlock>; // 块定义
   styles?: Record<string, DxfStyle>; // 文字样式
@@ -39,7 +47,8 @@ interface CanvasViewerProps {
   onHideSelected?: (ids?: Set<string>) => void; // 隐藏当前选择
   onIsolateSelected?: (ids?: Set<string>) => void; // 隔离当前选择
   onHideSelectedLayers?: (ids?: Set<string>) => void; // 关闭当前选择所在图层
-  snapshotMode?: boolean; // 快照平移缩放（性能模式）：交互期间用快照位图贴图
+  /** 已废弃：交互期显示策略改为"保持上一帧 + 停止后一次渲染"（无模糊、无闪烁），此属性不再影响行为。 */
+  snapshotMode?: boolean;
 }
 
 /** 稳定的空集合默认值：未传可见性集合时避免每次渲染新建对象。 */
@@ -48,6 +57,7 @@ const EMPTY_ENTITY_IDS: ReadonlySet<string> = new Set<string>();
 const CanvasViewer: React.FC<CanvasViewerProps> = ({ 
     active = true,
     entities, 
+    modelEntities,
     layers, 
     blocks = {}, 
     styles = {}, 
@@ -71,7 +81,7 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
     onHideSelected,
     onIsolateSelected,
     onHideSelectedLayers,
-    snapshotMode = true
+    // snapshotMode 已废弃：交互策略改为"保持上一帧 + 停止后一次渲染"
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -157,18 +167,34 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
     };
   }, [entities]);
 
-  // ---- 交互期快照渲染（freeze + refine，CAD 常用技巧）----
-  // 平移/缩放进行中：只把上一帧完整画面按视图增量变换后 drawImage 贴出
-  // （一次 GPU blit，成本与实体数量无关）；交互停止 150ms 后触发一次
-  // 全量精绘。这样拖动/滚轮期间帧耗时不再随场景规模增长。
+  // ---- 交互期显示策略：保持上一帧，停止后一次性渲染 ----
+  // 平移进行中：上一帧按位移精确平移贴出（纯位移、像素级精确、无模糊），
+  // 提供连续的视觉反馈；缩放进行中：保持上一帧不动（缩放贴图会模糊）。
+  // 交互停止 150ms 后：离屏一次性渲染当前屏幕范围，完成后原子呈现——
+  // 任何时刻可见画布都是一张完整画面，无闪烁、无模糊、无渐进。
   const snapshotCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const snapshotValidRef = useRef(false);
   const snapshotStateRef = useRef<{ viewPort: ViewPort; width: number; height: number; dpr: number } | null>(null);
-  const refineTimerRef = useRef<number | undefined>(undefined);
-  /** 上次交互期快照重拍时间（节流用）。 */
-  const lastResnapshotAtRef = useRef(0);
+  /** 离屏渲染画布：最终渲染在此进行，完成后原子呈现到可见画布。 */
+  const offscreenRef = useRef<HTMLCanvasElement | null>(null);
+  /** 世界坐标 Path2D 缓存：每样式组一次 stroke（消除逐实体路径调用）。 */
+  const pathCacheRef = useRef<PathCache | null>(null);
+  const pathCacheSourceRef = useRef<AnyEntity[] | null>(null);
+  const pathCacheThemeRef = useRef<string | null>(null);
+  const pathCacheHiddenRef = useRef<Set<string> | null>(null);
+  const renderTimerRef = useRef<number | undefined>(undefined);
+  /** 会话完成提交视图后跳过一次冗余的 prop 驱动重绘（画布已是该视图的完整画面）。 */
+  const skipNextRenderRef = useRef(false);
 
-  /** 把当前主画布内容存为快照，并记录对应的视图状态。 */
+  /** 取消已调度的延迟渲染。 */
+  const cancelScheduledRender = useCallback(() => {
+    if (renderTimerRef.current !== undefined) {
+      window.clearTimeout(renderTimerRef.current);
+      renderTimerRef.current = undefined;
+    }
+  }, []);
+
+  /** 把当前主画布内容存为上一帧（供平移时精确贴图）。 */
   const captureSnapshot = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas || canvas.width === 0 || canvas.height === 0) return;
@@ -200,19 +226,19 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
    * drawImage 变换贴图。平移是精确的；缩放是非精确放大/缩小，
    * 但仅持续到交互结束后的精绘，视觉可接受（与商业查看器一致）。
    */
-  const drawSnapshotTransformed = useCallback((nextViewPort: ViewPort) => {
+  const drawSnapshotTransformed = useCallback((nextViewPort: ViewPort, targetCtx?: CanvasRenderingContext2D) => {
     const canvas = canvasRef.current;
     const snap = snapshotCanvasRef.current;
     const state = snapshotStateRef.current;
     if (!canvas || !snap || !state || !snapshotValidRef.current) return false;
 
-    const ctx = canvas.getContext('2d');
+    const ctx = targetCtx ?? canvas.getContext('2d');
     if (!ctx) return false;
 
-    // 主画布按新视图清底（设备像素坐标）
+    // 目标画布按新视图清底（设备像素坐标）
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = CANVAS_THEME_COLORS[theme];
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
     // 快照视图 → 新视图的屏幕映射（设备像素）：
     // 世界点 p 在快照中的位置 s0 = (p - t0) * z0 * dpr + c0；
@@ -227,8 +253,8 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
     const ratio = isPurePan ? 1 : rawRatio;
     const c0x = state.width / 2;
     const c0y = state.height / 2;
-    const c1x = canvas.width / 2;
-    const c1y = canvas.height / 2;
+    const c1x = ctx.canvas.width / 2;
+    const c1y = ctx.canvas.height / 2;
 
     let dx = (0 - c0x) * ratio + c1x + (state.viewPort.targetX - nextViewPort.targetX) * nextViewPort.zoom * dpr;
     let dy = (0 - c0y) * ratio + c1y - (state.viewPort.targetY - nextViewPort.targetY) * nextViewPort.zoom * dpr;
@@ -248,24 +274,179 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
     return true;
   }, [theme]);
 
-  /** 交互结束后的精绘调度。 */
-  const scheduleRefine = useCallback(() => {
-    if (refineTimerRef.current !== undefined) window.clearTimeout(refineTimerRef.current);
-    refineTimerRef.current = window.setTimeout(() => {
-      refineTimerRef.current = undefined;
-      isInteractingRef.current = false;
-      // 把交互期间累积的最新视图提交给 React 状态——viewPort prop 变化
-      // 会触发渲染 effect 执行一次全量精绘。
-      const pending = pendingViewPortRef.current;
-      pendingViewPortRef.current = null;
-      if (pending) onViewPortChangeRef.current(pending);
-      // 视图无变化时（如尺寸调整）也要保证精绘一次。
-      setCanvasSizeVersion(v => v + 1);
-    }, INTERACTION_CONFIG.interactionRefineDelayMs);
+  /**
+   * 构建 RenderSceneOptions：一次性渲染（离屏）与 prop 驱动重绘共用，
+   * 保证两条渲染路径的输入完全一致。
+   */
+  const buildRenderOptions = useCallback((vp: ViewPort, targetCtx?: CanvasRenderingContext2D) => ({
+    ctx: targetCtx ?? canvasRef.current!.getContext('2d')!,
+    entities,
+    layers,
+    blocks,
+    styles,
+    lineTypes,
+    ltScale,
+    viewPort: vp,
+    selectedIds: selectedEntityIds,
+    modelEntities,
+    width: containerRef.current!.getBoundingClientRect().width,
+    height: containerRef.current!.getBoundingClientRect().height,
+    theme,
+    drawingColorMode,
+    hiddenLayers,
+    hiddenEntityIds,
+    isolatedEntityIds,
+    sceneIndex,
+  }), [entities, modelEntities, layers, blocks, styles, lineTypes, ltScale, selectedEntityIds, theme, drawingColorMode, hiddenLayers, hiddenEntityIds, isolatedEntityIds, sceneIndex]);
+
+  /** 同步画布尺寸与 DPR 变换，返回 CSS 尺寸。 */
+  const prepareCanvas = useCallback((): { width: number; height: number } | null => {
+    const canvas = canvasRef.current;
+    const container = containerRef.current;
+    if (!canvas || !container) return null;
+    const rect = container.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const pixelWidth = Math.max(1, Math.round(rect.width * dpr));
+    const pixelHeight = Math.max(1, Math.round(rect.height * dpr));
+    if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
+      canvas.width = pixelWidth;
+      canvas.height = pixelHeight;
+      canvas.style.width = `${rect.width}px`;
+      canvas.style.height = `${rect.height}px`;
+    }
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.scale(dpr, dpr);
+    return { width: rect.width, height: rect.height };
   }, []);
 
+  /**
+   * 一次性渲染当前视图：在离屏画布完成全部绘制后原子呈现到可见画布。
+   *
+   * 渲染期间可见画布保持上一帧不变（无空白、无半成品帧）；完成后整帧
+   * 切换——用户要求的"交互保持上一帧，停止后一次加载"语义。
+   *
+   * 简单几何（LINE/LWPOLYLINE/CIRCLE/ARC）走世界坐标 Path2D 缓存：
+   * 每样式组一次 stroke（视口矩阵经 setTransform 应用），消除逐实体
+   * 路径调用；缓存过期（实体/图层/主题变化）时重建。
+   */
+  const renderAndPresent = useCallback((vp: ViewPort) => {
+    const canvas = canvasRef.current;
+    if (!canvas || !containerRef.current) return;
+
+    const size = prepareCanvas();
+    if (!size) return;
+
+    // 离屏画布（尺寸/DPR 与主画布一致）
+    let off = offscreenRef.current;
+    if (!off) {
+      off = document.createElement('canvas');
+      offscreenRef.current = off;
+    }
+    if (off.width !== canvas.width || off.height !== canvas.height) {
+      off.width = canvas.width;
+      off.height = canvas.height;
+    }
+    const offCtx = off.getContext('2d');
+    if (!offCtx) return;
+    offCtx.setTransform(1, 0, 0, 1, 0, 0);
+    const dpr = window.devicePixelRatio || 1;
+    offCtx.scale(dpr, dpr);
+
+    try {
+      // ── Path2D 缓存路径：覆盖的简单几何按样式组批量 stroke ──
+      // 缓存失效条件：实体集变化 / 图层显隐 / 主题 / 颜色模式 / 线型比例。
+      // 缓存内几何无 LOD 剔除——全图视图（zoom 极小）下万级实体全画反而
+      // 慢于 LOD 剔除的逐实体路径，故按 zoom 门控：zoom 足够大才用缓存。
+      if (pathCacheSourceRef.current !== entities
+        || pathCacheThemeRef.current !== theme + drawingColorMode + ltScale
+        || pathCacheHiddenRef.current !== hiddenLayers) {
+        // 缓存与缩放完全解耦（几何为世界坐标，线宽/虚线渲染时按 zoom 换算）
+        // ——缩放交互不再触发重建。
+        pathCacheRef.current = buildPathCache(entities, {
+          layers, lineTypes, globalLineTypeScale: ltScale, drawingColorMode, theme,
+        }, hiddenLayers);
+        pathCacheSourceRef.current = entities;
+        pathCacheThemeRef.current = theme + drawingColorMode + ltScale;
+        pathCacheHiddenRef.current = hiddenLayers;
+      }
+      const cache = pathCacheRef.current;
+      const useCache = cache !== null
+        && selectedEntityIds.size === 0 && hiddenEntityIds.size === 0 && !isolatedEntityIds
+        && vp.zoom * Math.max(cache.stats.entities, 1) > PATH_CACHE_MIN_COVERAGE;
+
+      if (useCache && cache) {
+        // 背景：批量几何之前铺主题色（下方逐实体路径以透明底叠加其余内容）
+        offCtx.setTransform(1, 0, 0, 1, 0, 0);
+        offCtx.fillStyle = CANVAS_THEME_COLORS[theme];
+        offCtx.fillRect(0, 0, size.width * dpr, size.height * dpr);
+        // 视口矩阵：世界 → 屏幕（CSS px，y 翻转），含 DPR
+        offCtx.setTransform(dpr * vp.zoom, 0, 0, -dpr * vp.zoom,
+          dpr * (size.width / 2 - vp.targetX * vp.zoom),
+          dpr * (size.height / 2 + vp.targetY * vp.zoom));
+        offCtx.lineCap = 'round';
+        offCtx.lineJoin = 'round';
+        for (const g of cache.groups) {
+          offCtx.strokeStyle = g.color;
+          // 线宽：屏幕像素语义 → 世界变换下需除以 zoom；并保底 1px
+          offCtx.lineWidth = Math.max(g.lineWidthPx / vp.zoom, 1 / vp.zoom);
+          // 虚线：世界节距 → 像素（变换下 × zoom）
+          offCtx.setLineDash(g.dashPattern.map(v => v * vp.zoom));
+          offCtx.stroke(g.path);
+        }
+        // 恢复屏幕空间变换（后续逐实体路径按 CSS px 绘制）
+        offCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        offCtx.setLineDash([]);
+        // 其余实体（文字/标注/INSERT/填充）仍走逐实体路径（跳过已批量的）
+        renderEntitiesToCanvas({
+          ...buildRenderOptions(vp, offCtx),
+          width: size.width,
+          height: size.height,
+          pathCacheCovered: cache.coveredIds,
+          background: null,
+        });
+        onRenderError?.(null);
+      } else {
+        renderEntitiesToCanvas({ ...buildRenderOptions(vp, offCtx), width: size.width, height: size.height });
+        onRenderError?.(null);
+      }
+    } catch (err) {
+      onRenderError?.(err instanceof Error ? err.message : String(err));
+      return;
+    }
+
+    // 原子呈现：离屏完整帧一次性贴到可见画布（设备像素对设备像素）
+    const vctx = canvas.getContext('2d');
+    if (vctx) {
+      vctx.save();
+      vctx.setTransform(1, 0, 0, 1, 0, 0);
+      vctx.drawImage(off, 0, 0);
+      vctx.restore();
+    }
+    // 完整渲染成功后更新上一帧，供平移时精确贴图使用
+    captureSnapshot();
+  }, [entities, layers, blocks, styles, lineTypes, ltScale, selectedEntityIds, theme, drawingColorMode, onRenderError, hiddenLayers, hiddenEntityIds, isolatedEntityIds, sceneIndex, captureSnapshot, buildRenderOptions]);
+
+  /** 交互停止后的调度：防抖 150ms，一次性渲染当前屏幕范围。 */
+  const scheduleRender = useCallback(() => {
+    if (renderTimerRef.current !== undefined) window.clearTimeout(renderTimerRef.current);
+    renderTimerRef.current = window.setTimeout(() => {
+      renderTimerRef.current = undefined;
+      isInteractingRef.current = false;
+      const pending = pendingViewPortRef.current ?? viewPortRef.current;
+      pendingViewPortRef.current = null;
+      if (pending) {
+        renderAndPresent(pending);
+        // 提交视图（收敛 React 状态），并跳过随之触发的冗余 prop 重绘
+        skipNextRenderRef.current = true;
+        onViewPortChangeRef.current(pending);
+      }
+    }, INTERACTION_CONFIG.interactionRefineDelayMs);
+  }, [renderAndPresent]);
+
   useEffect(() => () => {
-    if (refineTimerRef.current !== undefined) window.clearTimeout(refineTimerRef.current);
+    if (renderTimerRef.current !== undefined) window.clearTimeout(renderTimerRef.current);
   }, []);
   const contextMenuLabels = {
     showAll: t(lang, 'showAll'),
@@ -288,116 +469,32 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
     });
   }, [entities, hiddenEntityIds, hiddenLayers, isolatedEntityIds, sceneIndex]);
 
-  /**
-   * 全量渲染指定视图并更新快照。两条路径共用：
-   * - 精绘：交互停止后由渲染 effect 以提交的 viewPort 调用；
-   * - 快照重拍：持续放大中快照放大比超阈值时就地调用（见 scheduleViewPortChange），
-   *   把 blit 的模糊上限限制在阈值内——深缩放后可见实体减少，重拍成本随之下降。
-   */
-  const renderFull = useCallback((vp: ViewPort) => {
-    const canvas = canvasRef.current;
-    if (!canvas || !containerRef.current) return;
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    // 处理高 DPI
-    const rect = containerRef.current.getBoundingClientRect();
-    const dpr = window.devicePixelRatio || 1;
-
-    // 如果需要，调整大小
-    const pixelWidth = Math.max(1, Math.round(rect.width * dpr));
-    const pixelHeight = Math.max(1, Math.round(rect.height * dpr));
-    if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) {
-      canvas.width = pixelWidth;
-      canvas.height = pixelHeight;
-      canvas.style.width = `${rect.width}px`;
-      canvas.style.height = `${rect.height}px`;
-    }
-
-    // 为 DPI 重置缩放
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.scale(dpr, dpr);
-
-    try {
-      renderEntitiesToCanvas({
-        ctx,
-        entities,
-        layers,
-        blocks,
-        styles,
-        lineTypes,
-        ltScale,
-        viewPort: vp,
-        selectedIds: selectedEntityIds,
-        width: rect.width,
-        height: rect.height,
-        theme,
-        drawingColorMode,
-        hiddenLayers,
-        hiddenEntityIds,
-        isolatedEntityIds,
-        sceneIndex,
-      });
-      onRenderError?.(null);
-
-      // 完整精绘成功后更新快照，供下一次交互期贴图使用
-      captureSnapshot();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      ctx.fillStyle = CANVAS_THEME_COLORS[theme];
-      ctx.fillRect(0, 0, rect.width, rect.height);
-      onRenderError?.(message);
-    }
-  }, [entities, layers, blocks, styles, lineTypes, ltScale, selectedEntityIds, theme, drawingColorMode, onRenderError, hiddenLayers, hiddenEntityIds, isolatedEntityIds, sceneIndex, captureSnapshot]);
 
   const scheduleViewPortChange = useCallback((nextViewPort: ViewPort) => {
     pendingViewPortRef.current = nextViewPort;
     viewPortRef.current = nextViewPort;
+    cancelScheduledRender();
 
-    // 快照模式（freeze 阶段）：立即用快照近似呈现新视图——一次 drawImage
-    // 贴图，成本与实体数量无关；并抑制本次 rAF 全量渲染。
-    // 交互停止 150ms 后由 scheduleRefine 触发一次全量精绘（refine 阶段）。
-    // 非 snapshotMode 时走下方 rAF 路径：每帧提交视图并全量重绘（精确但较慢）。
-    if (snapshotMode && snapshotValidRef.current) {
-      // 持续放大时快照位图被不断放大 → 逐渐模糊。放大比超过阈值就地全量
-      // 重拍一次（此后 blit 回到 1:1），把模糊限制在阈值内；节流避免连续
-      // 滚轮时每帧全量渲染。缩小是降采样本身清晰，不触发重拍。
-      const snapZoom = snapshotStateRef.current?.viewPort.zoom ?? nextViewPort.zoom;
-      const drift = nextViewPort.zoom / snapZoom;
-      const now = performance.now();
-      if (drift > INTERACTION_CONFIG.snapshotResnapshotZoomFactor
-        && now - lastResnapshotAtRef.current >= INTERACTION_CONFIG.snapshotResnapshotIntervalMs) {
-        lastResnapshotAtRef.current = now;
-        renderFull(nextViewPort);
-        isInteractingRef.current = true;
-        if (viewPortUpdateFrameRef.current !== undefined) {
-          cancelAnimationFrame(viewPortUpdateFrameRef.current);
-          viewPortUpdateFrameRef.current = undefined;
-        }
-        scheduleRefine();
-        return;
+    // 交互期显示策略：
+    // - 平移（纯位移）：上一帧按位移精确贴出——像素级精确、无模糊，
+    //   提供连续的视觉反馈；
+    // - 缩放：保持上一帧不动（缩放贴图会模糊，不做）。
+    // 两种情况都不触发重绘；交互停止 150ms 后一次性渲染当前屏幕范围。
+    const snapZoom = snapshotStateRef.current?.viewPort.zoom;
+    const ratio = snapZoom ? nextViewPort.zoom / snapZoom : 1;
+    if (snapshotValidRef.current && Math.abs(ratio - 1) < 0.005) {
+      drawSnapshotTransformed(nextViewPort);
+      isInteractingRef.current = true;
+      if (viewPortUpdateFrameRef.current !== undefined) {
+        cancelAnimationFrame(viewPortUpdateFrameRef.current);
+        viewPortUpdateFrameRef.current = undefined;
       }
-      if (drawSnapshotTransformed(nextViewPort)) {
-        isInteractingRef.current = true;
-        // 取消已排队的全量渲染帧，交互期间只走快照路径。
-        if (viewPortUpdateFrameRef.current !== undefined) {
-          cancelAnimationFrame(viewPortUpdateFrameRef.current);
-          viewPortUpdateFrameRef.current = undefined;
-        }
-        scheduleRefine();
-        return;
-      }
+      scheduleRender();
+      return;
     }
 
-    if (viewPortUpdateFrameRef.current !== undefined) return;
-    viewPortUpdateFrameRef.current = requestAnimationFrame(() => {
-      viewPortUpdateFrameRef.current = undefined;
-      const pending = pendingViewPortRef.current;
-      pendingViewPortRef.current = null;
-      if (pending) onViewPortChangeRef.current(pending);
-    });
-  }, [drawSnapshotTransformed, renderFull, scheduleRefine, snapshotMode]);
+    scheduleRender();
+  }, [cancelScheduledRender, drawSnapshotTransformed, scheduleRender]);
 
   useEffect(() => () => {
     if (viewPortUpdateFrameRef.current !== undefined) cancelAnimationFrame(viewPortUpdateFrameRef.current);
@@ -494,13 +591,11 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
     setIsBoxSelecting(false);
     pendingViewPortRef.current = null;
     isInteractingRef.current = false;
+    cancelScheduledRender();
+    skipNextRenderRef.current = false;
     if (viewPortUpdateFrameRef.current !== undefined) {
       cancelAnimationFrame(viewPortUpdateFrameRef.current);
       viewPortUpdateFrameRef.current = undefined;
-    }
-    if (refineTimerRef.current !== undefined) {
-      window.clearTimeout(refineTimerRef.current);
-      refineTimerRef.current = undefined;
     }
   }, [active]);
 
@@ -527,13 +622,16 @@ const CanvasViewer: React.FC<CanvasViewerProps> = ({
 
   useLayoutEffect(() => {
      if (!active) return;
+     // 交互后的一次性渲染已提交视图并画好完整画面：跳过这一次冗余重绘
+     if (skipNextRenderRef.current) { skipNextRenderRef.current = false; return; }
+     cancelScheduledRender();
      if (renderRef.current) cancelAnimationFrame(renderRef.current);
-     renderRef.current = requestAnimationFrame(() => renderFull(viewPort));
+     renderRef.current = requestAnimationFrame(() => renderAndPresent(viewPort));
 
      return () => {
         if (renderRef.current) cancelAnimationFrame(renderRef.current);
      };
-  }, [active, viewPort, canvasSizeVersion, renderFull]);
+  }, [active, viewPort, canvasSizeVersion, renderAndPresent, cancelScheduledRender]);
 
   // 处理滚轮和触控事件
   useEffect(() => {

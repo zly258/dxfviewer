@@ -134,6 +134,8 @@ export const renderSceneToCanvas = (
   renderEntitiesToCanvas({
     ctx,
     entities: scene.entities,
+    // 纸张空间布局的视口需要投影模型空间内容
+    modelEntities: scene.layout?.isModel ? undefined : data.entities,
     layers: data.layers ?? {},
     blocks: data.blocks ?? {},
     styles: data.styles ?? {},
@@ -170,6 +172,23 @@ export interface SceneView {
  * Canvas（PNG）与 SVG 两个后端共用，保证同一份图纸在两种导出里的
  * 取景与留白完全一致。
  */
+export interface SceneView {
+  layout: DxfLayout | undefined;
+  entities: AnyEntity[];
+  viewPort: ViewPort;
+  /** 布局旋转角度（度）：纸张空间布局方向与画布不匹配时自动旋转 90°。 */
+  rotation: number;
+}
+
+/**
+ * 解析布局 + 计算适配视口。
+ *
+ * Canvas（PNG）与 SVG 两个后端共用，保证同一份图纸在两种导出里的
+ * 取景与留白完全一致。
+ *
+ * 纸张空间布局：如果实体范围是竖向而画布是横向（或反之），自动旋转 90°
+ * ——与 AutoCAD 的打印方向一致（多数建筑图纸布局定义为竖向但打印为横向）。
+ */
 export const resolveSceneView = (
   data: DxfData,
   options: {
@@ -192,5 +211,5 @@ export const resolveSceneView = (
     ? layout.entities
     : (data.entities ?? []);
 
-  return { layout, entities, viewPort };
+  return { layout, entities, viewPort, rotation: 0 };
 };

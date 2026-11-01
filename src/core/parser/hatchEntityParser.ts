@@ -1,5 +1,5 @@
 import { DxfHatch, EntityType, HatchEdge, HatchLoop } from '@/types';
-import { DxfParserState, applyCommonGroup, readPoint, readVal } from './parserState';
+import { DxfParserState, applyCommonGroupFrom, readPoint, readVal } from './parserState';
 import { getOcsToWcsMatrix, applyOcs, getWcsRotation } from '@/core/geometry/ocs';
 import { sampleSplinePoints } from '@/core/geometry/curveSampling';
 import { ENTITY_SAMPLING_CONFIG } from '@/config/parserConfig';
@@ -25,17 +25,17 @@ export const parseHatch = (state: DxfParserState, common: any): DxfHatch => {
         const next = state.peek();
         if (!next || next.code === 0) break;
         const g = state.next()!;
-        applyCommonGroup(entity, g.code, g.value);
+        applyCommonGroupFrom(entity, g);
 
-        if (g.code === 30) elevation = parseFloat(g.value);
+        if (g.code === 30) elevation = g.float;
         if (g.code === 2) entity.patternName = g.value;
-        if (g.code === 70) entity.solid = (parseInt(g.value) & 1) === 1;
-        if (g.code === 41) entity.scale = parseFloat(g.value);
-        if (g.code === 52) entity.angle = parseFloat(g.value);
+        if (g.code === 70) entity.solid = ((g.float | 0) & 1) === 1;
+        if (g.code === 41) entity.scale = g.float;
+        if (g.code === 52) entity.angle = g.float;
 
         if (g.code === 92) {
             if (currentLoop) entity.loops.push(currentLoop);
-            const type = parseInt(g.value);
+            const type = (g.float | 0);
             currentLoop = { type, edges: [], isPolyline: (type & 2) === 2, points: [], bulges: [] };
             edgesToRead = 0;
             polylineVerticesToRead = 0;
@@ -45,18 +45,18 @@ export const parseHatch = (state: DxfParserState, common: any): DxfHatch => {
             if (currentLoop.isPolyline) {
                 if (g.code === 93) polylineVerticesToRead = parseInt(g.value, 10);
                 const shouldReadVertex = polylineVerticesToRead === 0 || polylineVerticesRead < polylineVerticesToRead;
-                if (shouldReadVertex && g.code === 10) { currentLoop.points!.push({ x: parseFloat(g.value), y: 0 }); currentLoop.bulges!.push(0); }
+                if (shouldReadVertex && g.code === 10) { currentLoop.points!.push({ x: g.float, y: 0 }); currentLoop.bulges!.push(0); }
                 if (shouldReadVertex && g.code === 20 && currentLoop.points!.length > 0) {
-                    currentLoop.points![currentLoop.points!.length - 1].y = parseFloat(g.value);
+                    currentLoop.points![currentLoop.points!.length - 1].y = g.float;
                     polylineVerticesRead++;
                 }
                 if ((shouldReadVertex || polylineVerticesRead === polylineVerticesToRead) && g.code === 42 && currentLoop.bulges!.length > 0) {
-                    currentLoop.bulges![currentLoop.bulges!.length - 1] = parseFloat(g.value);
+                    currentLoop.bulges![currentLoop.bulges!.length - 1] = g.float;
                 }
             } else {
-                if (g.code === 93) edgesToRead = parseInt(g.value);
+                if (g.code === 93) edgesToRead = (g.float | 0);
                 if (g.code === 72 && edgesToRead > 0) {
-                    const edgeType = parseInt(g.value);
+                    const edgeType = (g.float | 0);
                     const edge: HatchEdge = { type: 'LINE' };
                     if (edgeType === 1) {
                         edge.type = 'LINE';

@@ -48,6 +48,8 @@ export interface RenderContext {
     counterclockwise?: boolean,
   ): void;
   closePath(): void;
+  /** 裁剪：当前路径所围区域（纸张空间视口的模型投影用）。 */
+  clip(): void;
 
   // ---- 绘制 ----
   stroke(): void;

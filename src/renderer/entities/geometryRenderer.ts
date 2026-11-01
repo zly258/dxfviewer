@@ -1,7 +1,8 @@
 import type { RenderContext } from '@/renderer/context';
-import { 
-  Point2D, 
-  DxfLine, 
+import {
+  Point2D,
+  AnyEntity,
+  DxfLine,
   DxfRay, 
   DxfXLine, 
   DxfPoint, 
@@ -261,26 +262,93 @@ export const drawHelix = (ctx: RenderContext, ent: DxfHelix, transform: RenderTr
 
 
 /**
- * 绘制纸张空间视口边框。
+ * 视口投影上下文：纸张空间视口需要引用模型空间实体做投影绘制。
  */
-export const drawViewport = (ctx: RenderContext, ent: DxfViewport, transform: RenderTransform) => {
+export interface ViewportDrawContext {
+    /** 模型空间实体（当前布局为纸张空间时提供）。 */
+    modelEntities?: AnyEntity[];
+    /** 实体绘制回调（复用主渲染调度器，保证实体渲染一致）。 */
+    drawEntity: (
+        ent: AnyEntity,
+        transform: RenderTransform,
+        parentLayerName?: string,
+        parentColor?: string,
+        parentSelected?: boolean,
+        depth?: number,
+        noMTextWrap?: boolean,
+    ) => void;
+}
+
+/**
+ * 绘制纸张空间视口：在裁剪矩形内投影模型空间内容。
+ *
+ * 模型 → 纸张 的映射：paper = center + (model - viewCenter) × scale，
+ * 其中 scale = height(纸张) / viewHeight(模型)。
+ *
+ * 不绘制视口边框：AutoCAD 打印时「视口边界」默认不出图，且巨大的边框
+ * 矩形在布局中容易被误认为偏离主区域的杂散元素。
+ */
+export const drawViewport = (
+    ctx: RenderContext,
+    ent: DxfViewport,
+    transform: RenderTransform,
+    context: ViewportDrawContext,
+) => {
     const halfWidth = Math.abs(ent.width || 0) / 2;
     const halfHeight = Math.abs(ent.height || 0) / 2;
     if (halfWidth <= 0 || halfHeight <= 0) return;
-    const corners = [
+
+    const modelEntities = context.modelEntities;
+    if (!modelEntities || modelEntities.length === 0 || !ent.viewCenter || !ent.viewHeight || ent.viewHeight <= 0) {
+        // 无模型内容可投影：不绘制任何内容
+        return;
+    }
+
+    // 模型 → 纸张 的缩放比例：paper 全高 / model 全高（viewHeight 为模型可视全高）
+    const scale = ent.height / ent.viewHeight;
+    const viewCenter = ent.viewCenter;
+    // 视口在模型空间中的可视窗口（用于实体级剔除）
+    const modelHalfWidth = halfWidth / scale;
+    const window = {
+        minX: viewCenter.x - modelHalfWidth,
+        maxX: viewCenter.x + modelHalfWidth,
+        minY: viewCenter.y - ent.viewHeight / 2,
+        maxY: viewCenter.y + ent.viewHeight / 2,
+    };
+
+    ctx.save();
+    ctx.beginPath();
+    [
         { x: ent.center.x - halfWidth, y: ent.center.y - halfHeight },
         { x: ent.center.x + halfWidth, y: ent.center.y - halfHeight },
         { x: ent.center.x + halfWidth, y: ent.center.y + halfHeight },
         { x: ent.center.x - halfWidth, y: ent.center.y + halfHeight },
-    ];
-    ctx.beginPath();
-    corners.forEach((corner, index) => {
+    ].forEach((corner, index) => {
         const point = transform.project(corner);
         if (index === 0) ctx.moveTo(point.x, point.y);
         else ctx.lineTo(point.x, point.y);
     });
     ctx.closePath();
-    ctx.stroke();
+    ctx.clip();
+
+    const viewportTransform: RenderTransform = {
+        project: (p: Point2D) => transform.project({
+            x: ent.center.x + (p.x - viewCenter.x) * scale,
+            y: ent.center.y + (p.y - viewCenter.y) * scale,
+        }),
+        scale: transform.scale * scale,
+        rotation: transform.rotation,
+    };
+
+    for (const modelEntity of modelEntities) {
+        if (modelEntity.visible === false) continue;
+        const ext = modelEntity.extents;
+        if (ext && (ext.max.x < window.minX || ext.min.x > window.maxX ||
+            ext.max.y < window.minY || ext.min.y > window.maxY)) continue;
+        context.drawEntity(modelEntity, viewportTransform, undefined, undefined, false, 1, false);
+    }
+
+    ctx.restore();
 };
 
 /**

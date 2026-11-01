@@ -544,21 +544,59 @@ const isAnnotationExtentsNearGeometry = (annotationExtents: { min: Point2D; max:
         && annotationExtents.min.y <= geometryExtents.max.y + padding;
 };
 
-/** 获取数组的中位数。 */
+/**
+ * 快速选择：使 values[0..n-1] 中第 k 小的元素落在返回时的 values[k]。
+ * 原地 Hoare 分区（含重复元素处理），平均 O(n)。
+ * 仅用于"取中位数值"场景——调用方只关心第 k 小的值，不依赖数组最终顺序。
+ */
+const quickselectValue = (values: number[], k: number): number => {
+    let lo = 0;
+    let hi = values.length - 1;
+    while (lo < hi) {
+        const pivot = values[(lo + hi) >> 1];
+        let i = lo;
+        let j = hi;
+        while (i <= j) {
+            while (values[i] < pivot) i++;
+            while (values[j] > pivot) j--;
+            if (i <= j) {
+                const t = values[i];
+                values[i] = values[j];
+                values[j] = t;
+                i++;
+                j--;
+            }
+        }
+        if (k <= j) hi = j;
+        else if (k >= i) lo = i;
+        else break;
+    }
+    return values[k];
+};
+
+/**
+ * 获取数组的中位数。
+ *
+ * **不修改入参**：内部 quickselect 为原地分区，若直接改写入参会打乱
+ * 调用方的下标对应关系（离群过滤用 distances[index] 对应实体，
+ * 中位数计算把数组重排后距离与实体错位，离群过滤随之失效）。
+ */
 const getMedian = (values: number[]): number => {
     if (values.length === 0) return 0;
-    // 调用方传入的均为一次性数组（map/filter 产物）；全为有限值时原地排序，
-    // 省去一次 O(n) 复制（大图纸上该路径每轮范围计算调用多次）。
+    // 含非有限值时先过滤（罕见路径）；全有限时用 quickselect 取中位，
+    // 平均 O(n)，免去 O(n log n) 的全量排序（大图纸上该路径调用多次）。
     let allFinite = true;
     for (let i = 0; i < values.length; i++) {
         if (!Number.isFinite(values[i])) { allFinite = false; break; }
     }
-    const sorted = allFinite
-        ? values.sort((a, b) => a - b)
-        : values.filter(Number.isFinite).sort((a, b) => a - b);
-    if (sorted.length === 0) return 0;
-    const middle = Math.floor(sorted.length / 2);
-    return sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle];
+    // 复制后再原地分区，保证入参顺序不变（O(n) 拷贝，远快于 O(n log n) 排序）
+    const pool = allFinite ? values.slice() : values.filter(Number.isFinite);
+    if (pool.length === 0) return 0;
+    const lowIndex = (pool.length - 1) >> 1;
+    const a = quickselectValue(pool, lowIndex);
+    if (pool.length % 2 === 1) return a;
+    const b = quickselectValue(pool, pool.length >> 1);
+    return (a + b) / 2;
 };
 
 /** 计算包围盒的度量指标（宽度、高度、对角线、宽高比、中心点）。 */
@@ -637,4 +675,29 @@ export const calculateExtents = (entities: AnyEntity[], blocks: Record<string, D
     const nearbyAnnotations = annotationExtents.filter(ext => isAnnotationExtentsNearGeometry(ext, primaryBounds));
     const nearbyFallback = fallbackExtents.filter(ext => isAnnotationExtentsNearGeometry(ext, primaryBounds));
     return mergeExtentsList(filterOutlierExtents([...stablePrimaryExtents, ...nearbyFallback, ...nearbyAnnotations]));
+};
+
+/**
+ * 纸张空间布局的取景范围。
+ *
+ * 视口（VIEWPORT）是模型空间的窗口，其纸张矩形可能远大于图纸本身
+ * （AutoCAD 初始布局会创建一个覆盖全图的 1:1 视口），若按视口矩形取景，
+ * 画面会被大量空白拉小。AutoCAD 打印按图纸范围出图，超出部分不打印——
+ * 因此这里优先用图框/标题栏等非视口实体的范围；只有当这些实体
+ * 面积不足总量一半时（说明图纸空间本就没有图框），才退回全量范围。
+ */
+export const calculatePaperLayoutExtents = (
+  entities: AnyEntity[],
+  blocks: Record<string, DxfBlock>,
+  styles?: Record<string, DxfStyle>,
+): { center: Point2D; width: number; height: number; min: Point2D; max: Point2D } => {
+  const total = calculateExtents(entities, blocks, styles);
+  if (!total || total.width <= 0 || total.height <= 0) return total;
+  const paperEntities = entities.filter(entity => entity.type !== EntityType.VIEWPORT);
+  if (paperEntities.length === 0) return total;
+  const sheet = calculateExtents(paperEntities, blocks, styles);
+  if (!sheet || sheet.width <= 0 || sheet.height <= 0) return total;
+  const sheetArea = sheet.width * sheet.height;
+  const totalArea = total.width * total.height;
+  return sheetArea >= totalArea * 0.5 ? sheet : total;
 };

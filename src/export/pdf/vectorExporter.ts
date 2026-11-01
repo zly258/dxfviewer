@@ -201,6 +201,7 @@ export const exportPdfVectorBytes = async (
     renderEntitiesToCanvas({
       ctx,
       entities: scene.entities,
+      modelEntities: scene.layout?.isModel ? undefined : data.entities,
       layers: data.layers ?? {},
       blocks: data.blocks ?? {},
       styles: data.styles ?? {},

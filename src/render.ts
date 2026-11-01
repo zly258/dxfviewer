@@ -3,8 +3,8 @@
  *
  * 适用于：导出 PNG/PDF、缩略图生成、Web Worker 内渲染、Node（需自备 Canvas）。
  */
-export { renderEntitiesToCanvas } from '@/renderer/services/canvasRenderService';
-export type { RenderSceneOptions } from '@/renderer/services/canvasRenderService';
+export { renderEntitiesToCanvas, createRenderSession } from '@/renderer/services/canvasRenderService';
+export type { RenderSceneOptions, RenderSession } from '@/renderer/services/canvasRenderService';
 
 export { renderSceneToCanvas, resolveLayout, resolveLayoutExtents } from '@/renderer/headless';
 export type { HeadlessCanvas, RenderSceneToCanvasOptions } from '@/renderer/headless';

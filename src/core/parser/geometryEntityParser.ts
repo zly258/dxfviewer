@@ -1,5 +1,5 @@
 import { AnyEntity, DxfHelix, DxfMLine, DxfPolyline, DxfSpline, EntityType, Point2D } from '@/types';
-import { DxfParserState, applyCommonGroup } from './parserState';
+import { DxfParserState, applyCommonGroupFrom } from './parserState';
 import { getOcsToWcsMatrix, applyOcs, getWcsRotation } from '@/core/geometry/ocs';
 import { sampleSplinePoints } from '@/core/geometry/curveSampling';
 
@@ -9,12 +9,12 @@ export const parseLine = (state: DxfParserState, common: any): AnyEntity => {
         const p = state.peek();
         if (!p || p.code === 0) break;
         const g = state.next()!;
-        applyCommonGroup(entity, g.code, g.value);
+        applyCommonGroupFrom(entity, g);
         switch(g.code) {
-            case 10: entity.start.x = parseFloat(g.value); break;
-            case 20: entity.start.y = parseFloat(g.value); break;
-            case 11: entity.end.x = parseFloat(g.value); break;
-            case 21: entity.end.y = parseFloat(g.value); break;
+            case 10: entity.start.x = g.float; break;
+            case 20: entity.start.y = g.float; break;
+            case 11: entity.end.x = g.float; break;
+            case 21: entity.end.y = g.float; break;
         }
     }
     return entity;
@@ -27,12 +27,12 @@ export const parseCircle = (state: DxfParserState, common: any): AnyEntity => {
         const p = state.peek();
         if (!p || p.code === 0) break;
         const g = state.next()!;
-        applyCommonGroup(entity, g.code, g.value);
+        applyCommonGroupFrom(entity, g);
         switch(g.code) {
-            case 10: entity.center.x = parseFloat(g.value); break;
-            case 20: entity.center.y = parseFloat(g.value); break;
-            case 30: z = parseFloat(g.value); break;
-            case 40: entity.radius = parseFloat(g.value); break;
+            case 10: entity.center.x = g.float; break;
+            case 20: entity.center.y = g.float; break;
+            case 30: z = g.float; break;
+            case 40: entity.radius = g.float; break;
         }
     }
     const ocs = getOcsToWcsMatrix(entity.extrusion.x, entity.extrusion.y, entity.extrusion.z);
@@ -47,14 +47,14 @@ export const parseArc = (state: DxfParserState, common: any): AnyEntity => {
         const p = state.peek();
         if (!p || p.code === 0) break;
         const g = state.next()!;
-        applyCommonGroup(entity, g.code, g.value);
+        applyCommonGroupFrom(entity, g);
         switch(g.code) {
-            case 10: entity.center.x = parseFloat(g.value); break;
-            case 20: entity.center.y = parseFloat(g.value); break;
-            case 30: z = parseFloat(g.value); break;
-            case 40: entity.radius = parseFloat(g.value); break;
-            case 50: entity.startAngle = parseFloat(g.value); break;
-            case 51: entity.endAngle = parseFloat(g.value); break;
+            case 10: entity.center.x = g.float; break;
+            case 20: entity.center.y = g.float; break;
+            case 30: z = g.float; break;
+            case 40: entity.radius = g.float; break;
+            case 50: entity.startAngle = g.float; break;
+            case 51: entity.endAngle = g.float; break;
         }
     }
     const ocs = getOcsToWcsMatrix(entity.extrusion.x, entity.extrusion.y, entity.extrusion.z);
@@ -89,14 +89,14 @@ export const parseLwPolyline = (state: DxfParserState, common: any): DxfPolyline
         const p = state.peek();
         if (!p || p.code === 0) break;
         const g = state.next()!;
-        applyCommonGroup(common, g.code, g.value);
+        applyCommonGroupFrom(common, g);
         switch(g.code) {
-            case 38: elevation = parseFloat(g.value); break;
-            case 70: closed = (parseInt(g.value) & 1) === 1; break;
-            case 43: common.constantWidth = parseFloat(g.value); break;
-            case 10: flushVertex(); currX = parseFloat(g.value); break;
-            case 20: currY = parseFloat(g.value); break;
-            case 42: currBulge = parseFloat(g.value); break;
+            case 38: elevation = g.float; break;
+            case 70: closed = ((g.float | 0) & 1) === 1; break;
+            case 43: common.constantWidth = g.float; break;
+            case 10: flushVertex(); currX = g.float; break;
+            case 20: currY = g.float; break;
+            case 42: currBulge = g.float; break;
         }
     }
     flushVertex();
@@ -123,14 +123,14 @@ export const parsePolyline = (state: DxfParserState, common: any): DxfPolyline =
         const p = state.peek();
         if (!p || p.code === 0) break;
         const g = state.next()!;
-        applyCommonGroup(common, g.code, g.value);
+        applyCommonGroupFrom(common, g);
         if (g.code === 70) {
-             const flags = parseInt(g.value);
+             const flags = (g.float | 0);
              closed = (flags & 1) === 1;
              is3DPolyline = (flags & 8) === 8;
         }
-        if (g.code === 40 || g.code === 41) common.constantWidth = parseFloat(g.value);
-        if (g.code === 30) elevation = parseFloat(g.value);
+        if (g.code === 40 || g.code === 41) common.constantWidth = g.float;
+        if (g.code === 30) elevation = g.float;
     }
 
     const points: Point2D[] = [];
@@ -147,9 +147,9 @@ export const parsePolyline = (state: DxfParserState, common: any): DxfPolyline =
                     const vp = state.peek();
                     if (!vp || vp.code === 0) break;
                     const vg = state.next()!;
-                    if (vg.code === 10) { x = parseFloat(vg.value); valid = true; }
-                    if (vg.code === 20) y = parseFloat(vg.value);
-                    if (vg.code === 42) b = parseFloat(vg.value);
+                    if (vg.code === 10) { x = vg.float; valid = true; }
+                    if (vg.code === 20) y = vg.float;
+                    if (vg.code === 42) b = vg.float;
                 }
                 if (valid) {
                     points.push({x, y});
@@ -191,18 +191,18 @@ export const parseSpline = (state: DxfParserState, common: any): DxfSpline => {
         const p = state.peek();
         if (!p || p.code === 0) break;
         const g = state.next()!;
-        applyCommonGroup(entity, g.code, g.value);
+        applyCommonGroupFrom(entity, g);
         switch(g.code) {
-            case 70: entity.flags = parseInt(g.value); break;
-            case 71: entity.degree = parseInt(g.value); break;
-            case 40: entity.knots.push(parseFloat(g.value)); break;
-            case 41: entity.weights.push(parseFloat(g.value)); break;
-            case 10: entity.controlPoints.push({x: parseFloat(g.value), y: 0}); break;
-            case 20: if (entity.controlPoints.length > 0) entity.controlPoints[entity.controlPoints.length-1].y = parseFloat(g.value); break;
-            case 30: if (entity.controlPoints.length > 0) (entity.controlPoints[entity.controlPoints.length-1] as any).z = parseFloat(g.value); break;
-            case 11: entity.fitPoints.push({x: parseFloat(g.value), y: 0}); break;
-            case 21: if (entity.fitPoints.length > 0) entity.fitPoints[entity.fitPoints.length-1].y = parseFloat(g.value); break;
-            case 31: if (entity.fitPoints.length > 0) (entity.fitPoints[entity.fitPoints.length-1] as any).z = parseFloat(g.value); break;
+            case 70: entity.flags = (g.float | 0); break;
+            case 71: entity.degree = (g.float | 0); break;
+            case 40: entity.knots.push(g.float); break;
+            case 41: entity.weights.push(g.float); break;
+            case 10: entity.controlPoints.push({x: g.float, y: 0}); break;
+            case 20: if (entity.controlPoints.length > 0) entity.controlPoints[entity.controlPoints.length-1].y = g.float; break;
+            case 30: if (entity.controlPoints.length > 0) (entity.controlPoints[entity.controlPoints.length-1] as any).z = g.float; break;
+            case 11: entity.fitPoints.push({x: g.float, y: 0}); break;
+            case 21: if (entity.fitPoints.length > 0) entity.fitPoints[entity.fitPoints.length-1].y = g.float; break;
+            case 31: if (entity.fitPoints.length > 0) (entity.fitPoints[entity.fitPoints.length-1] as any).z = g.float; break;
         }
     }
 
@@ -224,15 +224,15 @@ export const parseEllipse = (state: DxfParserState, common: any): AnyEntity => {
         const p = state.peek();
         if (!p || p.code === 0) break;
         const g = state.next()!;
-        applyCommonGroup(entity, g.code, g.value);
+        applyCommonGroupFrom(entity, g);
         switch(g.code) {
-            case 10: entity.center.x = parseFloat(g.value); break;
-            case 20: entity.center.y = parseFloat(g.value); break;
-            case 11: entity.majorAxis.x = parseFloat(g.value); break;
-            case 21: entity.majorAxis.y = parseFloat(g.value); break;
-            case 40: entity.ratio = parseFloat(g.value); break;
-            case 41: entity.startParam = parseFloat(g.value); break;
-            case 42: entity.endParam = parseFloat(g.value); break;
+            case 10: entity.center.x = g.float; break;
+            case 20: entity.center.y = g.float; break;
+            case 11: entity.majorAxis.x = g.float; break;
+            case 21: entity.majorAxis.y = g.float; break;
+            case 40: entity.ratio = g.float; break;
+            case 41: entity.startParam = g.float; break;
+            case 42: entity.endParam = g.float; break;
         }
     }
     return entity;
@@ -244,9 +244,9 @@ export const parsePointEntity = (state: DxfParserState, common: any): AnyEntity 
         const p = state.peek();
         if (!p || p.code === 0) break;
         const g = state.next()!;
-        applyCommonGroup(entity, g.code, g.value);
-        if (g.code === 10) entity.position.x = parseFloat(g.value);
-        if (g.code === 20) entity.position.y = parseFloat(g.value);
+        applyCommonGroupFrom(entity, g);
+        if (g.code === 10) entity.position.x = g.float;
+        if (g.code === 20) entity.position.y = g.float;
     }
     return entity;
 };
@@ -263,14 +263,14 @@ export const parseRayXLine = (state: DxfParserState, common: any, type: string):
         const p = state.peek();
         if (!p || p.code === 0) break;
         const g = state.next()!;
-        applyCommonGroup(entity, g.code, g.value);
+        applyCommonGroupFrom(entity, g);
         switch(g.code) {
-            case 10: entity.basePoint.x = parseFloat(g.value); break;
-            case 20: entity.basePoint.y = parseFloat(g.value); break;
-            case 30: z1 = parseFloat(g.value); break;
-            case 11: entity.direction.x = parseFloat(g.value); break;
-            case 21: entity.direction.y = parseFloat(g.value); break;
-            case 31: z2 = parseFloat(g.value); break;
+            case 10: entity.basePoint.x = g.float; break;
+            case 20: entity.basePoint.y = g.float; break;
+            case 30: z1 = g.float; break;
+            case 11: entity.direction.x = g.float; break;
+            case 21: entity.direction.y = g.float; break;
+            case 31: z2 = g.float; break;
         }
     }
     const ocs = getOcsToWcsMatrix(entity.extrusion.x, entity.extrusion.y, entity.extrusion.z);
@@ -303,16 +303,16 @@ export const parseShape = (state: DxfParserState, common: any): AnyEntity => {
         const p = state.peek();
         if (!p || p.code === 0) break;
         const g = state.next()!;
-        applyCommonGroup(entity, g.code, g.value);
+        applyCommonGroupFrom(entity, g);
         switch (g.code) {
             case 2: entity.name = g.value; break;
-            case 10: entity.position.x = parseFloat(g.value); break;
-            case 20: entity.position.y = parseFloat(g.value); break;
-            case 30: z = parseFloat(g.value); break;
-            case 40: entity.size = parseFloat(g.value); break;
-            case 41: entity.xScale = parseFloat(g.value); break;
-            case 50: entity.rotation = parseFloat(g.value); break;
-            case 51: entity.oblique = parseFloat(g.value); break;
+            case 10: entity.position.x = g.float; break;
+            case 20: entity.position.y = g.float; break;
+            case 30: z = g.float; break;
+            case 40: entity.size = g.float; break;
+            case 41: entity.xScale = g.float; break;
+            case 50: entity.rotation = g.float; break;
+            case 51: entity.oblique = g.float; break;
         }
     }
     const ocs = getOcsToWcsMatrix(entity.extrusion.x, entity.extrusion.y, entity.extrusion.z);
@@ -333,17 +333,17 @@ export const parseMLine = (state: DxfParserState, common: any): DxfMLine => {
         const p = state.peek();
         if (!p || p.code === 0) break;
         const g = state.next()!;
-        applyCommonGroup(entity, g.code, g.value);
+        applyCommonGroupFrom(entity, g);
         switch (g.code) {
             case 70:
                 entity.closed = (parseInt(g.value, 10) & 1) !== 0;
                 break;
             case 11:
-                pendingX = parseFloat(g.value);
+                pendingX = g.float;
                 break;
             case 21:
                 if (pendingX !== null) {
-                    entity.vertices.push({ x: pendingX, y: parseFloat(g.value) });
+                    entity.vertices.push({ x: pendingX, y: g.float });
                     pendingX = null;
                 }
                 break;
@@ -360,21 +360,21 @@ export const parseSolid = (state: DxfParserState, common: any, type: string): An
         const p = state.peek();
         if (!p || p.code === 0) break;
         const g = state.next()!;
-        applyCommonGroup(entity, g.code, g.value);
+        applyCommonGroupFrom(entity, g);
         switch(g.code) {
-            case 10: if (!pts[0]) pts[0] = {x:0, y:0, z:0}; pts[0].x = parseFloat(g.value); break;
-            case 20: if (!pts[0]) pts[0] = {x:0, y:0, z:0}; pts[0].y = parseFloat(g.value); break;
-            case 30: if (!pts[0]) pts[0] = {x:0, y:0, z:0}; pts[0].z = parseFloat(g.value); break;
-            case 11: if (!pts[1]) pts[1] = {x:0, y:0, z:0}; pts[1].x = parseFloat(g.value); break;
-            case 21: if (!pts[1]) pts[1] = {x:0, y:0, z:0}; pts[1].y = parseFloat(g.value); break;
-            case 31: if (!pts[1]) pts[1] = {x:0, y:0, z:0}; pts[1].z = parseFloat(g.value); break;
-            case 12: if (!pts[2]) pts[2] = {x:0, y:0, z:0}; pts[2].x = parseFloat(g.value); break;
-            case 22: if (!pts[2]) pts[2] = {x:0, y:0, z:0}; pts[2].y = parseFloat(g.value); break;
-            case 32: if (!pts[2]) pts[2] = {x:0, y:0, z:0}; pts[2].z = parseFloat(g.value); break;
-            case 13: if (!pts[3]) pts[3] = {x:0, y:0, z:0}; pts[3].x = parseFloat(g.value); break;
-            case 23: if (!pts[3]) pts[3] = {x:0, y:0, z:0}; pts[3].y = parseFloat(g.value); break;
-            case 33: if (!pts[3]) pts[3] = {x:0, y:0, z:0}; pts[3].z = parseFloat(g.value); break;
-            case 70: if (type === '3DFACE') entity.edgeFlags = parseInt(g.value); break;
+            case 10: if (!pts[0]) pts[0] = {x:0, y:0, z:0}; pts[0].x = g.float; break;
+            case 20: if (!pts[0]) pts[0] = {x:0, y:0, z:0}; pts[0].y = g.float; break;
+            case 30: if (!pts[0]) pts[0] = {x:0, y:0, z:0}; pts[0].z = g.float; break;
+            case 11: if (!pts[1]) pts[1] = {x:0, y:0, z:0}; pts[1].x = g.float; break;
+            case 21: if (!pts[1]) pts[1] = {x:0, y:0, z:0}; pts[1].y = g.float; break;
+            case 31: if (!pts[1]) pts[1] = {x:0, y:0, z:0}; pts[1].z = g.float; break;
+            case 12: if (!pts[2]) pts[2] = {x:0, y:0, z:0}; pts[2].x = g.float; break;
+            case 22: if (!pts[2]) pts[2] = {x:0, y:0, z:0}; pts[2].y = g.float; break;
+            case 32: if (!pts[2]) pts[2] = {x:0, y:0, z:0}; pts[2].z = g.float; break;
+            case 13: if (!pts[3]) pts[3] = {x:0, y:0, z:0}; pts[3].x = g.float; break;
+            case 23: if (!pts[3]) pts[3] = {x:0, y:0, z:0}; pts[3].y = g.float; break;
+            case 33: if (!pts[3]) pts[3] = {x:0, y:0, z:0}; pts[3].z = g.float; break;
+            case 70: if (type === '3DFACE') entity.edgeFlags = (g.float | 0); break;
         }
     }
 
@@ -413,17 +413,17 @@ export const parseHelix = (state: DxfParserState, common: any): DxfHelix => {
         const p = state.peek();
         if (!p || p.code === 0) break;
         const g = state.next()!;
-        applyCommonGroup(entity, g.code, g.value);
+        applyCommonGroupFrom(entity, g);
         switch (g.code) {
-            case 10: entity.startPoint.x = parseFloat(g.value); break;
-            case 20: entity.startPoint.y = parseFloat(g.value); break;
-            case 30: zStart = parseFloat(g.value); break;
-            case 11: entity.axisVector.x = parseFloat(g.value); break;
-            case 21: entity.axisVector.y = parseFloat(g.value); break;
-            case 31: entity.axisVector.z = parseFloat(g.value); break;
-            case 40: entity.radius = parseFloat(g.value); break;
-            case 41: entity.turns = parseFloat(g.value); break;
-            case 42: entity.pitch = parseFloat(g.value); break;
+            case 10: entity.startPoint.x = g.float; break;
+            case 20: entity.startPoint.y = g.float; break;
+            case 30: zStart = g.float; break;
+            case 11: entity.axisVector.x = g.float; break;
+            case 21: entity.axisVector.y = g.float; break;
+            case 31: entity.axisVector.z = g.float; break;
+            case 40: entity.radius = g.float; break;
+            case 41: entity.turns = g.float; break;
+            case 42: entity.pitch = g.float; break;
             case 71: entity.handedness = parseInt(g.value, 10); break;
         }
     }
@@ -449,17 +449,17 @@ export const parseViewport = (state: DxfParserState, common: any): AnyEntity => 
         const p = state.peek();
         if (!p || p.code === 0) break;
         const g = state.next()!;
-        applyCommonGroup(entity, g.code, g.value);
+        applyCommonGroupFrom(entity, g);
         switch (g.code) {
-            case 10: entity.center.x = parseFloat(g.value); break;
-            case 20: entity.center.y = parseFloat(g.value); break;
-            case 30: z = parseFloat(g.value); break;
-            case 40: entity.height = parseFloat(g.value); break;
-            case 41: entity.width = parseFloat(g.value); break;
-            case 12: entity.viewCenter.x = parseFloat(g.value); break;
-            case 22: entity.viewCenter.y = parseFloat(g.value); break;
-            case 45: entity.viewHeight = parseFloat(g.value); break;
-            case 51: entity.twistAngle = parseFloat(g.value); break;
+            case 10: entity.center.x = g.float; break;
+            case 20: entity.center.y = g.float; break;
+            case 30: z = g.float; break;
+            case 40: entity.width = g.float; break;
+            case 41: entity.height = g.float; break;
+            case 12: entity.viewCenter.x = g.float; break;
+            case 22: entity.viewCenter.y = g.float; break;
+            case 45: entity.viewHeight = g.float; break;
+            case 51: entity.twistAngle = g.float; break;
             case 68: entity.status = parseInt(g.value, 10); break;
             case 69: entity.viewportId = parseInt(g.value, 10); break;
         }

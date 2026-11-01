@@ -16,7 +16,7 @@ import { parseTable, parseBlock, parseLayoutObject, parseImageDefObject } from '
 import { parseEntityDispatcher } from './entityParser';
 import { createAbortError } from '@/utils/abortError';
 import { offsetEntity } from '@/core/geometry/offset';
-import { calculateExtents, getEntityExtents, precomputeBlockExtents } from '@/core/geometry/extents';
+import { calculateExtents, calculatePaperLayoutExtents, getEntityExtents, precomputeBlockExtents } from '@/core/geometry/extents';
 import {
   CAD_DEFAULT_LAYER_COLOR,
   CAD_DEFAULT_LAYER_NAME,
@@ -193,7 +193,9 @@ const buildLayouts = (
 
   const layouts = Array.from(layoutMap.values()).map(layout => ({
     ...layout,
-    extents: calculateExtents(layout.entities, blocks, styles),
+    extents: layout.isModel
+      ? calculateExtents(layout.entities, blocks, styles)
+      : calculatePaperLayoutExtents(layout.entities, blocks, styles),
   }));
 
   layouts.sort((a, b) => {

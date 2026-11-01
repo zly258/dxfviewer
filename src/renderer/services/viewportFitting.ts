@@ -75,8 +75,9 @@ export const extentsFromBounds = (min: Point2D, max: Point2D): Extents2D => ({
 });
 
 /**
- * 图纸空间布局的适配：优先用布局自带的打印范围（paperMin/paperMax），
- * 没有时退回布局实体包围盒。
+ * 图纸空间布局的适配：优先用布局实体的包围盒（含视口边界，取景即内容）；
+ * 没有实体范围时退回打印范围（paperMin/paperMax）——注意部分图纸的打印
+ * 范围（毫米）与纸张空间实体坐标不在同一坐标系，不能优先使用。
  */
 export const fitPaperLayoutToBox = (
   layout: { extents?: Extents2D; paperMin?: Point2D; paperMax?: Point2D } | undefined,
@@ -85,8 +86,11 @@ export const fitPaperLayoutToBox = (
   options: FitBoxOptions = {},
 ): ViewPort => {
   if (!layout) return fitExtentsToBox(undefined, width, height, options);
+  if (layout.extents) {
+    return fitExtentsToBox(layout.extents, width, height, options);
+  }
   if (layout.paperMin && layout.paperMax) {
     return fitExtentsToBox(extentsFromBounds(layout.paperMin, layout.paperMax), width, height, options);
   }
-  return fitExtentsToBox(layout.extents, width, height, options);
+  return fitExtentsToBox(undefined, width, height, options);
 };

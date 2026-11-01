@@ -26,7 +26,7 @@ function DxfWorkspace({ editor = true, initialFiles = [] }: DxfWorkspaceProps) {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   /** 标签条实际溢出状态：决定左右箭头是否显示（比按 tab 数量猜测准确） */
   const [tabOverflow, setTabOverflow] = useState({ left: false, right: false });
-  const tabDragRef = useRef<{ pointerId: number; startX: number; startLeft: number; moved: boolean } | null>(null);
+  const tabDragRef = useRef<{ pointerId: number; startX: number; startLeft: number; moved: boolean; tabId?: string; closeClicked?: boolean } | null>(null);
   const {
     tabs,
     activeTabId,
@@ -186,11 +186,23 @@ function DxfWorkspace({ editor = true, initialFiles = [] }: DxfWorkspaceProps) {
   };
 
   // 鼠标按住拖拽横向滚动（触控板/触屏由原生 overflow 处理）
+  // 注意：pointerdown 会对滚动容器 setPointerCapture，其后的 click 会被
+  // 重定向到容器本身——标签切换/关闭因此改由 pointerup 执行（按下时
+  // capture 尚未生效，event.target 是真实目标）；触摸/笔不捕获，click 正常。
   const handleTabPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
     if (event.pointerType !== 'mouse' || event.button !== 0) return;
     const el = tabsContainerRef.current;
     if (!el) return;
-    tabDragRef.current = { pointerId: event.pointerId, startX: event.clientX, startLeft: el.scrollLeft, moved: false };
+    const tabEl = (event.target as HTMLElement).closest('[data-tab-id]');
+    const closeEl = (event.target as HTMLElement).closest('.tab-close');
+    tabDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startLeft: el.scrollLeft,
+      moved: false,
+      tabId: tabEl?.getAttribute('data-tab-id') || undefined,
+      closeClicked: Boolean(closeEl),
+    };
     el.setPointerCapture(event.pointerId);
   };
 
@@ -215,6 +227,11 @@ function DxfWorkspace({ editor = true, initialFiles = [] }: DxfWorkspaceProps) {
     if (!drag || !el || event.pointerId !== drag.pointerId) return;
     el.releasePointerCapture?.(event.pointerId);
     el.classList.remove('dragging');
+    // 未拖动的纯点击：执行按下时的标签动作（切换 / 关闭）
+    if (!drag.moved && drag.tabId) {
+      if (drag.closeClicked) closeTab(drag.tabId);
+      else setActiveTabId(drag.tabId);
+    }
     // moved 标记保留到 click 捕获阶段消费，避免拖拽结束误触发 tab 切换
     window.setTimeout(() => { tabDragRef.current = null; }, 0);
   };

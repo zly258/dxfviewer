@@ -1,7 +1,7 @@
 import { AnyEntity, DxfInsert, DxfTable, EntityType } from '@/types';
 import { normalizeAcadTableGeometry } from '@/core/geometry/extents';
 import { getOcsToWcsMatrix, applyOcs, getWcsRotation } from '@/core/geometry/ocs';
-import { DxfParserState, applyCommonGroup, parseCommon } from './parserState';
+import { DxfParserState, applyCommonGroupFrom, parseCommon } from './parserState';
 import { parseText } from './textEntityParser';
 
 export const parseInsert = (state: DxfParserState, common: any): DxfInsert => {
@@ -21,21 +21,21 @@ export const parseInsert = (state: DxfParserState, common: any): DxfInsert => {
         const p = state.peek();
         if (!p || p.code === 0) break;
         const g = state.next()!;
-        applyCommonGroup(entity, g.code, g.value);
+        applyCommonGroupFrom(entity, g);
         switch(g.code) {
             case 2: entity.blockName = g.value; break;
-            case 10: entity.position.x = parseFloat(g.value); break;
-            case 20: entity.position.y = parseFloat(g.value); break;
-            case 30: z = parseFloat(g.value); break;
-            case 41: entity.scale.x = parseFloat(g.value); break;
-            case 42: entity.scale.y = parseFloat(g.value); break;
-            case 43: entity.scale.z = parseFloat(g.value); break;
-            case 50: entity.rotation = parseFloat(g.value); break;
-            case 70: entity.colCount = parseInt(g.value); break;
-            case 71: entity.rowCount = parseInt(g.value); break;
-            case 44: entity.colSpacing = parseFloat(g.value); break;
-            case 45: entity.rowSpacing = parseFloat(g.value); break;
-            case 66: hasAttribs = parseInt(g.value) === 1; break;
+            case 10: entity.position.x = g.float; break;
+            case 20: entity.position.y = g.float; break;
+            case 30: z = g.float; break;
+            case 41: entity.scale.x = g.float; break;
+            case 42: entity.scale.y = g.float; break;
+            case 43: entity.scale.z = g.float; break;
+            case 50: entity.rotation = g.float; break;
+            case 70: entity.colCount = (g.float | 0); break;
+            case 71: entity.rowCount = (g.float | 0); break;
+            case 44: entity.colSpacing = g.float; break;
+            case 45: entity.rowSpacing = g.float; break;
+            case 66: hasAttribs = (g.float | 0) === 1; break;
         }
     }
 
@@ -93,30 +93,30 @@ export const parseDimension = (state: DxfParserState, common: any): AnyEntity =>
         const p = state.peek();
         if (!p || p.code === 0) break;
         const g = state.next()!;
-        applyCommonGroup(entity, g.code, g.value);
+        applyCommonGroupFrom(entity, g);
         switch(g.code) {
             case 2: entity.blockName = g.value; break;
-            case 10: entity.definitionPoint.x = parseFloat(g.value); break;
-            case 20: entity.definitionPoint.y = parseFloat(g.value); break;
-            case 30: z1 = parseFloat(g.value); break;
-            case 11: entity.textMidPoint.x = parseFloat(g.value); break;
-            case 21: entity.textMidPoint.y = parseFloat(g.value); break;
-            case 31: z2 = parseFloat(g.value); break;
-            case 13: if (!entity.linearP1) entity.linearP1 = {x:0, y:0}; entity.linearP1.x = parseFloat(g.value); break;
-            case 23: if (!entity.linearP1) entity.linearP1 = {x:0, y:0}; entity.linearP1.y = parseFloat(g.value); break;
-            case 33: z3 = parseFloat(g.value); break;
-            case 14: if (!entity.linearP2) entity.linearP2 = {x:0, y:0}; entity.linearP2.x = parseFloat(g.value); break;
-            case 24: if (!entity.linearP2) entity.linearP2 = {x:0, y:0}; entity.linearP2.y = parseFloat(g.value); break;
-            case 34: z4 = parseFloat(g.value); break;
-            case 15: if (!entity.arcP1) entity.arcP1 = {x:0, y:0}; entity.arcP1.x = parseFloat(g.value); break;
-            case 25: if (!entity.arcP1) entity.arcP1 = {x:0, y:0}; entity.arcP1.y = parseFloat(g.value); break;
-            case 35: z5 = parseFloat(g.value); break;
-            case 16: if (!entity.arcP2) entity.arcP2 = {x:0, y:0}; entity.arcP2.x = parseFloat(g.value); break;
-            case 26: if (!entity.arcP2) entity.arcP2 = {x:0, y:0}; entity.arcP2.y = parseFloat(g.value); break;
-            case 36: z6 = parseFloat(g.value); break;
-            case 70: entity.dimType = parseInt(g.value); break;
+            case 10: entity.definitionPoint.x = g.float; break;
+            case 20: entity.definitionPoint.y = g.float; break;
+            case 30: z1 = g.float; break;
+            case 11: entity.textMidPoint.x = g.float; break;
+            case 21: entity.textMidPoint.y = g.float; break;
+            case 31: z2 = g.float; break;
+            case 13: if (!entity.linearP1) entity.linearP1 = {x:0, y:0}; entity.linearP1.x = g.float; break;
+            case 23: if (!entity.linearP1) entity.linearP1 = {x:0, y:0}; entity.linearP1.y = g.float; break;
+            case 33: z3 = g.float; break;
+            case 14: if (!entity.linearP2) entity.linearP2 = {x:0, y:0}; entity.linearP2.x = g.float; break;
+            case 24: if (!entity.linearP2) entity.linearP2 = {x:0, y:0}; entity.linearP2.y = g.float; break;
+            case 34: z4 = g.float; break;
+            case 15: if (!entity.arcP1) entity.arcP1 = {x:0, y:0}; entity.arcP1.x = g.float; break;
+            case 25: if (!entity.arcP1) entity.arcP1 = {x:0, y:0}; entity.arcP1.y = g.float; break;
+            case 35: z5 = g.float; break;
+            case 16: if (!entity.arcP2) entity.arcP2 = {x:0, y:0}; entity.arcP2.x = g.float; break;
+            case 26: if (!entity.arcP2) entity.arcP2 = {x:0, y:0}; entity.arcP2.y = g.float; break;
+            case 36: z6 = g.float; break;
+            case 70: entity.dimType = (g.float | 0); break;
             case 1: entity.text = g.value; break;
-            case 42: entity.measurement = parseFloat(g.value); break;
+            case 42: entity.measurement = g.float; break;
             case 3: entity.styleName = g.value; break;
         }
     }
@@ -151,43 +151,43 @@ export const parseAcadTable = (state: DxfParserState, common: any, blockHandleMa
         const p = state.peek();
         if (!p || p.code === 0) break;
         const g = state.next()!;
-        applyCommonGroup(entity, g.code, g.value);
+        applyCommonGroupFrom(entity, g);
         switch(g.code) {
             case 100: subclass = g.value; break;
             case 2: entity.blockName = g.value; break;
-            case 10: entity.position.x = parseFloat(g.value); break;
-            case 20: entity.position.y = parseFloat(g.value); break;
-            case 30: z = parseFloat(g.value); break;
-            case 50: entity.rotation = parseFloat(g.value); break;
+            case 10: entity.position.x = g.float; break;
+            case 20: entity.position.y = g.float; break;
+            case 30: z = g.float; break;
+            case 50: entity.rotation = g.float; break;
             case 342: blockHandle = g.value; break;
-            case 11: direction.x = parseFloat(g.value); break;
-            case 21: direction.y = parseFloat(g.value); break;
-            case 31: direction.z = parseFloat(g.value); break;
+            case 11: direction.x = g.float; break;
+            case 21: direction.y = g.float; break;
+            case 31: direction.z = g.float; break;
             case 41:
-                if (subclass === 'AcDbBlockReference') entity.scale!.x = parseFloat(g.value);
+                if (subclass === 'AcDbBlockReference') entity.scale!.x = g.float;
                 break;
             case 42:
-                if (subclass === 'AcDbBlockReference') entity.scale!.y = parseFloat(g.value);
+                if (subclass === 'AcDbBlockReference') entity.scale!.y = g.float;
                 break;
             case 43:
-                if (subclass === 'AcDbBlockReference') entity.scale!.z = parseFloat(g.value);
+                if (subclass === 'AcDbBlockReference') entity.scale!.z = g.float;
                 break;
-            case 91: entity.rowCount = parseInt(g.value); break;
-            case 92: entity.columnCount = parseInt(g.value); break;
+            case 91: entity.rowCount = (g.float | 0); break;
+            case 92: entity.columnCount = (g.float | 0); break;
             case 141: {
-                const rowHeight = parseFloat(g.value);
+                const rowHeight = g.float;
                 entity.rowSpacing = rowHeight;
                 entity.rowHeights?.push(rowHeight);
                 break;
             }
             case 142: {
-                const columnWidth = parseFloat(g.value);
+                const columnWidth = g.float;
                 entity.columnSpacing = columnWidth;
                 entity.colWidths?.push(columnWidth);
                 break;
             }
-            case 44: entity.columnSpacing = parseFloat(g.value); break;
-            case 45: entity.rowSpacing = parseFloat(g.value); break;
+            case 44: entity.columnSpacing = g.float; break;
+            case 45: entity.rowSpacing = g.float; break;
             case 1:
                 if (!entity.cells) entity.cells = [];
                 entity.cells.push(g.value);

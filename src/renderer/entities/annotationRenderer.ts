@@ -295,7 +295,10 @@ export const drawImage = (ctx: RenderContext, ent: DxfImage, transform: RenderTr
     ctx.strokeRect(0, 0, widthPixels, -heightPixels);
     
     ctx.fillStyle = ctx.strokeStyle;
-    ctx.font = '12px sans-serif';
+    // 占位文字随缩放变化（此前固定 12px，缩放后与图框比例失真）；
+    // 上下限保证缩到极小时仍可读、放到极大时不糊满画面。
+    const fontSize = Math.max(8, Math.min(12 * scale, 96));
+    ctx.font = `${fontSize}px sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(`IMAGE: ${ent.imagePath || ent.handle || ''}`, widthPixels / 2, -heightPixels / 2);

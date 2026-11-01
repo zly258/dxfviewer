@@ -328,3 +328,32 @@
   color: var(--md-on-surface, #e8eaed);
   word-break: break-all;
 }
+
+/* 多选类型分布 */
+.property-type-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 8px 0;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.property-type-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 8px;
+  font-size: 12px;
+  line-height: 1.6;
+  border-radius: 2px;
+}
+.property-type-row:nth-child(odd) {
+  background: rgba(128, 128, 128, 0.06);
+}
+.property-type-name {
+  color: var(--md-on-surface, #e8eaed);
+}
+.property-type-count {
+  color: var(--md-on-surface-variant, #9aa0a6);
+  font-weight: 500;
+}

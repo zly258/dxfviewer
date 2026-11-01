@@ -128,6 +128,13 @@ const wrapTextByMeasuredWidth = (measureWidth: (value: string) => number, text: 
     for (const rawUnit of splitWrapUnits(sourceLine)) {
       const units = wrapLongUnit(measureWidth, rawUnit, maxWidth);
       for (const unit of units) {
+        // 纯空格单元：并入当前行占位（CAD 空格是实义占位，不构成断行点；
+        // 否则连续空格会产生空行、把后续文字推到远处——实测表头"名      称"
+        // 的"称"被 4 个空行顶出视野）。
+        if (unit.trim() === '') {
+          current += unit;
+          continue;
+        }
         const test = current + unit;
         if (current && measureWidth(test) > maxWidth) {
           if (CJK_WRAP_FORBIDDEN_START.has(unit.charAt(0)) && current.length > 1) {
@@ -252,7 +259,22 @@ export const buildCadTextLayout = ({
 
   const lineSpacingRaw = Number((entity as any).lineSpacingFactor);
   const lineSpacingFactor = clampNumber(Number.isFinite(lineSpacingRaw) && lineSpacingRaw > 0 ? lineSpacingRaw : 1, TEXT_RENDER_CONFIG.mtextLineSpacingMinFactor, TEXT_RENDER_CONFIG.mtextLineSpacingMaxFactor);
-  const lineHeight = getMTextLineHeight(visualScreenHeight, lineSpacingFactor);
+  const lineSpacingStyle = Number((entity as any).lineSpacingStyle) || 1;
+  // DXF 组码 73 行距样式：1=At Least（行内字符边界高于设定行距时顶开）、
+  // 2=Exact（不顶开）。AutoCAD 语义（About Line Spacing Within Multiline
+  // Text）：单倍行距 = 1.66×字高；倍数（组码 44）乘在其上。
+  // "字符边界高度" = 字体真实 ascent+descent（含音标/下行字母），
+  // 用 measureCanvasTextVerticalMetrics 的实测边界（按字高归一）。
+  const baseLineHeight = getMTextLineHeight(visualScreenHeight, lineSpacingFactor);
+  const charExtent = verticalMetrics.ascent + verticalMetrics.descent;
+  const lineHeight = lineSpacingStyle === 2
+    ? baseLineHeight
+    : Math.max(baseLineHeight, charExtent);
+  if (typeof console !== 'undefined' && (entity.value || '').includes('名      称')) {
+    console.log('[layout] visualSH=' + visualScreenHeight.toFixed(0) + ' factor=' + lineSpacingFactor + ' style=' + lineSpacingStyle
+      + ' baseLH=' + baseLineHeight.toFixed(0) + ' charExtent=' + charExtent.toFixed(0) + ' LH=' + lineHeight.toFixed(0)
+      + ' ascent=' + verticalMetrics.ascent.toFixed(0) + ' descent=' + verticalMetrics.descent.toFixed(0));
+  }
   const lineWidths = sourceLines.map(line => measureWidth(line));
   const maxLineWidth = Math.max(...lineWidths, 0);
 

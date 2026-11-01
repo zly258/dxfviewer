@@ -1,4 +1,4 @@
-﻿import { DxfEntity, DxfLayer, DxfLineType } from '@/types';
+import { DxfEntity, DxfLayer, DxfLineType } from '@/types';
 import { LINE_RENDER_CONFIG } from '@/config/viewerConfig';
 
 export interface CadStrokeStyleInput {
@@ -17,7 +17,24 @@ export interface CadStrokeStyle {
   dashPattern: number[];
 }
 
-const normalizeName = (name?: string): string => (name || '').trim().toUpperCase();
+/**
+ * 名称规范化缓存：resolveCadStrokeStyle 每实体每帧调用 normalizeName，
+ * trim + toUpperCase 的字符串分配在十万级实体下可观。不同名称总量有限
+ * （图层/线型名），缓存封顶即可覆盖。
+ */
+const NORMALIZED_NAME_CACHE_LIMIT = 4096;
+const normalizedNameCache = new Map<string, string>();
+
+const normalizeName = (name?: string): string => {
+  const raw = name || '';
+  const cached = normalizedNameCache.get(raw);
+  if (cached !== undefined) return cached;
+  const normalized = raw.trim().toUpperCase();
+  if (normalizedNameCache.size < NORMALIZED_NAME_CACHE_LIMIT) {
+    normalizedNameCache.set(raw, normalized);
+  }
+  return normalized;
+};
 
 const resolveLineweightCode = (entity: DxfEntity, layer?: DxfLayer, parentLineweight?: number): number => {
   let lineweight = entity.lineweight;
