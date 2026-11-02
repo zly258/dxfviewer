@@ -533,7 +533,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
         download(new Blob([content], { type: 'application/dxf' }), `${baseName}.out.dxf`);
         showToast(
           skipped.length > 0
-            ? `${t(lang, 'exportSuccess')} DXF（skipped ${skipped.length}）`
+            ? t(lang, 'exportSkipped', { count: skipped.length })
             : `${t(lang, 'exportSuccess')} DXF`,
           false,
         );
@@ -726,7 +726,8 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
       <div
         className="panel-resize-handle panel-resize-handle-right"
         onMouseDown={startResizeLayerPanel}
-        title="Drag to resize"
+        title={t(lang, 'dragResize')}
+        aria-label={t(lang, 'dragResize')}
       />
     </div>
   ) : null;
@@ -737,7 +738,8 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
         <div
           className="panel-resize-handle panel-resize-handle-left"
           onMouseDown={startResizePropertiesPanel}
-          title="Drag to resize"
+          title={t(lang, 'dragResize')}
+          aria-label={t(lang, 'dragResize')}
         />
         <div className="side-panel-frame" style={{ width: propertiesWidth }}>
           {propertiesContent}
@@ -760,7 +762,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
         onChange={handleMobileFileChange}
         className="hidden-file-input"
       />
-      {toastMessage && <Toast toast={toastMessage} onClose={() => setToastMessage(null)} />}
+      {toastMessage && <Toast toast={toastMessage} lang={lang} onClose={() => setToastMessage(null)} />}
       {isLoading && <LoadingOverlay lang={lang} fileName={loadingFileName} progress={loadingProgress} />}
 
       {(!isMobile || tabStrip) && (

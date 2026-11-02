@@ -48,10 +48,6 @@
   color: rgba(0, 0, 0, 0.87);
 }
 
-.toast.success {
-  border-left: 0;
-}
-
 .toast-message {
   flex: 1;
   min-width: 0;

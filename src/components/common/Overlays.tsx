@@ -15,6 +15,7 @@ export interface ToastState {
 
 export interface ToastProps {
   toast: ToastState;
+  lang: Language;
   onClose: () => void;
 }
 
@@ -50,12 +51,12 @@ export function LoadingOverlay({ lang, fileName, progress }: LoadingOverlayProps
   );
 }
 
-export function Toast({ toast, onClose }: ToastProps) {
+export function Toast({ toast, lang, onClose }: ToastProps) {
   return (
     <div className="toast-container">
       <div className={`toast ${toast.isError ? 'error' : 'success'}`}>
         <span className="toast-message">{toast.msg}</span>
-        <span className="toast-close" onClick={onClose} aria-label="关闭提示">
+        <span className="toast-close" onClick={onClose} aria-label={t(lang, 'closeToast')}>
           <ViewerIcon name="close" />
         </span>
       </div>
