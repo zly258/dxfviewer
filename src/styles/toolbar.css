@@ -1,6 +1,6 @@
 /*
  * Material Design 2 工具栏 / 菜单。
- * 图标统一 filled 风格（fill=currentColor），按钮为 40dp 圆形图标按钮 +
+ * 图标统一 filled 风格（fill=currentColor），按钮为 36dp 圆形图标按钮 +
  * MD state layer（hover 8% / active·focus 12%），下拉为 MD menu（4dp 圆角 + 8dp elevation）。
  */
 .toolbar-icon svg,
@@ -114,37 +114,10 @@
 
 .toolbar-separator {
   width: 1px;
-  height: 24px;
+  height: 20px;
   margin: 0 6px;
   background-color: var(--divider);
   flex-shrink: 0;
-}
-
-.menu-item {
-  position: relative;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  padding: 0 16px;
-  border: 0;
-  border-radius: var(--radius-medium);
-  color: var(--text-primary);
-  font-size: 14px;
-  line-height: 32px;
-  cursor: pointer;
-  box-sizing: border-box;
-  transition: background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.menu-item:hover,
-.menu-item.active {
-  background-color: var(--state-hover);
-  color: var(--text-primary);
-}
-
-.menu-item.active {
-  background-color: var(--accent-blue-soft);
-  color: var(--accent-blue);
 }
 
 /* MD2 menu：4dp 圆角、8dp elevation、上下 8dp 内边距、项高 36dp */

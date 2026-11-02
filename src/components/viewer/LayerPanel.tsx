@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { AnyEntity, EntityType, DxfLayer } from '@/types';
 import { getAutoCadColor } from '@/utils/colorUtils';
-import { Language, UI_TRANSLATIONS, ENTITY_TYPE_NAMES, t as translate } from '@/config/i18n';
+import { Language, ENTITY_TYPE_NAMES, t as translate } from '@/config/i18n';
 import ViewerIcon from '@/components/common/ViewerIcon';
 
 interface LayerPanelProps {
@@ -45,7 +45,6 @@ const LayerPanel: React.FC<LayerPanelProps> = ({
   const [sortDir, setSortDir] = useState<SortDir>('asc');
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  const t = UI_TRANSLATIONS[lang];
   const entNames = ENTITY_TYPE_NAMES[lang];
 
   // 点击菜单外部关闭
@@ -180,7 +179,7 @@ const LayerPanel: React.FC<LayerPanelProps> = ({
   return (
     <div className={`layer-panel ${className || ''}`}>
       <div className="layer-panel-header">
-        <span className="layer-panel-title">{t.layersTitle}</span>
+        <span className="layer-panel-title">{translate(lang, 'layersTitle')}</span>
         {layerCount > 0 && (
           <span className="layer-panel-header-count">{filteredCount}/{layerCount}</span>
         )}
@@ -204,7 +203,7 @@ const LayerPanel: React.FC<LayerPanelProps> = ({
                 className={`dropdown-item ${hideEmptyLayers ? 'checked' : ''}`}
                 onClick={() => setHideEmptyLayers(v => !v)}
               >
-                <span>{t.layerFilterEmpty}</span>
+                <span>{translate(lang, 'layerFilterEmpty')}</span>
               </button>
               <div className="divider" />
               <button
@@ -212,14 +211,14 @@ const LayerPanel: React.FC<LayerPanelProps> = ({
                 className={`dropdown-item ${sortKey === 'name' ? 'checked' : ''}`}
                 onClick={() => setSortKey('name')}
               >
-                <span>{t.layerSortName}</span>
+                <span>{translate(lang, 'layerSortName')}</span>
               </button>
               <button
                 type="button"
                 className={`dropdown-item ${sortKey === 'count' ? 'checked' : ''}`}
                 onClick={() => setSortKey('count')}
               >
-                <span>{t.layerSortCount}</span>
+                <span>{translate(lang, 'layerSortCount')}</span>
               </button>
               <div className="divider" />
               <button
@@ -227,14 +226,14 @@ const LayerPanel: React.FC<LayerPanelProps> = ({
                 className={`dropdown-item ${sortDir === 'asc' ? 'checked' : ''}`}
                 onClick={() => setSortDir('asc')}
               >
-                <span>{t.layerSortAsc}</span>
+                <span>{translate(lang, 'layerSortAsc')}</span>
               </button>
               <button
                 type="button"
                 className={`dropdown-item ${sortDir === 'desc' ? 'checked' : ''}`}
                 onClick={() => setSortDir('desc')}
               >
-                <span>{t.layerSortDesc}</span>
+                <span>{translate(lang, 'layerSortDesc')}</span>
               </button>
             </div>
           )}
@@ -249,7 +248,7 @@ const LayerPanel: React.FC<LayerPanelProps> = ({
             ref={searchInputRef}
             className="layer-search-input"
             type="text"
-            placeholder={t.layerSearch || 'Search layers…'}
+            placeholder={translate(lang, 'layerSearch')}
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             spellCheck={false}
@@ -259,7 +258,8 @@ const LayerPanel: React.FC<LayerPanelProps> = ({
               className="layer-search-clear"
               onClick={() => { setSearchQuery(''); searchInputRef.current?.focus(); }}
               tabIndex={-1}
-              title="Clear"
+              title={translate(lang, 'clearSearch')}
+              aria-label={translate(lang, 'clearSearch')}
             >
               <ViewerIcon name="close" />
             </button>
@@ -274,7 +274,7 @@ const LayerPanel: React.FC<LayerPanelProps> = ({
       >
         {flatList.length === 0 && (
           <div className="layer-empty-hint">
-            {t.layerEmptyHint || 'No matching layers'}
+            {translate(lang, 'layerEmptyHint')}
           </div>
         )}
         <div style={{ height: totalHeight, position: 'relative' }}>

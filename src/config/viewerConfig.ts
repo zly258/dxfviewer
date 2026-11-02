@@ -55,8 +55,9 @@ export const LAYOUT_CONFIG = {
   minViewportHeight: 100,
   fallbackLayerPanelWidth: 256,
   fallbackPropertiesWidth: 320,
-  fallbackToolbarHeight: 30,
-  fallbackStatusBarHeight: 24,
+  // 与 CSS 变量保持一致：--toolbar-height 44px / --status-bar-height 32px
+  fallbackToolbarHeight: 44,
+  fallbackStatusBarHeight: 32,
 };
 
 export const ZOOM_CONFIG = {

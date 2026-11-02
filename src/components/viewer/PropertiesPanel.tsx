@@ -1,7 +1,7 @@
 import React from 'react';
 import { AnyEntity, EntityType, DxfStyle } from '@/types';
 import { getAutoCadColor } from '@/utils/colorUtils';
-import { Language, UI_TRANSLATIONS, ENTITY_TYPE_NAMES, t as translate } from '@/config/i18n';
+import { Language, ENTITY_TYPE_NAMES, t as translate } from '@/config/i18n';
 import { CAD_BY_BLOCK_COLOR, CAD_BY_LAYER_COLOR, CAD_DEFAULT_LAYER_COLOR, CAD_DEFAULT_TEXT_STYLE } from '@/config/cadConstants';
 
 /**
@@ -17,7 +17,6 @@ interface PropertiesPanelProps {
 }
 
 const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, styles = {}, offset, lang, className }) => {
-  const t = UI_TRANSLATIONS[lang];
   const entNames = ENTITY_TYPE_NAMES[lang];
   
   /**
@@ -28,7 +27,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, styles = {}
   const renderPropertyRow = (label: string, value: React.ReactNode) => {
     // 尝试查找标签的翻译（将标签转换为小驼峰命名或直接匹配）
     const key = label.charAt(0).toLowerCase() + label.slice(1).replace(/ /g, '');
-    const translatedLabel = t[key] || t[label] || label;
+    const translatedLabel = translate(lang, key) !== key ? translate(lang, key) : label;
     return (
       <tr key={label} className="property-row">
         <td className="property-label-cell">{translatedLabel}</td>
@@ -42,7 +41,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, styles = {}
    * 将十六进制字符串转换为十进制显示
    */
   const formatHandle = (handle: string | undefined) => {
-    if (!handle) return "N/A";
+    if (!handle) return translate(lang, 'na');
     try {
       return parseInt(handle, 16).toString();
     } catch {
@@ -55,8 +54,8 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, styles = {}
    * 支持随层、随块以及索引颜色的十六进制预览。
    */
   const renderColorValue = (color: number | undefined) => {
-    if (color === CAD_BY_LAYER_COLOR) return <span className="property-muted">随层 (ByLayer)</span>;
-    if (color === CAD_BY_BLOCK_COLOR) return <span className="property-muted">随块 (ByBlock)</span>;
+    if (color === CAD_BY_LAYER_COLOR) return <span className="property-muted">{translate(lang, 'byLayer')}</span>;
+    if (color === CAD_BY_BLOCK_COLOR) return <span className="property-muted">{translate(lang, 'byBlock')}</span>;
     
     const hex = getAutoCadColor(color || CAD_DEFAULT_LAYER_COLOR);
     return (
@@ -75,9 +74,9 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, styles = {}
    * 渲染线宽
    */
   const renderLineweight = (lw: number | undefined) => {
-    if (lw === undefined || lw === -1) return <span className="property-muted">随层 (ByLayer)</span>;
-    if (lw === -2) return <span className="property-muted">随块 (ByBlock)</span>;
-    if (lw === -3) return <span className="property-muted">默认 (Default)</span>;
+    if (lw === undefined || lw === -1) return <span className="property-muted">{translate(lang, 'byLayer')}</span>;
+    if (lw === -2) return <span className="property-muted">{translate(lang, 'byBlock')}</span>;
+    if (lw === -3) return <span className="property-muted">{translate(lang, 'default')}</span>;
     if (lw === 0) return "0.00 mm";
     return `${(lw / 100).toFixed(2)} mm`;
   };
@@ -102,7 +101,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, styles = {}
         return { tag, value, key: `${tag}-${index}` };
       })
       .filter(row => row.value.length > 0);
-    if (rows.length === 0) return <span className="property-muted">N/A</span>;
+    if (rows.length === 0) return <span className="property-muted">{translate(lang, 'na')}</span>;
     return (
       <div className="attribute-list">
         {rows.map(row => (
@@ -125,9 +124,9 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, styles = {}
           renderPropertyRow("Type", <span className="property-type-value">{typeDisplay}</span>),
           renderPropertyRow("Handle", formatHandle(ent.handle)),
           renderPropertyRow("Layer", ent.layer),
-          renderPropertyRow("Current Space", ent.layoutName || (ent.inPaperSpace ? 'Layout' : 'Model')),
+          renderPropertyRow("Current Space", ent.layoutName || (ent.inPaperSpace ? translate(lang, 'paperSpace') : translate(lang, 'modelSpace'))),
           renderPropertyRow("Color", renderColorValue(ent.color)),
-          renderPropertyRow("Linetype", ent.lineType || 'ByLayer'),
+          renderPropertyRow("Linetype", ent.lineType || translate(lang, 'byLayer')),
           renderPropertyRow("Linetype Scale", (ent.lineTypeScale !== undefined ? ent.lineTypeScale : 1.0).toFixed(2)),
           renderPropertyRow("Lineweight", renderLineweight(ent.lineweight)),
       ];
@@ -165,13 +164,13 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, styles = {}
           case EntityType.THREEDFACE:
               specificRows = [
                   renderPropertyRow("Vertices", ent.points.length),
-                  ...ent.points.map((p, i) => renderPropertyRow(`Vertex ${i+1}`, `${formatCoord(p.x, 'x')}, ${formatCoord(p.y, 'y')}`))
+                  ...ent.points.map((p, i) => renderPropertyRow(translate(lang, 'vertex', { index: i + 1 }), `${formatCoord(p.x, 'x')}, ${formatCoord(p.y, 'y')}`))
               ];
               break;
           case EntityType.LWPOLYLINE:
           case EntityType.POLYLINE:
               specificRows = [
-                  renderPropertyRow("Closed", ent.closed ? "是 (Yes)" : "否 (No)"),
+                  renderPropertyRow("Closed", ent.closed ? translate(lang, 'yes') : translate(lang, 'no')),
                   renderPropertyRow("Vertices", ent.points.length),
               ];
               break;
@@ -194,7 +193,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, styles = {}
                   renderPropertyRow("Pos X", formatCoord(ent.position.x, 'x')),
                   renderPropertyRow("Pos Y", formatCoord(ent.position.y, 'y')),
                   renderPropertyRow("Rotation", `${ent.rotation?.toFixed(1)}°`),
-                  ent.type === EntityType.MTEXT && renderPropertyRow("Width", ent.width ? ent.width.toFixed(3) : "自动 (Auto)")
+                  ent.type === EntityType.MTEXT && renderPropertyRow("Width", ent.width ? ent.width.toFixed(3) : translate(lang, 'auto'))
               ].filter(Boolean);
               break;
           }
@@ -213,7 +212,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, styles = {}
                   specificRows.push(
                       <tr key="attribs-header" className="property-row property-section-row">
                           <td colSpan={2} className="property-section-cell">
-                              {t.attributes || '块属性 (Attributes)'}
+                              {translate(lang, 'attributes')}
                           </td>
                       </tr>,
                   );
@@ -239,7 +238,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, styles = {}
                        specificRows.push(
                            <tr key="cells-header" className="property-row property-section-row">
                                <td colSpan={2} className="property-section-cell">
-                                   {t.cellContents}
+                                   {translate(lang, 'cellContents')}
                                </td>
                            </tr>
                        );
@@ -266,14 +265,14 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, styles = {}
            case EntityType.HATCH:
               specificRows = [
                   renderPropertyRow("Pattern", ent.patternName),
-                  renderPropertyRow("Style", ent.solid ? "实体填充 (Solid)" : "图案填充 (Pattern)"),
+                  renderPropertyRow("Style", ent.solid ? translate(lang, 'solidFill') : translate(lang, 'patternFill')),
                   renderPropertyRow("Loops", ent.loops.length),
               ];
               break;
            case EntityType.DIMENSION:
               specificRows = [
                   renderPropertyRow("Value", ent.measurement?.toFixed(4)),
-                  renderPropertyRow("Text", ent.text || "自动 (Auto)"),
+                  renderPropertyRow("Text", ent.text || translate(lang, 'auto')),
               ];
               break;
            case EntityType.VIEWPORT:
@@ -282,8 +281,8 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, styles = {}
                   renderPropertyRow("Center Y", formatCoord(ent.center.y, 'y')),
                   renderPropertyRow("Width", ent.width.toFixed(4)),
                   renderPropertyRow("Height", ent.height.toFixed(4)),
-                  renderPropertyRow("Viewport ID", ent.viewportId ?? "N/A"),
-                  renderPropertyRow("Status", ent.status ?? "N/A"),
+                  renderPropertyRow("Viewport ID", ent.viewportId ?? translate(lang, 'na')),
+                  renderPropertyRow("Status", ent.status ?? translate(lang, 'na')),
               ];
               break;
            case EntityType.SHAPE:
@@ -302,7 +301,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, styles = {}
                   renderPropertyRow("Pos Y", formatCoord(ent.position.y, 'y')),
                   renderPropertyRow("Image Width", ent.imageSize.x.toFixed(3)),
                   renderPropertyRow("Image Height", ent.imageSize.y.toFixed(3)),
-                  renderPropertyRow("Image Ref", ent.imageRef || ent.imagePath || "N/A"),
+                  renderPropertyRow("Image Ref", ent.imageRef || ent.imagePath || translate(lang, 'na')),
               ];
               break;
            case EntityType.WIPEOUT:
@@ -313,7 +312,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, styles = {}
               break;
            case EntityType.TOLERANCE:
               specificRows = [
-                  renderPropertyRow("Content", ent.text || "N/A"),
+                  renderPropertyRow("Content", ent.text || translate(lang, 'na')),
                   renderPropertyRow("Pos X", formatCoord(ent.position.x, 'x')), 
                   renderPropertyRow("Pos Y", formatCoord(ent.position.y, 'y')),
               ];
@@ -333,17 +332,17 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, styles = {}
   return (
       <div className={`properties-panel ${className || ''}`}>
         <div className="properties-header">
-          {t.propertiesTitle || "属性面板"}
+          {translate(lang, 'propertiesTitle')}
         </div>
         <div className="properties-content">
           {entities.length === 0 ? (
              <div className="empty-state property-empty-state">
-               {t.noSelection || "未选择对象"}
+               {translate(lang, 'noSelection')}
              </div>
           ) : entities.length > 1 ? (
              <div className="empty-state property-empty-state">
                <div className="property-empty-title">
-                 {t.selectedCount ? t.selectedCount.replace('{count}', entities.length.toString()) : `已选择 ${entities.length} 个对象`}
+                 {translate(lang, 'selectedCount', { count: entities.length })}
                </div>
                 <div className="property-type-summary">
                   {Object.entries(
@@ -360,7 +359,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, styles = {}
                   ))}
                 </div>
                <div className="property-empty-subtitle">
-                 {t.selectSingle || "选择单个对象以查看详细属性"}
+                 {translate(lang, 'selectSingle')}
                </div>
              </div>
           ) : (

@@ -34,14 +34,11 @@
 }
 
 .menu-tab-strip {
-  border-left: 1px solid var(--border-color);
-}
-
-.menu-tab-strip {
   flex: 1;
   min-width: 0;
   height: 100%;
   overflow: hidden;
+  border-left: 1px solid var(--border-color);
 }
 
 .menu-tab-strip .tabs-container {
@@ -162,7 +159,6 @@
 
   .canvas-context-menu {
     --context-menu-width: 160px;
-    --context-menu-height: 196px;
     min-width: var(--context-menu-width);
     padding: 6px;
   }
@@ -227,27 +223,55 @@
 }
 
 @media (max-width: 768px) {
-  .app-container.is-mobile .viewer-container {
-    padding-bottom: 0;
-  }
-
-
-  .mobile-coord-chip {
+  /* 顶部坐标浮层：默认隐藏（components.css），仅在移动端显示为半透明药丸。
+     用 .is-mobile 前缀提高优先级，避免被 components.css 中靠后的 display:none 覆盖。 */
+  .is-mobile .mobile-coord-chip {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    position: absolute;
     top: max(12px, env(safe-area-inset-top, 0px));
     left: max(12px, env(safe-area-inset-left, 0px));
     right: auto;
+    z-index: 1080;
+    padding: 7px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    background-color: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-family: Consolas, "Cascadia Mono", monospace;
+    line-height: 1;
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.14);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-sizing: border-box;
+    pointer-events: none;
     max-width: calc(100vw - 92px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
+    overflow: hidden;
+    white-space: nowrap;
   }
 
-  .mobile-right-toolbar {
+  .mobile-coord-chip .coord-selected {
+    color: var(--accent-blue);
+    font-weight: 600;
+  }
+
+  /* 右侧工具栏：小屏/横屏下允许滚动，避免按钮被裁切 */
+  .is-mobile .mobile-right-toolbar {
     display: flex;
     position: absolute;
     top: max(12px, env(safe-area-inset-top, 0px));
     right: max(10px, env(safe-area-inset-right, 0px));
+    bottom: auto;
     z-index: 1080;
     flex-direction: column;
     gap: 4px;
     padding: 6px;
+    max-height: calc(100dvh - max(12px, env(safe-area-inset-top, 0px)) - max(12px, env(safe-area-inset-bottom, 0px)));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
     border: 1px solid var(--border-color);
     border-radius: 15px;
     background-color: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
@@ -255,6 +279,10 @@
     box-shadow: 0 8px 24px rgba(15, 23, 42, 0.18);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
+  }
+
+  .mobile-right-toolbar::-webkit-scrollbar {
+    display: none;
   }
 
   .mobile-tool-button {
@@ -271,6 +299,7 @@
     cursor: pointer;
     transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
     -webkit-tap-highlight-color: transparent;
+    flex-shrink: 0;
   }
 
   .mobile-tool-button svg,
@@ -297,9 +326,10 @@
     height: 1px;
     margin: 3px 6px;
     background-color: var(--border-color);
+    flex-shrink: 0;
   }
 
-  .mobile-side-backdrop {
+  .is-mobile .mobile-side-backdrop {
     display: block;
     position: absolute;
     inset: 0;
@@ -307,7 +337,7 @@
     background-color: rgba(15, 23, 42, 0.16);
   }
 
-  .mobile-side-panel {
+  .is-mobile .mobile-side-panel {
     display: flex;
     flex-direction: column;
     position: absolute;
@@ -424,14 +454,5 @@
 
   .mobile-view-item:active {
     background-color: var(--bg-hover);
-  }
-
-
-  .is-mobile .text-search-panel {
-    top: calc(max(12px, env(safe-area-inset-top, 0px)) + 46px);
-    left: max(12px, env(safe-area-inset-left, 0px));
-    right: calc(max(10px, env(safe-area-inset-right, 0px)) + 58px);
-    width: auto;
-    z-index: 1075;
   }
 }

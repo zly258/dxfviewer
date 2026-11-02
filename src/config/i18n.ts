@@ -32,6 +32,7 @@ export const UI_TRANSLATIONS: Record<Language, Record<string, string>> = {
     exportSuccess: 'Exported',
     exportFailed: 'Export failed',
     exportNoData: 'Open a drawing first',
+    exportSkipped: 'DXF exported ({count} entities skipped)',
 
     // 图层面板
     layersTitle: 'Layers',
@@ -108,6 +109,14 @@ export const UI_TRANSLATIONS: Record<Language, Record<string, string>> = {
     colSpacing: 'Col Spacing',
     cellContents: 'Cell Contents',
     totalCells: 'Total {count} cells',
+    attributes: 'Block Attributes',
+    vertex: 'Vertex {index}',
+    auto: 'Auto',
+    solidFill: 'Solid Fill',
+    patternFill: 'Pattern Fill',
+    na: 'N/A',
+    clearSearch: 'Clear search',
+    dragResize: 'Drag to resize',
 
     // 右键菜单（画布）
     showAll: 'Show All',
@@ -195,6 +204,7 @@ export const UI_TRANSLATIONS: Record<Language, Record<string, string>> = {
     exportSuccess: '已导出',
     exportFailed: '导出失败',
     exportNoData: '请先打开图纸',
+    exportSkipped: '已导出 DXF（跳过 {count} 个实体）',
 
     // 图层面板
     layersTitle: '图层列表',
@@ -271,6 +281,14 @@ export const UI_TRANSLATIONS: Record<Language, Record<string, string>> = {
     colSpacing: '列间距',
     cellContents: '单元格内容',
     totalCells: '共 {count} 个单元格',
+    attributes: '块属性',
+    vertex: '顶点 {index}',
+    auto: '自动',
+    solidFill: '实体填充',
+    patternFill: '图案填充',
+    na: '无',
+    clearSearch: '清空搜索',
+    dragResize: '拖动调整宽度',
 
     // 右键菜单（画布）
     showAll: '全部显示',
