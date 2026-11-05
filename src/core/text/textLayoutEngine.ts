@@ -1,7 +1,6 @@
-import type { RenderContext } from '@/renderer/context';
+import type { VectorContext } from '@/render/vector/context';
 import { DxfStyle, DxfText, EntityType } from '@/types';
 import { TEXT_RENDER_CONFIG } from '@/config/viewerConfig';
-import { resolveCadTextFontProfile } from '@/renderer/services/fontService';
 import {
   cleanCadText,
   cleanMText,
@@ -21,7 +20,7 @@ import {
 export interface CadTextLayoutInput {
   entity: DxfText;
   styles?: Record<string, DxfStyle>;
-  context: RenderContext;
+  context: VectorContext;
   worldToScreenScale: number;
   noWrap?: boolean;
 }
@@ -56,11 +55,22 @@ export interface CadTextLayoutResult {
   lines: CadTextLineLayout[];
 }
 
-const getTextHeightCorrectionFactor = (entity: DxfText, styles?: Record<string, DxfStyle>): number => {
-  const profile = resolveCadTextFontProfile(entity.styleName, styles, entity.value);
-  return profile === 'trueType' || profile === 'cjk'
-    ? TEXT_RENDER_CONFIG.trueTypeFontHeightFactor
-    : TEXT_RENDER_CONFIG.shxFontHeightFactor;
+const CJK_CHAR_PATTERN = /[\u2e80-\u9fff\uf900-\ufaff]/;
+
+/**
+ * 字高修正系数：CAD 字高 = 大写字高（cap height），浏览器字体尺寸是 em。
+ * - 含中文：中文墨迹约占 0.88em → 系数 1.14；
+ * - 纯西文：capHeight ≈ 0.72em → 系数 1.39。
+ *
+ * 注意：Canvas 渲染始终使用系统字体（SHX 样式也映射为系统字体），
+ * 因此不能再按 SHX 的 1.0 处理——那会让 SHX 样式的文字只有 0.7 倍字高
+ * （实测"有的偏小"）。
+ */
+const getTextHeightCorrectionFactor = (entity: DxfText, _styles?: Record<string, DxfStyle>): number => {
+  if (CJK_CHAR_PATTERN.test(entity.value || '')) {
+    return TEXT_RENDER_CONFIG.cjkFontHeightFactor;
+  }
+  return TEXT_RENDER_CONFIG.trueTypeFontHeightFactor;
 };
 
 const CJK_WRAP_FORBIDDEN_START = new Set('，。；：！？、）】》〉」』”’%,.;:!?)]}');
@@ -113,7 +123,7 @@ const wrapLongUnit = (measureWidth: (value: string) => number, unit: string, max
   return result;
 };
 
-const wrapTextByMeasuredWidth = (measureWidth: (value: string) => number, text: string, maxWidth: number): string[] => {
+export const wrapTextByMeasuredWidth = (measureWidth: (value: string) => number, text: string, maxWidth: number): string[] => {
   if (!text) return [''];
   if (maxWidth <= 0) return text.split('\n');
 
@@ -154,7 +164,7 @@ const wrapTextByMeasuredWidth = (measureWidth: (value: string) => number, text: 
   return result;
 };
 
-const measureCanvasText = (context: RenderContext, value: string): number => {
+const measureCanvasText = (context: VectorContext, value: string): number => {
   if (!value) return 0;
   const metrics = context.measureText(value);
   const actual = Math.abs((metrics.actualBoundingBoxRight || 0) - (metrics.actualBoundingBoxLeft || 0));
@@ -162,7 +172,7 @@ const measureCanvasText = (context: RenderContext, value: string): number => {
 };
 
 const measureCanvasTextVerticalMetrics = (
-  context: RenderContext,
+  context: VectorContext,
   sampleText: string,
   fallbackHeight: number,
 ): { ascent: number; descent: number } => {
@@ -197,7 +207,7 @@ const getMTextLineHeight = (visualScreenHeight: number, lineSpacingFactor: numbe
   return Math.max(rawLineHeight, minLineHeight);
 };
 
-const measureCadText = (context: RenderContext, value: string): number => {
+const measureCadText = (context: VectorContext, value: string): number => {
   return measureCanvasText(context, value);
 };
 
@@ -265,7 +275,10 @@ export const buildCadTextLayout = ({
   // Text）：单倍行距 = 1.66×字高；倍数（组码 44）乘在其上。
   // "字符边界高度" = 字体真实 ascent+descent（含音标/下行字母），
   // 用 measureCanvasTextVerticalMetrics 的实测边界（按字高归一）。
-  const baseLineHeight = getMTextLineHeight(visualScreenHeight, lineSpacingFactor);
+  // 行距基准用「CAD 字高」（cap height）而不是 em 换算后的视觉高度：
+  // AutoCAD 单倍行距 = 1.66 × 字高，用 em 高度会让行距放大 1.14~1.39 倍
+  // （实测多行文字"高度超出/行间距过大"）。
+  const baseLineHeight = getMTextLineHeight(screenHeight, lineSpacingFactor);
   const charExtent = verticalMetrics.ascent + verticalMetrics.descent;
   const lineHeight = lineSpacingStyle === 2
     ? baseLineHeight
@@ -291,7 +304,7 @@ export const buildCadTextLayout = ({
   const blockWidth = declaredWidth > 0
     ? declaredWidth
     : Math.max(measuredWidthWithPadding, actualWidth, estimatedWidth * TEXT_RENDER_CONFIG.mtextLineWidthMeasurePaddingFactor);
-  const measuredHeight = sourceLines.length > 0 ? (sourceLines.length - 1) * lineHeight + visualScreenHeight : visualScreenHeight;
+  const measuredHeight = sourceLines.length > 0 ? (sourceLines.length - 1) * lineHeight + screenHeight : screenHeight;
   const declaredHeight = Number((entity as any).boxHeight) > 0 ? Number((entity as any).boxHeight) * worldToScreenScale : 0;
   const blockHeight = Math.max(measuredHeight, declaredHeight);
 
@@ -341,3 +354,6 @@ export const buildCadTextLayout = ({
     lines,
   };
 };
+
+
+

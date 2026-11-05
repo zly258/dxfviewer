@@ -1,31 +1,49 @@
 /**
- * 无头渲染入口（不依赖 React / 不引入样式）。
+ * 渲染入口（不依赖 React / 不引入样式）。
  *
- * 适用于：导出 PNG/PDF、缩略图生成、Web Worker 内渲染、Node（需自备 Canvas）。
+ * - 交互渲染：WebGL2 引擎（`RenderEngine`）
+ * - 矢量导出：场景写入器（`renderVectorScene`，SVG / PDF 后端共用）
+ * - 拾取：CPU 命中测试（`hitTest` / `hitTestBox`，与渲染后端无关）
+ * - SHX 形字体：宿主可注册真实 .shx 文件提升文字保真度
  */
-export { renderEntitiesToCanvas, createRenderSession } from '@/renderer/services/canvasRenderService';
-export type { RenderSceneOptions, RenderSession } from '@/renderer/services/canvasRenderService';
+export { RenderEngine } from '@/render/webgl/renderEngine';
+export type { RenderParams, Viewport } from '@/render/webgl/renderEngine';
 
-export { renderSceneToCanvas, resolveLayout, resolveLayoutExtents } from '@/renderer/headless';
-export type { HeadlessCanvas, RenderSceneToCanvasOptions } from '@/renderer/headless';
+/** 场景构建（高级用法 / 测试：不依赖 React，可配合自定义宿主使用）。 */
+export { buildScene } from '@/render/scene/sceneBuilder';
+export type { BuiltScene, SceneBuildOptions } from '@/render/scene/sceneBuilder';
 
-export { extentsFromBounds, fitExtentsToBox, fitPaperLayoutToBox } from '@/renderer/services/viewportFitting';
-export type { Extents2D, FitBoxOptions } from '@/renderer/services/viewportFitting';
+export { renderVectorScene, createVectorRenderSession } from '@/render/vector/sceneWriter';
+export type { VectorSceneOptions, VectorRenderSession } from '@/render/vector/sceneWriter';
+export type { VectorContext, RenderPaint, RenderTextMetrics } from '@/render/vector/context';
 
-export { createSceneIndex } from '@/renderer/services/sceneIndex';
-export type { SceneBounds, SceneIndex } from '@/renderer/services/sceneIndex';
+export { hitTest, hitTestBox } from '@/render/picking/hitTest';
+
+// ── SHX 形字体：宿主可注册真实 .shx 文件提升文字保真度 ──
+export { parseShxFont } from '@/render/text/shx/shxParser';
+export type { StrokeFontData, StrokeGlyph } from '@/render/text/shx/shxParser';
+export { registerParsedShxFont, resolveStrokeFont } from '@/render/text/shx/strokeFontRegistry';
+export { setOutlineFont, loadOutlineFont, hasOutlineFont } from '@/render/text/outlineText';
+
+export { extentsFromBounds, fitExtentsToBox, fitPaperLayoutToBox } from '@/render/viewportFitting';
+export type { Extents2D, FitBoxOptions } from '@/render/viewportFitting';
+
+export { createSceneIndex } from '@/render/picking/sceneIndex';
+export type { SceneBounds, SceneIndex } from '@/render/picking/sceneIndex';
 
 /** 渲染缓存（文字测量/布局）清理：切换图纸或隔离渲染对比时使用。 */
-export { clearAllRenderCaches } from '@/renderer/services/renderCache';
+export { clearAllRenderCaches } from '@/render/text/renderCache';
 
 /**
  * 扁平 BVH 工具：与场景索引 Worker 使用同一实现，可在自托管 Worker 或
  * Node 校验脚本中直接复用（等价性回归）。
  */
-export { buildFlatBvh } from '@/renderer/services/flatBvh';
-export type { FlatBvh } from '@/renderer/services/flatBvh';
+export { buildFlatBvh } from '@/render/picking/flatBvh';
+export type { FlatBvh } from '@/render/picking/flatBvh';
 export {
   collectSceneIndexBuildInput,
   createFlatSceneIndex,
-} from '@/renderer/services/sceneIndexBuilder';
-export type { SceneIndexBuildInput } from '@/renderer/services/sceneIndexBuilder';
+} from '@/render/picking/sceneIndexBuilder';
+export type { SceneIndexBuildInput } from '@/render/picking/sceneIndexBuilder';
+
+

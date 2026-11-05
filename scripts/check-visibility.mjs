@@ -22,7 +22,7 @@ import { createFakeCanvas } from './canvas-mock.mjs';
 
 const { parseDxf } = await import(new URL('../dist/parser.js', import.meta.url).href);
 const {
-  renderEntitiesToCanvas,
+  renderVectorScene,
   createSceneIndex,
   clearAllRenderCaches,
   collectSceneIndexBuildInput,
@@ -134,7 +134,7 @@ const idsOf = entities => entities.map(entity => entity.id).join(',');
     const run = (entities, opts = {}, index) => {
       clearAllRenderCaches();
       const { canvas, counter, ops } = createFakeCanvas(800, 600);
-      renderEntitiesToCanvas({
+      renderVectorScene({
         ctx: canvas.getContext('2d'),
         entities,
         layers: data.layers,
@@ -216,3 +216,4 @@ const idsOf = entities => entities.map(entity => entity.id).join(',');
 
 console.log(failed === 0 ? '\n渲染回归校验全部通过。' : `\n渲染回归校验失败 ${failed} 项。`);
 process.exit(failed === 0 ? 0 : 1);
+

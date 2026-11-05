@@ -40,3 +40,9 @@ samples/cli-out*
 # Hidden directories (dot-prefixed folders, e.g. .workbuddy)
 .*/
 
+
+# Local bundled fonts
+**/public/fonts/*.ttf
+**/public/fonts/*.otf
+**/public/fonts/*.ttc
+

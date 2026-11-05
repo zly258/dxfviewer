@@ -1,20 +1,22 @@
 /**
- * 导出入口（PNG / PDF）。
+ * 导出入口（PNG / SVG / 矢量 PDF）。
  *
- * 依赖 Canvas 能力：浏览器主线程、Worker（OffscreenCanvas）可用；
- * Node 环境需注入自定义画布实现（createCanvas 选项）。
+ * PNG：WebGL 栅格导出（与交互查看器同一 RenderEngine，所见即所得）；
+ * SVG / PDF：矢量写出（render/vector 场景写入器，无限放大）。
+ * 依赖 WebGL2（PNG）与 Canvas 编码能力；矢量导出零 DOM 依赖（Node 可用）。
  */
 export { assertCanvasSize, exportPng, exportPngDataUrl } from '@/export/pngExporter';
 export type { PngExportOptions } from '@/export/pngExporter';
-
-export { exportPdf, exportPdfBytes } from '@/export/pdfExporter';
-export type { PdfExportOptions } from '@/export/pdfExporter';
 
 export { exportPdfVector, exportPdfVectorBytes } from '@/export/pdf/vectorExporter';
 export type { PdfVectorExportOptions } from '@/export/pdf/vectorExporter';
 
 export { exportSvg } from '@/export/svgExporter';
 export type { SvgExportOptions } from '@/export/svgExporter';
+
+export { renderSceneToRasterCanvas } from '@/export/rasterExporter';
+export type { RasterRenderOptions } from '@/export/rasterExporter';
+export type { HeadlessCanvas } from '@/export/canvasUtils';
 
 export {
   MM_PER_INCH,
@@ -34,3 +36,4 @@ export type {
 } from '@/export/paperSizes';
 
 export type { PdfImagePlacement } from '@/export/pdf/minimalPdf';
+

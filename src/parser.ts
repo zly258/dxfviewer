@@ -1,4 +1,4 @@
-export { parseDxf } from '@/core/parser';
+export { parseDxf } from '@/io/parser';
 export { EntityType, ToolMode } from '@/types';
 export type * from '@/types';
 
@@ -11,5 +11,6 @@ export {
   formatInt,
   getGroupValueType,
   isFloatingGroupCode,
-} from '@/core/dxf/groupCodes';
-export type { GroupValueType } from '@/core/dxf/groupCodes';
+} from '@/io/dxf/groupCodes';
+export type { GroupValueType } from '@/io/dxf/groupCodes';
+

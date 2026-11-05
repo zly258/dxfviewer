@@ -7,7 +7,7 @@
  * 不影响几何。SVG 端文字由查看器渲染、PDF 端文字由浏览器光栅化，
  * 字形本身不受该启发式影响。
  */
-import type { RenderTextMetrics } from '@/renderer/context';
+import type { RenderTextMetrics } from '@/render/vector/context';
 
 export interface ParsedFont {
   size: number;
@@ -63,3 +63,5 @@ export const measureTextHeuristic = (text: string, font: string): RenderTextMetr
     fontBoundingBoxDescent: size * 0.25,
   };
 };
+
+

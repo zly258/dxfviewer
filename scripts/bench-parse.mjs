@@ -4,7 +4,7 @@
  * 生成大规模合成 DXF 文本（默认 10 万实体），计时：
  * - parseDxf 全量解析
  * - createSceneIndex 建索引
- * - renderEntitiesToCanvas 三次渲染取平均（影子 Canvas）
+ * - renderVectorScene 三次渲染取平均（影子 Canvas）
  *
  * 运行：node scripts/bench-parse.mjs（需先 npm run build:lib）
  * 可选参数：node scripts/bench-parse.mjs 200000
@@ -13,7 +13,7 @@ import { performance } from 'node:perf_hooks';
 import { createFakeCanvas } from './canvas-mock.mjs';
 
 const { parseDxf } = await import(new URL('../dist/parser.js', import.meta.url).href);
-const { renderEntitiesToCanvas, createSceneIndex } = await import(new URL('../dist/render.js', import.meta.url).href);
+const { renderVectorScene, createSceneIndex } = await import(new URL('../dist/render.js', import.meta.url).href);
 
 const total = Number(process.argv[2]) || 100_000;
 
@@ -105,7 +105,7 @@ let index;
 {
   const { canvas } = createFakeCanvas(1280, 800);
   const center = data.extents.center;
-  const warm = () => renderEntitiesToCanvas({
+  const warm = () => renderVectorScene({
     ctx: canvas.getContext('2d'),
     entities: data.entities,
     layers: data.layers,
@@ -124,5 +124,6 @@ let index;
   const runs = 3;
   for (let i = 0; i < runs; i++) warm();
   const ms = (performance.now() - start) / runs;
-  console.log(`renderEntitiesToCanvas 平均：${ms.toFixed(1)} ms/帧（${runs} 次）`);
+  console.log(`renderVectorScene 平均：${ms.toFixed(1)} ms/帧（${runs} 次）`);
 }
+

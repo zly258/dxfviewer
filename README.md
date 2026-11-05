@@ -8,7 +8,7 @@
 
 ## 中文
 
-DXF Viewer 是一个基于 React 和 HTML5 Canvas 的 DXF 查看组件，提供核心查看器、多 Tab 工作区和示例工程。项目专注 DXF 解析、浏览、图层显示、文字搜索和移动端查看，不提供 CAD 编辑能力。
+DXF Viewer 是一个基于 React 的 DXF 查看组件，交互渲染提供 WebGL 2D（GPU 加速）与 Canvas 2D 双引擎（可在视图菜单切换对比），提供核心查看器、多 Tab 工作区和示例工程。项目专注 DXF 解析、浏览、图层显示、文字搜索和移动端查看，不提供 CAD 编辑能力。
 
 ### 主要功能
 
@@ -183,14 +183,12 @@ npm run build:all
 
 ```text
 src/
-  components/
-    viewer/        查看器、工具栏、图层面板、属性面板和移动端控制
-    workspace/     多 Tab 工作区与 Tab 状态逻辑
-  config/          常量、主题和文案配置
-  core/            DXF 解析（parser）、写出（writer）、组码注册表与几何、文本布局
-  renderer/        Canvas 实体绘制、渲染服务与无头渲染入口
-  export/          PNG / PDF 导出
-  styles/          统一样式
+  ui/              界面层：components（查看器/面板/工具栏）、hooks、i18n、styles（WPF 风格令牌）
+  io/              输入输出层：parser（DXF 解析）、writer（写出）、dxf（组码）、loader（解析 Worker）
+  render/          渲染层：engine（双引擎契约）/ webgl / canvas（可切换对比）/ picking / text / vector
+  core/            领域算法：几何、曲线采样、文字布局、范围计算
+  export/          导出：PNG（WebGL 栅格）、SVG / PDF（矢量）
+  config/          常量与查看器配置
   types/           公共类型定义
   utils/           颜色、线型、字体、搜索和实体辅助函数
 samples/           读写往返等自检的输出目录（gitignore，运行时生成）
@@ -202,14 +200,14 @@ scripts/           自动化自检脚本（check:*）、夹具生成、基准与
 - 查看与渲染专注浏览，不提供 CAD 编辑能力；`writeDxf` 为重建式写出，不保留源文件未建模的信息。
 - 写出覆盖 LINE/CIRCLE/ARC/ELLIPSE/LWPOLYLINE/POLYLINE/SPLINE/TEXT/MTEXT/ATTRIB/SOLID/3DFACE/HATCH/INSERT/DIMENSION/RAY/XLINE/LEADER/SHAPE；REGION 等 ACIS 元数据与部分代理对象无法重建，经 `skipped` 显式报告（`preserveRaw` 保真模式可原样回放）。
 - 图纸空间已支持实体切换，但复杂 `VIEWPORT` 的模型空间投影视口仍属于后续增强方向。
-- SHX 只做字体名兼容和系统字体映射，不加载真实 SHX 字形文件；居中文字按实际字形宽度居中，与 AutoCAD 原字体存在字符级细微差异。
+- SHX 文字：ASCII 走内置描边字形（基线/字高按 CAD 语义），中文按系统字体图集渲染；居中按实际整形宽度计算。注册真实 .shx 后与 AutoCAD 原字体一致。
 - 源码和 README 使用 UTF-8 with BOM；`package.json`、`package-lock.json` 等 npm 配置文件保持标准 UTF-8，避免 npm / Vite 解析问题。
 
 ---
 
 ## English
 
-DXF Viewer is a React and HTML5 Canvas based DXF viewing component. It provides a core viewer, a multi-tab workspace, and an example workspace. The project focuses on DXF parsing, viewing, layer visibility, text search, and mobile viewing. It does not provide CAD editing features.
+DXF Viewer is a React based DXF viewing component with dual interactive render engines (WebGL 2D GPU-accelerated and Canvas 2D, switchable from the View menu). It provides a core viewer, a multi-tab workspace, and an example workspace. The project focuses on DXF parsing, viewing, layer visibility, text search, and mobile viewing. It does not provide CAD editing features.
 
 ### Features
 
@@ -383,14 +381,12 @@ Note: `dxfviewer-example` is a real example workspace and exists in the full rep
 
 ```text
 src/
-  components/
-    viewer/        Viewer, toolbar, layer panel, property panel, and mobile controls
-    workspace/     Multi-tab workspace and tab state logic
-  config/          Constants, theme, and UI text
-  core/            DXF parsing (parser), writing (writer), group-code registry, geometry, text layout
-  renderer/        Canvas entity renderers, rendering services, and headless rendering entry
-  export/          PNG / PDF export
-  styles/          Shared styles
+  ui/              UI layer: components (viewer/panels/toolbar), hooks, i18n, styles (WPF-style tokens)
+  io/              I/O layer: parser (DXF), writer, dxf (group codes), loader (parse worker)
+  render/          Render layer: engine (dual-engine contract) / webgl / canvas (switchable) / picking / text / vector
+  core/            Domain algorithms: geometry, curve sampling, text layout, extents
+  export/          Export: PNG (WebGL raster), SVG / PDF (vector)
+  config/          Constants and viewer config
   types/           Public types
   utils/           Color, linetype, font, search, and entity helpers
 samples/           Output directory for self-check artifacts (gitignored, generated at runtime)
@@ -404,3 +400,7 @@ scripts/           Automated self-check scripts (check:*), fixture generation, b
 - Paper-space switching is supported, but full `VIEWPORT` model-space projection is still a future enhancement.
 - SHX is handled as font-name compatibility only. Real SHX glyph files are not loaded; centered text is centered by actual glyph width, which can differ from the original CAD fonts at character level.
 - Source files and README use UTF-8 with BOM. npm configuration files such as `package.json` and `package-lock.json` remain standard UTF-8 to avoid npm / Vite parsing issues.
+
+
+
+

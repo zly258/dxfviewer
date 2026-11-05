@@ -1,13 +1,108 @@
 import { TEXT_RENDER_CONFIG } from '@/config/viewerConfig';
 import { CAD_DEFAULT_TEXT_HEIGHT, CAD_DEFAULT_TEXT_STYLE } from '@/config/cadConstants';
 import { DxfStyle, DxfText, EntityType, Point2D } from '@/types';
-import { resolveCadTextFontProfile } from '@/renderer/services/fontService';
+import { resolveCadTextFontProfile } from '@/render/text/fontService';
 
 const TEMP_BACKSLASH = '\x01';
 const TEMP_LEFT_BRACE = '\x02';
 const TEMP_RIGHT_BRACE = '\x03';
 
 const decodeUnicodeEscape = (_: string, hex: string) => String.fromCharCode(parseInt(hex, 16));
+
+/** 上标字符映射表 */
+const SUPERSCRIPTS: Record<string, string> = {
+  '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴',
+  '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹',
+  '+': '⁺', '-': '⁻', '=': '⁼', '(': '⁽', ')': '⁾',
+  'n': 'ⁿ', 'i': 'ⁱ',
+};
+
+/** 下标字符映射表 */
+const SUBSCRIPTS: Record<string, string> = {
+  '0': '₀', '1': '₁', '2': '₂', '3': '₃', '4': '₄',
+  '5': '₅', '6': '₆', '7': '₇', '8': '₈', '9': '₉',
+  '+': '₊', '-': '₋', '=': '₌', '(': '₍', ')': '₎',
+  'a': 'ₐ', 'e': 'ₑ', 'h': 'ₕ', 'i': 'ᵢ', 'j': 'ⱼ',
+  'k': 'ₖ', 'l': 'ₗ', 'm': 'ₘ', 'n': 'ₙ', 'o': 'ₒ',
+  'p': 'ₚ', 'r': 'ᵣ', 's': 'ₛ', 't': 'ₜ', 'u': 'ᵤ',
+  'v': 'ᵥ', 'x': 'ₓ',
+};
+
+/** 带圈数字映射表（土层代号等） */
+const CIRCLED_NUMBERS: Record<string, string> = {
+  '0': '⓪', '1': '①', '2': '②', '3': '③', '4': '④',
+  '5': '⑤', '6': '⑥', '7': '⑦', '8': '⑧', '9': '⑨',
+  '10': '⑩', '11': '⑪', '12': '⑫', '13': '⑬', '14': '⑭',
+  '15': '⑮', '16': '⑯', '17': '⑰', '18': '⑱', '19': '⑲', '20': '⑳',
+};
+
+const toSuperscript = (str: string): string =>
+  str.split('').map(ch => SUPERSCRIPTS[ch] || ch).join('');
+
+const toSubscript = (str: string): string =>
+  str.split('').map(ch => SUBSCRIPTS[ch] || ch).join('');
+
+const toCircledNumber = (str: string): string => {
+  const trimmed = str.trim();
+  if (CIRCLED_NUMBERS[trimmed]) return CIRCLED_NUMBERS[trimmed];
+  return trimmed.split('').map(ch => CIRCLED_NUMBERS[ch] || ch).join('');
+};
+
+/**
+ * 解码 AutoCAD 与探索者 (TSSD) 专用特殊转义码：
+ * - %%c/%%d/%%p: 常用直径、度数、正负号
+ * - %%130~%%138: 结构各级钢筋等级符号（一级钢~四级钢等）
+ * - %%140...%%141: 上标开/关（如 kN/m%%1402%%141 -> kN/m²）
+ * - %%142...%%143: 下标开/关（如 L%%142aE%%143 -> LₐE）
+ * - %%144/%%145: 标题加重或下划线开关（如 %%144说明：-> 说明：，彻底清除 0x90 乱码控制符）
+ * - %%146...%%147: 带圈数字（土层代号，如 %%1462%%147 -> ②）
+ * - %%148...%%149, %%150...%%151: 轴号定位符号
+ */
+export function decodeCadSpecialCodes(text: string): string {
+  if (!text) return '';
+  let res = text;
+
+  // 1. 上标：%%140...%%141
+  res = res.replace(/%%140([\s\S]*?)%%141/g, (_, content) => toSuperscript(content));
+  res = res.replace(/%%14[01]/g, '');
+
+  // 2. 下标：%%142...%%143
+  res = res.replace(/%%142([\s\S]*?)%%143/g, (_, content) => toSubscript(content));
+  res = res.replace(/%%14[23]/g, '');
+
+  // 3. 带圈数字：%%146...%%147
+  res = res.replace(/%%146([\s\S]*?)%%147/g, (_, content) => toCircledNumber(content));
+  res = res.replace(/%%14[67]/g, '');
+
+  // 4. 轴号圆圈/定位符：%%148...%%149, %%150...%%151
+  res = res.replace(/%%148([\s\S]*?)%%149/g, (_, content) => `(${content})`);
+  res = res.replace(/%%150([\s\S]*?)%%151/g, (_, content) => `(${content})`);
+  res = res.replace(/%%(148|149|150|151)/g, '');
+
+  // 5. 钢筋级别符号（TSSD 国标标准映射）
+  res = res.replace(/%%130/g, 'Ø');       // 一级钢筋 HPB300
+  res = res.replace(/%%131/g, 'Φ');       // 二级钢筋 HRB335
+  res = res.replace(/%%132/g, 'Φ');       // 三级钢筋 HRB400
+  res = res.replace(/%%133/g, 'Φ');       // 四级钢筋 HRB500
+  res = res.replace(/%%134/g, 'Φ');
+  res = res.replace(/%%135/g, 'Φ');
+  res = res.replace(/%%136/g, 'Φ');
+  res = res.replace(/%%137/g, 'Φ');
+  res = res.replace(/%%138/g, 'Φ');
+
+  // 6. %%144, %%145 (说明大标题强调符、下划线开关码，去除以避免 0x90 乱码)
+  res = res.replace(/%%144/g, '');
+  res = res.replace(/%%145/g, '');
+
+  // 7. AutoCAD 标准转义码
+  res = res.replace(/%%[cC]/g, 'Ø');
+  res = res.replace(/%%[dD]/g, '°');
+  res = res.replace(/%%[pP]/g, '±');
+  res = res.replace(/%%%/g, '%');
+  res = res.replace(/%%[uUoO]/g, '');
+
+  return res;
+}
 
 const isCjk = (char: string) => /[\u2e80-\u9fff\uf900-\ufaff]/.test(char);
 const isDigit = (char: string) => /[0-9]/.test(char);
@@ -27,14 +122,15 @@ export function cleanMText(text: string): string {
   result = result.replace(/\\U\\+([0-9A-Fa-f]{4})/g, decodeUnicodeEscape);
   // 标准 \U+XXXX 转义（单反斜杠形式，CJK 图纸中最常见的特殊字符写法）
   result = result.replace(/\\U\+([0-9A-Fa-f]{4})/g, decodeUnicodeEscape);
-  // 单行文字 %% 特殊码：%%c/%%d/%%p → 符号；%%% → %；%%nnn → ASCII 字符；
-  // %%u/%%o 为下划线/上划线开关（纯文本路径无法表达装饰，直接去除）
-  result = result.replace(/%%[cC]/g, 'Ø');
-  result = result.replace(/%%[dD]/g, '°');
-  result = result.replace(/%%[pP]/g, '±');
-  result = result.replace(/%%%/g, '%');
-  result = result.replace(/%%([0-9]{1,3})/g, (_, code) => String.fromCharCode(parseInt(code, 10)));
-  result = result.replace(/%%[uUoO]/g, '');
+
+  // 统一解码工程特种符号（TSSD / AutoCAD 特殊码：%%144说明、%%130钢筋、%%140上标、%%142下标等）
+  result = decodeCadSpecialCodes(result);
+  result = result.replace(/%%([0-9]{1,3})/g, (_, code) => {
+    const num = parseInt(code, 10);
+    // 过滤掉不可见的 C0/C1 控制字符（0-31, 128-159），避免污染排版与字形库
+    if ((num >= 0 && num <= 31) || (num >= 127 && num <= 159)) return '';
+    return String.fromCharCode(num);
+  });
   result = result.replace(/\\P/g, '\n');
   result = result.replace(/\\[Xx]/g, '\n');
   result = result.replace(/\\p[^;]*;/g, '');
@@ -228,6 +324,7 @@ export interface CadFormattedTextSegment {
 }
 
 export function splitCadFormattedText(rawText: string): CadFormattedTextSegment[] {
+  const decodedText = decodeCadSpecialCodes(rawText);
   const segments: CadFormattedTextSegment[] = [];
   let underline = false;
   let buffer = '';
@@ -238,11 +335,11 @@ export function splitCadFormattedText(rawText: string): CadFormattedTextSegment[
     buffer = '';
   };
 
-  for (let index = 0; index < rawText.length; index++) {
-    const char = rawText[index];
+  for (let index = 0; index < decodedText.length; index++) {
+    const char = decodedText[index];
     // 单行文字 %% 特殊码：%%u 下划线开关、%%o 上划线（去除）、%%% 百分号、%%nnn ASCII 字符
-    if (char === '%' && rawText[index + 1] === '%') {
-      const third = rawText[index + 2];
+    if (char === '%' && decodedText[index + 1] === '%') {
+      const third = decodedText[index + 2];
       if (third === 'u' || third === 'U') {
         flush();
         underline = !underline;
@@ -263,16 +360,17 @@ export function splitCadFormattedText(rawText: string): CadFormattedTextSegment[
         // %%nnn：最多读取 3 位数字（AutoCAD 语义，%%65 → A）
         let code = third;
         let j = index + 3;
-        while (j < rawText.length && code.length < 3 && rawText[j] >= '0' && rawText[j] <= '9') {
-          code += rawText[j];
+        while (j < decodedText.length && code.length < 3 && decodedText[j] >= '0' && decodedText[j] <= '9') {
+          code += decodedText[j];
           j++;
         }
-        buffer += String.fromCharCode(parseInt(code, 10));
+        const num = parseInt(code, 10);
+        if (num > 31 && (num < 127 || num > 159)) {
+          buffer += String.fromCharCode(num);
+        }
         index = j - 1;
         continue;
       }
-      // 其余 %% 形式交给 cleanCadText 的符号转换（Ø/°/±）：两个 '%' 都入缓冲，
-      // 后续字符留给下一轮（for 循环的 index++ 会再 +1）
       buffer += '%%';
       index += 1;
       continue;
@@ -282,9 +380,9 @@ export function splitCadFormattedText(rawText: string): CadFormattedTextSegment[
       continue;
     }
 
-    const next = rawText[index + 1];
-    if (next === 'U' && rawText[index + 2] === '+') {
-      const hex = rawText.slice(index + 3, index + 7);
+    const next = decodedText[index + 1];
+    if (next === 'U' && decodedText[index + 2] === '+') {
+      const hex = decodedText.slice(index + 3, index + 7);
       if (/^[0-9A-Fa-f]{4}$/.test(hex)) {
         buffer += String.fromCharCode(parseInt(hex, 16));
         index += 7;
@@ -303,7 +401,7 @@ export function splitCadFormattedText(rawText: string): CadFormattedTextSegment[
       continue;
     }
     if (next === 'p') {
-      const end = rawText.indexOf(';', index + 2);
+      const end = decodedText.indexOf(';', index + 2);
       index = end >= 0 ? end : index + 1;
       continue;
     }
@@ -336,12 +434,13 @@ const pushFormattedLine = (lines: CadFormattedTextLine[], segments: CadFormatted
 
 export function splitCadFormattedLines(rawText: string): CadFormattedTextLine[] {
   if (!rawText) return [];
+  const decodedText = decodeCadSpecialCodes(rawText);
 
   const lines: CadFormattedTextLine[] = [];
   let segments: CadFormattedTextSegment[] = [];
   const buffer = { value: '' };
   let underline = false;
-  let currentAlign: CanvasTextAlign | undefined = getInlineMTextParagraphAlign(rawText) || undefined;
+  let currentAlign: CanvasTextAlign | undefined = getInlineMTextParagraphAlign(decodedText) || undefined;
 
   const flush = () => flushFormattedBuffer(segments, buffer, underline);
   const newLine = () => {
@@ -350,9 +449,9 @@ export function splitCadFormattedLines(rawText: string): CadFormattedTextLine[] 
     segments = [];
   };
   const readUntilSemicolon = (startIndex: number): { content: string; endIndex: number } | null => {
-    const end = rawText.indexOf(';', startIndex);
+    const end = decodedText.indexOf(';', startIndex);
     if (end < 0) return null;
-    return { content: rawText.slice(startIndex, end), endIndex: end };
+    return { content: decodedText.slice(startIndex, end), endIndex: end };
   };
   const applyParagraphProperty = (content: string) => {
     const match = content.match(/q([lcrj])/i);
@@ -361,11 +460,11 @@ export function splitCadFormattedLines(rawText: string): CadFormattedTextLine[] 
     currentAlign = code === 'c' ? 'center' : code === 'r' ? 'right' : 'left';
   };
 
-  for (let index = 0; index < rawText.length; index++) {
-    const char = rawText[index];
+  for (let index = 0; index < decodedText.length; index++) {
+    const char = decodedText[index];
     // 单行 %% 特殊码在 MTEXT 中同样可能出现（legacy 内容）：%%u 开关、%%% 百分号、%%nnn ASCII
-    if (char === '%' && rawText[index + 1] === '%') {
-      const third = rawText[index + 2];
+    if (char === '%' && decodedText[index + 1] === '%') {
+      const third = decodedText[index + 2];
       if (third === 'u' || third === 'U') {
         flush();
         underline = !underline;
@@ -385,11 +484,14 @@ export function splitCadFormattedLines(rawText: string): CadFormattedTextLine[] 
         // %%nnn：最多读取 3 位数字（AutoCAD 语义，%%65 → A）
         let code = third;
         let j = index + 3;
-        while (j < rawText.length && code.length < 3 && rawText[j] >= '0' && rawText[j] <= '9') {
-          code += rawText[j];
+        while (j < decodedText.length && code.length < 3 && decodedText[j] >= '0' && decodedText[j] <= '9') {
+          code += decodedText[j];
           j++;
         }
-        buffer.value += String.fromCharCode(parseInt(code, 10));
+        const num = parseInt(code, 10);
+        if (num > 31 && (num < 127 || num > 159)) {
+          buffer.value += String.fromCharCode(num);
+        }
         index = j - 1;
         continue;
       }
@@ -402,7 +504,7 @@ export function splitCadFormattedLines(rawText: string): CadFormattedTextLine[] 
       continue;
     }
 
-    const next = rawText[index + 1];
+    const next = decodedText[index + 1];
     if (next === 'L' || next === 'l') {
       flush();
       underline = next === 'L';
@@ -438,8 +540,8 @@ export function splitCadFormattedLines(rawText: string): CadFormattedTextLine[] 
       index++;
       continue;
     }
-    if (next === 'U' && rawText[index + 2] === '+') {
-      const hex = rawText.slice(index + 3, index + 7);
+    if (next === 'U' && decodedText[index + 2] === '+') {
+      const hex = decodedText.slice(index + 3, index + 7);
       if (/^[0-9A-Fa-f]{4}$/.test(hex)) {
         buffer.value += String.fromCharCode(parseInt(hex, 16));
         index += 6;
@@ -646,3 +748,4 @@ export function pointsToExtents(points: Point2D[]): { min: Point2D; max: Point2D
   if (minX === Infinity) return null;
   return { min: { x: minX, y: minY }, max: { x: maxX, y: maxY } };
 }
+

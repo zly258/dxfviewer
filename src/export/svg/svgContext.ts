@@ -1,5 +1,5 @@
 /**
- * RenderContext 的 SVG 后端。
+ * VectorContext 的 SVG 后端。
  *
  * 把绘制调用直接串接成 SVG 文档字符串：
  * - 路径 → <path d>（arc 转换为 A 圆弧指令，与 Canvas 角度语义一致）
@@ -13,7 +13,7 @@
  * - drawImage/IMAGE 占位框按描边矩形输出（渲染器本就只画占位框）
  * - OffscreenCanvas 图案源无同步 toDataURL 时降级为半透明纯色
  */
-import type { RenderContext, RenderTextMetrics } from '@/renderer/context';
+import type { VectorContext, RenderTextMetrics } from '@/render/vector/context';
 import { measureTextHeuristic, parseFont } from '@/export/textMetrics';
 
 interface SvgPatternInfo {
@@ -74,7 +74,7 @@ const ALIGN_TO_ANCHOR: Record<string, string> = {
   right: 'end',
 };
 
-export class SvgRenderContext implements RenderContext {
+export class SvgVectorContext implements VectorContext {
   private readonly states: SvgState[] = [];
   private readonly parts: string[] = [];
   private readonly patternInfos = new Map<CanvasPattern, SvgPatternInfo>();
@@ -365,3 +365,5 @@ export class SvgRenderContext implements RenderContext {
     return `${this.parts.join('\n')}${closers}\n</svg>\n`;
   }
 }
+
+

@@ -1,7 +1,7 @@
-﻿import { AnyEntity, DxfText, DxfStyle, EntityType } from '@/types';
+import { AnyEntity, DxfText, DxfStyle, EntityType } from '@/types';
 import { CAD_DEFAULT_TEXT_STYLE, CAD_DEFAULT_TEXT_HEIGHT } from '@/config/cadConstants';
 import { TEXT_RENDER_CONFIG } from '@/config/viewerConfig';
-import { getStyleFontFamily, FONT_STACKS, mapCadFontToWebFont, resolveCadTextFontProfile } from '@/renderer/services/fontService';
+import { getStyleFontFamily, FONT_STACKS, mapCadFontToWebFont } from '@/render/text/fontService';
 
 /**
  * 获取用于画布绘制的字体样式字符串。
@@ -23,8 +23,6 @@ export const getCanvasFont = (ent: AnyEntity, styles: Record<string, DxfStyle> |
     let fontWeight = 'normal';
     let fontStyle = 'normal';
     
-    const profile = resolveCadTextFontProfile(textEnt?.styleName, styles, textEnt?.value);
-    let isTrueType = profile === 'trueType' || profile === 'cjk';
 
     // 检查多行文字内联高度覆盖 \H...;。
     if (ent.type === EntityType.MTEXT) {
@@ -66,7 +64,6 @@ export const getCanvasFont = (ent: AnyEntity, styles: Record<string, DxfStyle> |
 
             if (inlineFont) {
                 const inlineFontLower = inlineFont.toLowerCase();
-                isTrueType = true; // 内联 \f 字体通常是真字体。
 
                 if (inlineFontLower.includes('仿宋') || inlineFontLower.includes('fangsong') || inlineFontLower === 'fs') {
                     fontFamily = FONT_STACKS.FANGSONG;
@@ -90,9 +87,19 @@ export const getCanvasFont = (ent: AnyEntity, styles: Record<string, DxfStyle> |
         }
     }
 
-    // CAD 文字高度更接近可见字高，画布字体大小是字框高度，需要按字体类型做高度换算。
-    const scaleFactor = isTrueType ? TEXT_RENDER_CONFIG.trueTypeFontHeightFactor : TEXT_RENDER_CONFIG.shxFontHeightFactor;
-    const correctedHeight = height * scaleFactor; 
+    // CAD 文字高度是「大写字高」语义，画布 font-size 是 em 尺寸，需要换算：
+    // - 含中文：中文墨迹约 0.88em → 1.14；
+    // - 纯西文：capHeight ≈ 0.72em → 1.39。
+    // Canvas 始终使用系统字体（SHX 也映射为系统字体），不再按 SHX 的 1.0
+    // 处理，否则 SHX 样式文字只有 0.7 倍字高（实测"有的偏小"）。
+    const hasCjk = /[\u2e80-\u9fff\uf900-\ufaff]/.test(textEnt?.value || '');
+    const scaleFactor = hasCjk
+        ? TEXT_RENDER_CONFIG.cjkFontHeightFactor
+        : TEXT_RENDER_CONFIG.trueTypeFontHeightFactor;
+    const correctedHeight = Math.max(TEXT_RENDER_CONFIG.minimumCanvasFontPixelHeight, height * scaleFactor);
 
     return `${fontStyle} ${fontWeight} ${correctedHeight}px ${fontFamily}`;
 };
+
+
+

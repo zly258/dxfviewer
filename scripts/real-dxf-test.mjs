@@ -5,7 +5,7 @@
  *   解码（utf-8 失败回退 gb18030，与 TEXT_DECODER_CONFIG 一致）
  *   → parseDxf 计时
  *   → createSceneIndex 计时
- *   → renderEntitiesToCanvas 影子渲染计时 + 绘制调用计数
+ *   → renderVectorScene 影子渲染计时 + 绘制调用计数
  *   → exportSvg NaN/Infinity 扫描
  *   → writeDxf 写出还原（输出到 os.tmpdir，源目录只读不写）
  *
@@ -23,7 +23,7 @@ if (!root) {
 }
 
 const { parseDxf } = await import(new URL('../dist/parser.js', import.meta.url).href);
-const { renderEntitiesToCanvas, createSceneIndex } = await import(new URL('../dist/render.js', import.meta.url).href);
+const { renderVectorScene, createSceneIndex } = await import(new URL('../dist/render.js', import.meta.url).href);
 const { exportSvg } = await import(new URL('../dist/export.js', import.meta.url).href);
 const { writeDxf } = await import(new URL('../dist/writer.js', import.meta.url).href);
 const { createFakeCanvas } = await import('./canvas-mock.mjs');
@@ -76,7 +76,7 @@ for (const path of files) {
     const center = data.extents?.center ?? { x: 0, y: 0 };
     t0 = performance.now();
     const { canvas, counter } = createFakeCanvas(1280, 800);
-    renderEntitiesToCanvas({
+    renderVectorScene({
       ctx: canvas.getContext('2d'),
       entities: data.entities,
       layers: data.layers,
@@ -157,3 +157,4 @@ console.log(`\n共 ${files.length} 个文件，失败 ${failed} 个；解析总�
 console.log(`写出还原输出（临时）：${tmpOut}`);
 rmSync(tmpOut, { recursive: true, force: true });
 process.exit(failed === 0 ? 0 : 1);
+

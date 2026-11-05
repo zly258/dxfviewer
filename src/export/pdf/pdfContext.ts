@@ -1,5 +1,5 @@
 /**
- * RenderContext 的 PDF 内容流后端（M7 矢量 PDF）。
+ * VectorContext 的 PDF 内容流后端（M7 矢量 PDF）。
  *
  * 设计要点：
  * - **几何全矢量**：路径 → m/l/c（arc 按标准 kappa 转三次贝塞尔）、填充 f/f*、描边 S
@@ -15,7 +15,7 @@
  *   平均色作为实心填充（PDF 平铺图案的复杂度不值得，剖面线视觉近似即可）
  */
 
-import type { RenderContext, RenderPaint, RenderTextMetrics } from '@/renderer/context';
+import type { VectorContext, RenderPaint, RenderTextMetrics } from '@/render/vector/context';
 import { measureTextHeuristic, parseFont } from '@/export/textMetrics';
 
 export interface TextRun {
@@ -168,14 +168,14 @@ const multiply = (m1: Matrix, m2: Matrix): Matrix => [
   m1[1] * m2[4] + m1[3] * m2[5] + m1[5],
 ];
 
-export interface PdfRenderContextOptions {
+export interface PdfVectorContextOptions {
   pageWidthPt: number;
   pageHeightPt: number;
   /** 页面底色（rgba 颜色的 alpha 混合基准），默认白 */
   background?: string;
 }
 
-export class PdfRenderContext implements RenderContext {
+export class PdfVectorContext implements VectorContext {
   private readonly ops: string[] = [];
   private readonly styleStack: string[] = [];
   private matrix: Matrix;
@@ -198,7 +198,7 @@ export class PdfRenderContext implements RenderContext {
   public readonly pageWidthPt: number;
   public readonly pageHeightPt: number;
 
-  constructor(options: PdfRenderContextOptions) {
+  constructor(options: PdfVectorContextOptions) {
     this.pageWidthPt = options.pageWidthPt;
     this.pageHeightPt = options.pageHeightPt;
     this.backgroundRgb = parseCssColor(options.background ?? '#ffffff');
@@ -488,3 +488,5 @@ export class PdfRenderContext implements RenderContext {
   /** 字体解析（导出器光栅化文字时需要 size/family）。 */
   static parseFont = parseFont;
 }
+
+

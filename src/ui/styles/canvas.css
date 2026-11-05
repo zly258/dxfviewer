@@ -1,0 +1,47 @@
+.canvas-container {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  user-select: none;
+  touch-action: none;
+  overscroll-behavior: none;
+  cursor: default !important;
+  /* 默认白色，避免浅色主题下 --canvas-bg 未及时设置时出现黑色闪烁。 */
+  background-color: var(--canvas-bg, var(--brush-surface));
+}
+
+.canvas-container canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+/* 拖拽打开 DXF 的视觉提示 */
+.app-container.drag-over::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  border: 2px dashed var(--brush-accent);
+  background: rgba(74, 158, 255, 0.08);
+  border-radius: 8px;
+  pointer-events: none;
+}
+
+
+
+
+/* ---------------------------------------------------------------
+ * WebGL 文字覆盖层：几何由 GPU 绘制，文字由浏览器原生文本引擎绘制，
+ * 两层叠合同尺寸、同变换，文字层不接收指针事件。
+ * ------------------------------------------------------------- */
+.viewer-text-layer {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+}
