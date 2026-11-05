@@ -24,7 +24,7 @@ src/
 │   ├── canvas/            #   Canvas 2D 引擎（Path2D 批缓存 + LOD）
 │   ├── scene/             #   实体 → 分块 GPU 网格（WebGL 专用）
 │   ├── picking/           #   CPU 拾取（BVH/命中测试，引擎无关）
-│   ├── text/              #   SHX 形字体 / 字形图集 / 字体服务
+│   ├── text/              #   轮廓字体三角化 / 多字体回退 / 字符图集 / 字体服务
 │   ├── vector/            #   矢量场景写入器（SVG/PDF 导出后端）
 │   └── viewportFitting.ts #   适配取景（交互与导出共用）
 ├── core/                  # 领域算法（几何/曲线采样/文字布局/范围计算）
@@ -44,11 +44,10 @@ src/
   canvas 元素带 `key={engineKind}` 强制重建（同一 canvas 元素不能同时持有
   WebGL 与 2D 上下文）；
 - 两引擎语义对齐：同一场景输入、同一拾取（CPU BVH）、同一图层/可见性模型；
-  预期差异：SHX 文字（WebGL=描边字形 / Canvas=系统字体近似）、
-  HATCH 图案（WebGL=解析着色 / Canvas=45° 平铺近似）、
-  大图交互（WebGL=GPU 批处理 / Canvas=Path2D 批缓存 + LOD 剔除）。
-> 交互渲染 100% WebGL2；SVG / PDF 矢量导出走 `render/vector` 场景写入器；
-> PNG 栅格导出复用 WebGL 引擎（离屏渲染 + readPixels）。
+  - 纯几何文字三角化：WebGL 采用 opentype.js + earcut 轮廓几何渲染，放大无模糊；
+  - 特殊符号转义：统一支持 AutoCAD 及 TSSD 扩展编码（%%144说明、%%130-138钢筋级别、%%140-141上标、%%142-143下标、%%146-147圈号、%%c/d/p等）；
+  - 复杂排版体系：支持 MTEXT 自动列宽折行、全部 9 种附着点原生基准偏移、首行基线沉降、组码 44 行间距倍数、Fit（hAlign=5）两点精确自适应拉伸与 Aligned（hAlign=3）等比缩放；
+  - 大图交互：WebGL=分块 GPU 批处理 / Canvas=Path2D 批缓存 + LOD 剔除。
 
 ## 1. 帧渲染管线
 
@@ -63,7 +62,7 @@ render(viewPort)              ← 每帧：平移缩放零几何重建
   3. 视口剔除：分块包围盒 ∩ 视口（其余分块整块跳过）
   4. 按 chunk.drawOps 构建顺序绘制（程序切换 + 可选 scissor）：
      fill（实心/图案）→ line（按虚线分组）→ glyph（图集）→ point
-  5. 选中叠加：覆盖色重绘选中实体的索引段
+  5. 选中叠加：覆盖色重绘选中实体的索引段与填充多边形（#00A8FF）
 ```
 
 ### 性能关键点
@@ -84,46 +83,33 @@ render(viewPort)              ← 每帧：平移缩放零几何重建
 - 屏幕节距 < 2.5px 时自动退化为实线（与 CAD 远景表现一致，避免摩尔纹）；
 - 构建期按 `dashIdx` 记录索引段（`chunk.lineDashRanges`），绘制按组设置 uniform。
 
-## 2. 文字渲染（SDF：文字转图形，GPU 原生）
+## 2. 文字渲染（几何三角化：opentype.js + earcut，GPU 原生）
 
-**主方案**：字形 → 有向距离场（SDF）→ GPU 四边形。这与
-tiny-sdf / troika-three-text / msdfgen 等开源库同源——把「字形轮廓」
-编码成到最近边缘的距离，着色器用屏幕空间导数自适应还原边缘，
-因此放大到任意倍数都保持锐利，不再依赖超大位图尺寸。
+**设计**：字形轮廓（TrueType / OpenType）通过 `opentype.js` 提取其贝塞尔曲线，
+经过自适应细分为光滑多边形环，经过包含树分类（分离外环与内孔）后由 `earcut`
+三角化为纯几何多边形网格（`fill` 缓冲）。
 
-链路（ender/text/）：
+**技术优势**：
+1. **纯几何多边形渲染**：没有任何位图、图集尺寸或距离场精度的上限，任意放大边缘均为数学精确的硬表面边缘；
+2. **多字体回退机制（Fallback）**：主字体默认使用工程标准仿宋体（`simfang.ttf`），当遇到主字体未收录的特种符号（如 `Ø`, `²`, `³`, `ₐ`, `ₑ`）时，自动回退到后备字体（`arial.ttf`）提取字形并等比缩放步进，100% 杜绝缺字或非法控制字符占位；
+3. **字形几何缓存**：所有字形在初次遇到时三角化一次并缓存（`glyphCache`），重复文字实例仅需进行仿射矩阵变换，十万级文字构建速度平稳；
+4. **完整 AutoCAD / TSSD 排版规则**：
+   - 提取并应用内联宽度因子 `\W...;` 与样式 `widthFactor`；
+   - 严格应用 MTEXT 组码 44 的 `lineSpacingFactor`（如 0.9 倍紧凑行距）与单倍基准（1.66 倍）；
+   - 支持全部 9 种 `attachmentPoint` 原生基准与首行基线沉降，消除文本越界溢出边框；
+   - 完整解码 TSSD 特殊转义（`%%144` 标题控制符清洗、`%%130-138` 钢筋等级符号、`%%140-141` 上标、`%%142-143` 下标、`%%146-147` 圈号等）；
+   - 支持单行文字 Fit（`hAlign=5`）两点精确自适应拉伸与 Aligned（`hAlign=3`）等比缩放；
+   - 支持单行文字垂直对齐（基线、底对齐、居中、顶对齐）。
 
-1. glyphAtlas 以 RASTER_PX = 128 光栅化字形（浏览器系统字体，
-   中文/CJK 天然支持，**无需打包任何字体文件**）；
-2. **逐字形单元**计算距离场（sdf.ts，3×3 chamfer 双遍扫描）：
-   必须按单个字形算，整页一次算会让相邻字形墨迹侵入留白区，
-   导致边缘污染（实测「翼缘」显示成「翼且」）；
-3. 距离场写入 R8 页 → 上传为 TEXTURE_2D_ARRAY（页号 = layer，
-   顶点属性 _page），避免多页时采样到页 0 的同 UV 位置；
-4. 片元着色器：smoothstep(0.5 - w, 0.5 + w, d)，w = fwidth(d) * 0.75
-   —— 任意缩放下边缘恒为约 1px 抗锯齿；
-5. 字形缩放按 GlyphAtlas.getCapRatio() 实测的大写高度比换算
-   （CAD 字高 = 大写字高，系统字体 em ≈ 1.39×；中文按墨迹高 ≈ 0.88em）。
+文字 LOD：逐绘制指令按自身字高判定（`ChunkDrawOp.textHeight`），屏幕高度 < 3px 跳过——避免「一行极小字把整块文字拖成不显示」。
 
-文字 LOD：逐绘制指令按自身字高判定（ChunkDrawOp.textHeight），
-屏幕高度 < 3px 跳过——避免「一行极小字把整块文字拖成不显示」。
-
-**备选方案**：TEXT_RENDER_MODE = 'overlay' 时，GL 场景跳过文字
-（skipText），改由透明 Canvas 覆盖层用浏览器原生文本引擎绘制
-（CanvasRenderEngine({ textOnly: true })，与 Canvas 引擎逐像素同源）。
-两种模式的文字度量规则完全一致；导出（PNG/PDF/SVG）跟随当前模式。
-
-| 项 | 规则 |
-|---|---|
-| 字高换算 | 纯西文 em 系数 **1.39**；含中文 **1.14** |
-| 中文宽度补偿 | cjkRenderWidthFactor = 0.88（全角步进回到 1.0×字高） |
-| MTEXT 行距 | 1.66 × 字高（cap height），非 em 视觉高度 |
-| SDF 半宽 | GLYPH_SDF_SPREAD = 6（同时作为字形留白，防采样串页） |
 ## 3. 填充渲染
 
-- **实心**（HATCH solid / SOLID / 3DFACE / WIPEOUT）：耳切三角化，
-  内孔用「最右顶点射线桥接」合并后统一耳切；
-- **图案**（ANSI31 等）：包围盒两三角形 + 片元解析着色
+- **实心（HATCH solid / SOLID / 3DFACE / WIPEOUT）**：
+  - 接入 `sampleHatchLoop` 全面支持包含 LINE、ARC、ELLIPSE、SPLINE（及 `calculatedPoints`）的复杂曲线边界；
+  - 引入**轮廓包含树（Contour Inclusion Tree）**自动识别独立外环（Multi-Island）与嵌套孔洞（`classifyHatchIslands`），支持包含多个独立子图元或字符的复合填充（如 `WISDRI` 标志图形与文字）；
+  - 耳切三角化，内孔桥接或 earcut 统一处理；
+- **图案（ANSI31 等）**：包围盒两三角形 + 片元解析着色
   （单向线/双向线/点阵三族），间距随缩放变化由 uniform 驱动；
   屏幕间距过密时按比例退化为半透明底色。
 
@@ -137,20 +123,21 @@ VIEWPORT 实体烘焙时把模型空间实体按
 ## 5. 块引用与属性（ATTRIB）语义
 
 - **块展开**：INSERT/DIMENSION/ACAD_TABLE 按块定义展开；块内子实体经
-  `xformEntity` 应用块变换后重走烘焙路径（深度上限 12）；
+  `xformEntity` 应用块变换后重走烘焙路径（深度上限 12），包括嵌套 `INSERT`（如标题栏内部的 Logo 标志）；
+- **尺寸与宽度缩放**：在块展开阶段，不仅对实体的坐标和 `height` 乘以块缩放比，对 MTEXT `width`、`boxHeight`、`actualWidth` 和 `secondPosition` 同步进行等比缩放，彻底杜绝单字成柱的纵向折行缺陷；
 - **DIMENSION 局部坐标**：`isDimensionBlockLocal` 判定块内容是否为局部坐标——
   局部 → `world = definitionPoint + (p − basePoint)`，否则恒等映射
   （与 AutoCAD/旧渲染器一致）；
-- **ATTRIB（块属性文字）**：DXF 中 ATTRIB 携带**绝对**坐标/字高/旋转，
-  以恒等变换渲染，**不做块缩放**（旧实现双重缩放导致文字放大 20~30 倍的
-  "乱码圆圈"缺陷即源于此）；占位值（value === tag）与空值跳过；
+- **ATTRIB（块属性文字）**：在解析阶段经 `normalizeInsertAttributes` 统一对齐到世界坐标系，渲染、范围与搜索三处口径一致；
 - **ATTDEF**：属性模板定义，不是可见几何，块展开时跳过。
 
-## 6. 选中高亮
+## 6. 全图元点击高亮
 
-构建期为每个实体记录其线段索引范围（`chunk.entityRanges`）。
-选中集变化时把这些索引拷贝进一个覆盖索引缓冲，以覆盖色
-（`u_overrideColor`）重绘——不触碰静态几何，重建成本与选中数成正比。
+构建期维护调用栈（`entityIdStack`），为顶层实体及其嵌套块内容全量记录其几何范围（`chunk.entityRanges`）：
+- 线段（`line`）：索引缓冲记录与重新绘制；
+- 填充（`fill`，包括尺寸标注箭头、实心多边形、纯几何轮廓文字三角形）：顶点数组记录，着色器使用 `u_overrideColor` 覆盖高亮色；
+- 图集字形（`glyph`）与点（`point`）：同步支持覆盖色高亮。
+选中集变化时，同时渲染高亮线段与高亮填充多边形，点击文字、尺寸标注或复合图块时瞬间以 `#00A8FF` 亮蓝色整体点亮。
 
 ## 7. 导出
 
@@ -172,9 +159,3 @@ VIEWPORT 实体烘焙时把模型空间实体按
 - 着色器禁止使用 GLSL ES 3.00 之外的内置函数（无 `log10`，用 `log2` 换算）；
 - GL 状态约定：VAO 绑定全局唯一（`RenderEngine.boundVao` 跟踪），
   ELEMENT_ARRAY_BUFFER 属于 VAO 状态——替换后必须还原。
-
-
-
-
-
-
