@@ -8,9 +8,10 @@
  * - 多布局 = 多页；1:1 出图与栅格版一致（mm→pt，页边距外扩）
  */
 import { CanvasTheme, DrawingColorMode, DxfData } from '@/types';
-import { HeadlessCanvas, resolveSceneView, resolveLayout } from '@/renderer/headless';
-import { renderEntitiesToCanvas } from '@/renderer/services/canvasRenderService';
-import { PdfRenderContext, parseCssColor } from '@/export/pdf/pdfContext';
+import type { HeadlessCanvas } from '@/export/canvasUtils';
+import { resolveSceneView, resolveLayout } from '@/export/sceneView';
+import { renderVectorScene } from '@/render/vector/sceneWriter';
+import { PdfVectorContext, parseCssColor } from '@/export/pdf/pdfContext';
 import { PdfBuildOptions, VectorPdfPage, buildVectorPdf, pdfBytesToBlob } from '@/export/pdf/minimalPdf';
 import { deflateBytes, deflateSupported } from '@/export/pdf/compression';
 import {
@@ -67,7 +68,7 @@ const collectLayoutNames = (data: DxfData, options: PdfVectorExportOptions): str
  * 无 Canvas 或像素数据不可得时返回 undefined（页面就没有文字图层）。
  */
 const rasterizeTextRuns = async (
-  ctx: PdfRenderContext,
+  ctx: PdfVectorContext,
   contentWidthPt: number,
   contentHeightPt: number,
   options: PdfVectorExportOptions,
@@ -107,7 +108,7 @@ const rasterizeTextRuns = async (
   rasterCtx.clearRect(0, 0, widthPx, heightPx);
 
   for (const run of runs) {
-    const { size, family, weight, style } = PdfRenderContext.parseFont(run.font);
+    const { size, family, weight, style } = PdfVectorContext.parseFont(run.font);
     rasterCtx.font = `${style ? `${style} ` : ''}${weight ? `${weight} ` : ''}${size * scale}px ${family}`;
     rasterCtx.fillStyle = run.fill;
     rasterCtx.textAlign = run.align;
@@ -183,7 +184,7 @@ export const exportPdfVectorBytes = async (
       );
     }
 
-    const ctx = new PdfRenderContext({
+    const ctx = new PdfVectorContext({
       pageWidthPt: contentWidthPt,
       pageHeightPt: contentHeightPt,
       background: options.background === null || options.background === undefined
@@ -198,7 +199,7 @@ export const exportPdfVectorBytes = async (
       padding: options.padding ?? 0,
     });
 
-    renderEntitiesToCanvas({
+    renderVectorScene({
       ctx,
       entities: scene.entities,
       modelEntities: scene.layout?.isModel ? undefined : data.entities,
@@ -214,7 +215,6 @@ export const exportPdfVectorBytes = async (
       drawingColorMode: options.drawingColorMode,
       hiddenLayers: new Set(options.hiddenLayers ?? []),
       selectedIds: new Set<string>(),
-      lodCulling: false,
       background: null, // 底色由页面矩形（导出器追加）负责，避免叠加两层
       // 线宽补偿：PDF 内容坐标为 pt（约 1.333px/pt），按视口宽度换算补偿
       lineWidthScale: Math.max(1, contentWidthPt / 960),
@@ -256,3 +256,6 @@ export const exportPdfVector = async (
   data: DxfData,
   options: PdfVectorExportOptions = {},
 ): Promise<Blob> => pdfBytesToBlob(await exportPdfVectorBytes(data, options));
+
+
+

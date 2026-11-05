@@ -1,0 +1,225 @@
+/*
+ * 设计令牌（WPF UI Skills 工业桌面风格）。
+ *
+ * 色板与字号直接对齐 wpf-ui-style/Theme/Tokens.xaml：
+ * - 低饱和工业配色：WindowBackground #E9EDF2 / Surface #FAFBFC / Accent #2F6F9F；
+ * - 字体统一 Microsoft YaHei 栈；正文 12.5px / 标题 13.5px / 辅助 12px；
+ * - 控件高度 36（紧凑 32）、行高 30、圆角 2/4；
+ * - 白字仅允许压在 Accent / Danger / Tooltip 深底上（R4 规则）。
+ *
+ * 变量名保持历史兼容（--bg-* / --accent-* 等被各组件引用），
+ * 取值全面切换到 WPF 令牌体系；新增 --brush-* 别名与 Token 命名一一对应。
+ */
+:root {
+  --font-family: 'Microsoft YaHei UI', 'Microsoft YaHei', 'Segoe UI', 'PingFang SC', 'Noto Sans CJK SC', system-ui, sans-serif;
+  --font-size-display: 18px;   /* FontSize.Display：产品/关于主标题 */
+  --font-size-title: 13.5px;   /* FontSize.Title / Section */
+  --font-size-base: 12.5px;    /* FontSize.Body */
+  --font-size-small: 12px;     /* FontSize.Caption / Code */
+  --font-size-micro: 10.5px;   /* FontSize.Micro */
+  --line-height-body: 21px;
+  --line-height-caption: 20px;
+
+  /* 画刷（Brush.* → CSS 别名） */
+  --brush-window: #e9edf2;
+  --brush-surface: #fafbfc;
+  --brush-surface-alt: #f2f4f7;
+  --brush-surface-sunken: #f7f8fa;
+  --brush-border: #d0d5db;
+  --brush-border-strong: #aeb7c2;
+  --brush-text-primary: #1f2933;
+  --brush-text-secondary: #4b5563;
+  --brush-text-disabled: #667085;
+  --brush-accent: #2f6f9f;
+  --brush-accent-hover: #285f88;
+  --brush-accent-pressed: #22506f;
+  --brush-accent-subtle: #e4eef5;
+  --brush-accent-subtle-hover: #d8e6f0;
+  --brush-on-accent: #ffffff;
+  --brush-danger: #b43b32;
+  --brush-danger-hover: #97302a;
+  --brush-danger-pressed: #7e2823;
+  --brush-danger-subtle: #fbedec;
+  --brush-success: #2a704e;
+  --brush-success-subtle: #e9f4ee;
+  --brush-warning: #7a5a1e;
+  --brush-warning-subtle: #f7f0e3;
+  --brush-control-hover: #f0f3f6;
+  --brush-control-pressed: #e4e8ee;
+  --brush-control-disabled: #f2f4f7;
+  --brush-selection: #e4eef5;
+  --brush-selection-hover: #d8e6f0;
+  --brush-focus: #2f6f9f;
+  --brush-tooltip-bg: #1f2933;
+  --brush-tooltip-fg: #ffffff;
+  --brush-scroll-thumb: #c3cad3;
+  --brush-scroll-thumb-hover: #a7b0bb;
+
+  /* 历史兼容层（组件样式引用的旧变量名 → WPF 令牌取值） */
+  --bg-primary: var(--brush-window);
+  --bg-secondary: var(--brush-surface);
+  --bg-tertiary: var(--brush-surface-alt);
+  --bg-elevated: var(--brush-surface);
+  --bg-hover: var(--brush-control-hover);
+  --bg-active: var(--brush-control-pressed);
+  --bg-selected: var(--brush-selection);
+
+  --border-color: var(--brush-border);
+  --border-strong: var(--brush-border-strong);
+  --text-primary: var(--brush-text-primary);
+  --text-secondary: var(--brush-text-secondary);
+  --text-muted: var(--brush-text-disabled);
+  --text-bright: #000000;
+
+  --state-hover: var(--brush-control-hover);
+  --state-active: var(--brush-control-pressed);
+  --state-focus: var(--brush-accent-subtle);
+  --divider: var(--brush-border);
+
+  /* 品牌色（历史名） */
+  --accent-blue: var(--brush-accent);
+  --accent-blue-hover: var(--brush-accent-hover);
+  --accent-blue-soft: var(--brush-accent-subtle);
+  --success-color: var(--brush-success);
+  --error-color: var(--brush-danger);
+  --warning-color: var(--brush-warning);
+
+  /* 浮层投影（低幅度、桌面风格） */
+  --shadow-sm: 0 1px 2px rgba(31, 41, 51, 0.10), 0 1px 3px rgba(31, 41, 51, 0.08);
+  --shadow-menu: 0 4px 8px rgba(31, 41, 51, 0.14), 0 2px 4px rgba(31, 41, 51, 0.10);
+  --shadow-panel: 0 8px 20px rgba(31, 41, 51, 0.16), 0 2px 6px rgba(31, 41, 51, 0.10);
+
+  /* 圆角（Radius.Small=2 / Card·Input=4 / Pill=10） */
+  --radius-small: 2px;
+  --radius-medium: 4px;
+  --radius-large: 4px;
+  --radius-full: 9999px;
+
+  /* 布局（Layout.* / 尺寸阶梯） */
+  --control-height: 36px;          /* Layout.ControlHeight */
+  --control-height-small: 32px;    /* Layout.ControlHeight.Small */
+  --row-height: 30px;              /* Layout.RowHeight */
+  --header-height: 32px;           /* Layout.HeaderHeight */
+  --toolbar-height: 44px;
+  --icon-size: 18px;               /* 增大工具栏图标大小（由 16px 微调至 18px，控件与顶栏高度 44px/30px 保持不变） */
+  --icon-size-small: 15px;         /* 图层/标签等紧凑图标微调至 15px */
+  --icon-button-size: 30px;        /* Layout.IconButton.Small */
+  --icon-button-gap: 6px;          /* R10：图标与文字 6px 间距 */
+  --icon-button-radius: var(--radius-small);
+  --layer-panel-width: 280px;
+  --properties-width: 340px;
+  --status-bar-height: 32px;
+  --status-bar-bg: var(--brush-surface);
+  --status-bar-text: var(--brush-text-secondary);
+  /* 浮层遮罩（加载/弹窗 scrim） */
+  --overlay-scrim: rgba(31, 41, 51, 0.45);
+}
+
+/* 深色主题：同体系低饱和工业配色，文字/边框反转，主色提亮保证对比度。 */
+.theme-dark {
+  --brush-window: #1a1d22;
+  --brush-surface: #21252b;
+  --brush-surface-alt: #262b32;
+  --brush-surface-sunken: #1f2329;
+  --brush-border: #3a4048;
+  --brush-border-strong: #4d545e;
+  --brush-text-primary: #e6e9ed;
+  --brush-text-secondary: #9aa3ae;
+  --brush-text-disabled: #6b7480;
+  --brush-accent: #5c9fd6;
+  --brush-accent-hover: #6faedf;
+  --brush-accent-pressed: #4a8cc4;
+  --brush-accent-subtle: rgba(92, 159, 214, 0.16);
+  --brush-accent-subtle-hover: rgba(92, 159, 214, 0.24);
+  --brush-on-accent: #10202e;
+  --brush-danger: #d06a62;
+  --brush-danger-hover: #dc7f77;
+  --brush-danger-pressed: #b85a52;
+  --brush-danger-subtle: rgba(208, 106, 98, 0.16);
+  --brush-success: #6cb98f;
+  --brush-success-subtle: rgba(108, 185, 143, 0.16);
+  --brush-warning: #d4a75a;
+  --brush-warning-subtle: rgba(212, 167, 90, 0.16);
+  --brush-control-hover: #2a2f36;
+  --brush-control-pressed: #30363e;
+  --brush-control-disabled: #262b32;
+  --brush-selection: rgba(92, 159, 214, 0.20);
+  --brush-selection-hover: rgba(92, 159, 214, 0.30);
+  --brush-focus: #5c9fd6;
+  --brush-tooltip-bg: #e6e9ed;
+  --brush-tooltip-fg: #1f2933;
+  --brush-scroll-thumb: #4d545e;
+  --brush-scroll-thumb-hover: #5f6771;
+
+  --bg-primary: var(--brush-window);
+  --bg-secondary: var(--brush-surface);
+  --bg-tertiary: var(--brush-surface-alt);
+  --bg-elevated: #2b3038;
+  --bg-hover: var(--brush-control-hover);
+  --bg-active: var(--brush-control-pressed);
+  --bg-selected: var(--brush-selection);
+
+  --border-color: var(--brush-border);
+  --border-strong: var(--brush-border-strong);
+  --text-primary: var(--brush-text-primary);
+  --text-secondary: var(--brush-text-secondary);
+  --text-muted: var(--brush-text-disabled);
+  --text-bright: #ffffff;
+
+  --state-hover: var(--brush-control-hover);
+  --state-active: var(--brush-control-pressed);
+  --state-focus: var(--brush-accent-subtle);
+  --divider: var(--brush-border);
+
+  --accent-blue: var(--brush-accent);
+  --accent-blue-hover: var(--brush-accent-hover);
+  --accent-blue-soft: var(--brush-accent-subtle);
+  --success-color: var(--brush-success);
+  --error-color: var(--brush-danger);
+  --warning-color: var(--brush-warning);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.4);
+  --shadow-menu: 0 4px 8px rgba(0, 0, 0, 0.5), 0 2px 4px rgba(0, 0, 0, 0.4);
+  --shadow-panel: 0 8px 20px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.4);
+
+  --status-bar-bg: var(--brush-surface);
+  --status-bar-text: var(--brush-text-secondary);
+  --overlay-scrim: rgba(0, 0, 0, 0.55);
+}
+
+@keyframes dropdownFadeIn {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.theme-dark .entity-row.selected {
+  color: var(--text-bright);
+}
+
+.theme-dark .layer-icon {
+  border-color: var(--brush-border-strong);
+}
+
+.theme-dark .loading-overlay {
+  background-color: rgba(0, 0, 0, 0.6);
+}
+
+@keyframes loading-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes toastIn {
+  from { transform: translateY(16px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes overlayFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes dialogScaleIn {
+  from { opacity: 0; transform: translate(-50%, -45%) scale(0.95); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+

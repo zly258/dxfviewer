@@ -1,17 +1,17 @@
 /**
  * SVG 导出（矢量，M6）。
  *
- * 与 PNG/PDF 共用同一套无头渲染管线（resolveSceneView + renderEntitiesToCanvas），
- * 仅把绘制后端换成 SvgRenderContext，因此取景、留白与 PNG 完全一致，
+ * 与 PNG/PDF 共用同一套导出取景（resolveSceneView）与矢量场景写入器（renderVectorScene），
+ * 仅把绘制后端换成 SvgVectorContext，因此取景、留白与 PNG 完全一致，
  * 放大任意倍数都是矢量。
  *
  * 文字以 <text> 输出（字体名沿用 fontResolver 的系统字体映射），
  * 大多数矢量场景够用；需要「绝对一致」的出版级输出走 M7 矢量 PDF（文字轮廓化）。
  */
 import { CanvasTheme, DrawingColorMode, DxfData, ViewPort } from '@/types';
-import { resolveSceneView } from '@/renderer/headless';
-import { renderEntitiesToCanvas } from '@/renderer/services/canvasRenderService';
-import { SvgRenderContext } from '@/export/svg/svgContext';
+import { resolveSceneView } from '@/export/sceneView';
+import { renderVectorScene } from '@/render/vector/sceneWriter';
+import { SvgVectorContext } from '@/export/svg/svgContext';
 
 export interface SvgExportOptions {
   /** 画布宽度（CSS 像素，即 SVG 用户单位） */
@@ -57,9 +57,9 @@ export const exportSvg = (
   }
 
   const scene = resolveSceneView(data, { layout, width, height, padding, viewPort });
-  const svg = new SvgRenderContext(width, height, background);
+  const svg = new SvgVectorContext(width, height, background);
 
-  renderEntitiesToCanvas({
+  renderVectorScene({
     ctx: svg,
     entities: scene.entities,
     modelEntities: scene.layout?.isModel ? undefined : data.entities,
@@ -75,12 +75,13 @@ export const exportSvg = (
     drawingColorMode,
     hiddenLayers: new Set(hiddenLayers ?? []),
     selectedIds: new Set<string>(),
-    // 导出必须完整
-    lodCulling: false,
-    background: null, // 背景由 SvgRenderContext 构造函数绘制，避免双重底色
+    background: null, // 背景由 SvgVectorContext 构造函数绘制，避免双重底色
     // 线宽补偿：大尺寸导出时线条保持视觉粗细
     lineWidthScale: Math.max(1, width / 1280),
   });
 
   return svg.toString();
 };
+
+
+

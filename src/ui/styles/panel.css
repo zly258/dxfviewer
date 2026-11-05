@@ -1,0 +1,407 @@
+.layer-panel,
+.properties-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  flex-shrink: 0;
+  z-index: 200;
+  background-color: var(--brush-surface);
+}
+
+.layer-panel {
+  width: 100%;
+  border-right: 1px solid var(--brush-border);
+}
+
+.properties-panel {
+  width: 100%;
+  border-left: 1px solid var(--brush-border);
+}
+
+.layer-panel-header,
+.properties-header {
+  height: var(--control-height);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--brush-border);
+  background-color: transparent;
+  color: var(--brush-text-primary);
+  font-size: var(--font-size-base);
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  gap: 8px;
+}
+
+.layer-panel-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.layer-panel-header-count {
+  flex-shrink: 0;
+  font-size: var(--font-size-micro);
+  font-weight: 500;
+  color: var(--brush-text-secondary);
+  background-color: var(--brush-surface-alt);
+  border: 0;
+  border-radius: var(--radius-full);
+  padding: 0 8px;
+  line-height: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* 头部右侧溢出菜单（排序/过滤），搜索行保持单一职责 */
+.layer-header-menu {
+  position: relative;
+  margin-left: auto;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.layer-panel-menu {
+  top: calc(100% + 6px);
+  left: auto;
+  right: -8px;
+  min-width: 168px;
+}
+
+.layer-panel-content,
+.properties-content {
+  flex: 1;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.properties-content {
+  padding: 4px 0;
+}
+
+.layer-row,
+.entity-row {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  cursor: pointer;
+  color: var(--brush-text-primary);
+}
+
+.layer-row {
+  height: 40px;
+  padding: 0 16px;
+  font-size: var(--font-size-base);
+}
+
+.entity-row {
+  height: var(--control-height);
+  padding: 0 16px 0 48px;
+  color: var(--brush-text-secondary);
+  font-size: var(--font-size-base);
+}
+
+.layer-row:hover,
+.entity-row:hover,
+.property-row:hover {
+  background-color: var(--brush-control-hover);
+}
+
+.entity-row:hover {
+  color: var(--brush-text-primary);
+}
+
+.entity-row.selected {
+  background-color: var(--brush-selection);
+  color: var(--brush-accent);
+}
+
+.chevron {
+  width: 12px;
+  height: 12px;
+  margin-right: 5px;
+  color: var(--brush-text-secondary);
+  transition: transform 0.12s ease;
+}
+
+.chevron.expanded {
+  transform: rotate(90deg);
+}
+
+.layer-icon {
+  width: 11px;
+  height: 11px;
+  margin-right: 7px;
+  border: 1px solid rgba(0, 0, 0, 0.18);
+  border-radius: 2px;
+  box-sizing: border-box;
+}
+
+.layer-name,
+.entity-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.layer-count {
+  margin-left: 8px;
+  color: var(--brush-text-disabled);
+  font-size: var(--font-size-micro);
+}
+
+.entity-icon {
+  width: 16px;
+  margin-right: 7px;
+  color: var(--brush-text-disabled);
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: var(--font-size-micro);
+  text-align: center;
+}
+
+.property-row {
+  border-bottom: 1px solid var(--brush-border);
+}
+
+.property-label-cell,
+.property-value-cell {
+  padding: 5px 12px;
+  font-size: var(--font-size-small);
+  vertical-align: top;
+  line-height: 1.5;
+}
+
+.property-label-cell {
+  width: 40%;
+  color: var(--brush-text-secondary);
+}
+
+.property-value-cell {
+  color: var(--brush-text-primary);
+  word-break: break-word;
+}
+
+/* 数值/标识类值：等宽字体，右对齐（CAD 属性习惯）。 */
+.property-value-mono {
+  font-family: Consolas, "Cascadia Mono", ui-monospace, monospace;
+  font-size: var(--font-size-small);
+}
+
+/* 强调值（类型名）。 */
+.property-value-strong {
+  font-weight: 500;
+}
+
+.property-muted {
+  color: var(--brush-text-secondary);
+}
+
+.property-type-value {
+  color: var(--brush-accent);
+  font-weight: 700;
+}
+
+.property-color-index {
+  color: var(--brush-text-secondary);
+  font-size: var(--font-size-micro);
+}
+
+/* 分区标题行（基本信息 / 块参照 / 样式 …）：WPF GroupBox 头风格。 */
+.property-section-row {
+  background-color: var(--brush-surface-alt);
+  border-bottom: 1px solid var(--brush-border);
+}
+
+.property-section-cell {
+  padding: 4px 12px;
+}
+
+.property-section-title {
+  color: var(--brush-accent);
+  font-size: var(--font-size-micro);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.property-empty-state {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  color: var(--brush-text-disabled);
+}
+
+.property-empty-title {
+  color: var(--brush-text-secondary);
+  font-weight: 500;
+}
+
+.property-empty-subtitle {
+  margin-top: 4px;
+  color: var(--brush-text-disabled);
+  font-size: var(--font-size-small);
+}
+
+.color-preview-container {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.color-swatch {
+  width: 13px;
+  height: 13px;
+  border: 1px solid rgba(0, 0, 0, 0.16);
+  border-radius: 2px;
+  box-sizing: border-box;
+}
+
+.layer-hidden .layer-name {
+  text-decoration: line-through;
+  color: var(--brush-text-disabled);
+}
+
+/* ---------------------------------------------------------------
+ * 面板拖拽调整宽度手柄（PC 模式）
+ * ------------------------------------------------------------- */
+.panel-resize-handle {
+  flex-shrink: 0;
+  width: 5px;
+  height: 100%;
+  cursor: col-resize;
+  position: relative;
+  z-index: 10;
+  transition: background-color 0.15s ease;
+  background-color: transparent;
+}
+
+.panel-resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 40px;
+  width: 3px;
+  border-radius: 2px;
+  background-color: var(--brush-border);
+  transition: background-color 0.15s ease, height 0.15s ease;
+}
+
+.panel-resize-handle-right {
+  border-left: 1px solid var(--brush-border);
+}
+
+.panel-resize-handle-right::after {
+  left: 0;
+}
+
+.panel-resize-handle-left {
+  border-right: 1px solid var(--brush-border);
+}
+
+.panel-resize-handle-left::after {
+  right: 0;
+}
+
+.panel-resize-handle:hover,
+.panel-resize-handle:active {
+  background-color: color-mix(in srgb, var(--brush-accent) 10%, transparent);
+}
+
+.panel-resize-handle:hover::after,
+.panel-resize-handle:active::after {
+  background-color: var(--brush-accent);
+  height: 56px;
+}
+/* 块引用属性（ATTRIB）列表：与主属性表一致的两栏紧凑行。 */
+.attribute-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--brush-border);
+  border-radius: var(--radius-small);
+  background-color: var(--brush-surface);
+}
+
+.attribute-row {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 4px 8px;
+  font-size: var(--font-size-small);
+  line-height: 1.5;
+  border-bottom: 1px solid var(--brush-border);
+}
+
+.attribute-row:last-child {
+  border-bottom: 0;
+}
+
+.attribute-row:nth-child(odd) {
+  background-color: var(--brush-surface-alt);
+}
+
+.attribute-tag {
+  color: var(--brush-text-secondary);
+  white-space: nowrap;
+  min-width: 88px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: Consolas, "Cascadia Mono", ui-monospace, monospace;
+  font-size: var(--font-size-micro);
+}
+
+.attribute-value {
+  color: var(--brush-text-primary);
+  text-align: right;
+  word-break: break-all;
+}
+
+/* 多选类型分布 */
+.property-type-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 8px 0;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.property-type-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 8px;
+  font-size: var(--font-size-small);
+  line-height: 1.6;
+  border-radius: 2px;
+}
+.property-type-row:nth-child(odd) {
+  background: rgba(128, 128, 128, 0.06);
+}
+.property-type-name {
+  color: var(--brush-text-primary);
+}
+.property-type-count {
+  color: var(--brush-text-secondary);
+  font-weight: 500;
+}
+
+
+
+
+
+
+
+

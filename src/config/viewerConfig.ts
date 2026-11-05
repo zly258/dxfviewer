@@ -132,6 +132,14 @@ export const DEFAULT_TEXT_STYLE: DxfStyle = {
 
 export const DEFAULT_ENTITY_COLOR = '#FFFFFF';
 
+/**
+ * WebGL 引擎的文字渲染模式：
+ * - 'sdf'     —— 字形有向距离场烘焙进 GPU 网格（文字转图形，单画布、可导出）；
+ * - 'overlay' —— 几何走 GPU，文字由 Canvas 2D 覆盖层绘制（浏览器原生文本引擎）。
+ */
+export type TextRenderMode = 'sdf' | 'overlay';
+export const TEXT_RENDER_MODE: TextRenderMode = 'sdf';
+
 export const TEXT_RENDER_CONFIG = {
   minimumWidthFactor: 0.01,
   // 宽度系数上限钳制，防止损坏的 DXF 数据导致水平拉伸失控。
@@ -168,10 +176,13 @@ export const TEXT_RENDER_CONFIG = {
   // SimSun/Arial）的 capHeight ≈ 0.70~0.73em → 系数 ≈ 1.39。
   // 旧值 1.28 使文字比 AutoCAD 偏小约 12%（实测用户反馈）。
   trueTypeFontHeightFactor: 1.39,
+  // 中文（CJK）字形墨迹约占 0.88em：em = 字高 / 0.88 ≈ 1.14。
+  // 若沿用拉丁的 1.39，中文会比 CAD 字高大 22%（实测"高度超出"）。
+  cjkFontHeightFactor: 1.14,
   shxFontHeightFactor: 1.0,
   trueTypeRenderWidthFactor: 1.0,
   shxRenderWidthFactor: 1.0,
-  cjkRenderWidthFactor: 0.96,
+  cjkRenderWidthFactor: 0.88,
   engineeringShxRenderWidthFactor: 1.0,
   latinTrueTypeRenderWidthFactor: 1.0,
   latinShxRenderWidthFactor: 1.0,
@@ -311,3 +322,5 @@ export const TABS_CONFIG = {
 export const BREAKPOINTS = {
   mobile: 768,
 };
+
+

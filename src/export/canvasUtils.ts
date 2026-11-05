@@ -4,7 +4,9 @@
  * 同时兼容 `HTMLCanvasElement`（主线程）与 `OffscreenCanvas`（Worker），
  * 以及注入的画布实现（Node 环境）。
  */
-import { HeadlessCanvas } from '@/renderer/headless';
+
+/** 2D 输出画布类型（栅格导出 / 文字光栅化 / 编码目标）。 */
+export type HeadlessCanvas = HTMLCanvasElement | OffscreenCanvas;
 
 const isOffscreen = (canvas: HeadlessCanvas): canvas is OffscreenCanvas =>
   typeof (canvas as OffscreenCanvas).convertToBlob === 'function';

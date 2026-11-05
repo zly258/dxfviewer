@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url';
 import { materializeFixtures } from './fixtures.mjs';
 
 const { parseDxf } = await import(new URL('../dist/parser.js', import.meta.url).href);
-const { renderEntitiesToCanvas } = await import(new URL('../dist/render.js', import.meta.url).href);
+const { renderVectorScene } = await import(new URL('../dist/render.js', import.meta.url).href);
 
 let failed = 0;
 const check = (name, ok, detail = '') => {
@@ -170,7 +170,7 @@ try {
   // 渲染使用偏移后的内部坐标：视口目标 = 世界中心 - data.offset
   const off = data.offset ?? { x: 0, y: 0 };
   const { canvas, ops, bboxArea, bboxIntersects, bboxCenter } = createTrackingCanvas(SIZE, SIZE);
-  renderEntitiesToCanvas({
+  renderVectorScene({
     ctx: canvas.getContext('2d'),
     entities: data.entities,
     layers: data.layers,
@@ -263,7 +263,7 @@ try {
   const SIZE = 900;
   const off = data.offset ?? { x: 0, y: 0 };
   const { canvas, ops } = createTrackingCanvas(SIZE, 400);
-  renderEntitiesToCanvas({
+  renderVectorScene({
     ctx: canvas.getContext('2d'),
     entities: data.entities,
     layers: data.layers,
@@ -290,3 +290,4 @@ try {
 
 console.log(failed === 0 ? '\n渲染准确性校验全部通过。' : `\n渲染准确性校验失败 ${failed} 项。`);
 process.exit(failed === 0 ? 0 : 1);
+

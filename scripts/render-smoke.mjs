@@ -1,15 +1,14 @@
 /**
- * 无头渲染 / PNG / PDF 导出冒烟测试。
+ * 矢量导出冒烟测试。
  *
- * 没有浏览器时，用一个记录调用的 Canvas2D 影子实现跑通整条导出链路：
- * parseDxf → renderSceneToCanvas → exportPng / exportPdf / exportSvg / exportPdfVector。
+ * 没有浏览器时验证导出链路的纯 JS 部分：
+ * parseDxf → exportSvg / exportPdfVectorBytes（矢量写出不依赖 WebGL）。
+ * PNG 栅格导出走 WebGL（浏览器专属），不在 Node 冒烟范围内。
  *
  * 校验内容：
- * - 渲染不抛异常且真的产生绘制调用（stroke/fill/text > 0）
- * - PNG Blob 类型正确
- * - PDF 结构合法：文件头、trailer、startxref，以及**交叉引用表偏移逐项回查**
- *   （偏移写错是手写 PDF 最容易致命化的错误，这里按字节验证每个对象位置）
- * - 矢量 PDF：内容流结构、Flate 流用 node:zlib 实际解压验证（SMask 尺寸/非空）
+ * - SVG：根元素/闭合/非法数值/图元存在性
+ * - 矢量 PDF：结构合法（文件头、trailer、交叉引用表偏移逐项回查）、
+ *   内容流几何操作符、Flate 流用 node:zlib 实际解压验证（SMask 尺寸/非空）
  *
  * 运行：node scripts/render-smoke.mjs（需先 npm run build:lib）
  */
@@ -22,10 +21,10 @@ import { createFakeCanvas } from './canvas-mock.mjs';
 const here = fileURLToPath(new URL('.', import.meta.url));
 
 const { parseDxf } = await import(new URL('../dist/parser.js', import.meta.url).href);
-const { exportPng, exportPdfBytes, exportSvg, exportPdfVectorBytes } = await import(new URL('../dist/export.js', import.meta.url).href);
+const { exportSvg, exportPdfVectorBytes } = await import(new URL('../dist/export.js', import.meta.url).href);
 
 /** 按字节校验 PDF 交叉引用表：每个 n 项偏移必须正好指向 "N 0 obj"。 */
-const validatePdfStructure = (bytes, { expectPages, expectImages }) => {
+const validatePdfStructure = (bytes, { expectPages }) => {
   const text = new TextDecoder('latin1').decode(bytes);
 
   if (!text.startsWith('%PDF-1.4')) throw new Error('缺少 %PDF-1.4 文件头');
@@ -73,14 +72,6 @@ const validatePdfStructure = (bytes, { expectPages, expectImages }) => {
   const pageCount = (text.match(/\/Type \/Page[^s]/g) ?? []).length;
   if (pageCount !== expectPages) throw new Error(`页数不符：期望 ${expectPages}，实际 ${pageCount}`);
 
-  // 图像数量按需校验：栅格版每页一张 JPEG；矢量版仅有文字图层时才有图像
-  if (expectImages !== undefined) {
-    const imageCount = (text.match(/\/Subtype \/Image/g) ?? []).length;
-    if (imageCount !== expectImages) {
-      throw new Error(`图像 XObject 数量不符：期望 ${expectImages}，实际 ${imageCount}`);
-    }
-  }
-
   return { pageCount, size };
 };
 
@@ -100,28 +91,7 @@ for (const name of files) {
   try {
     const data = await parseDxf(text, undefined, { yieldIntervalMs: 0 });
 
-    // PNG
-    const png = createFakeCanvas(800, 600);
-    const blob = await exportPng(data, { width: 800, height: 600, createCanvas: () => png.canvas });
-    const drawn = png.counter.stroke + png.counter.fill + png.counter.fillText + png.counter.strokeText;
-    if (!blob || blob.type !== 'image/png' || blob.size === 0) throw new Error('exportPng 返回的 Blob 无效');
-    if (drawn === 0) throw new Error('渲染未产生任何绘制调用（stroke/fill/text 全为 0）');
-
-    // PDF：单页 A4
-    const pdfCanvas = createFakeCanvas(100, 100);
-    const pdfBytes = await exportPdfBytes(data, {
-      paperSize: 'A4',
-      orientation: 'landscape',
-      dpi: 72,
-      createCanvas: (w, h) => {
-        pdfCanvas.canvas.width = w;
-        pdfCanvas.canvas.height = h;
-        return pdfCanvas.canvas;
-      },
-    });
-    validatePdfStructure(pdfBytes, { expectPages: 1, expectImages: 1 });
-
-    // SVG：结构校验（矢量导出不依赖 Canvas，直接可用）
+    // SVG：结构校验（矢量导出不依赖 WebGL，直接可用）
     const svg = exportSvg(data, { width: 800, height: 600 });
     if (!svg.startsWith('<svg xmlns="http://www.w3.org/2000/svg"')) {
       throw new Error('SVG 缺少正确的根元素');
@@ -135,27 +105,15 @@ for (const name of files) {
       throw new Error('SVG matrix 变换含非数值');
     }
 
-    // PDF：多页（模型 + 已有布局各一页）
-    const layoutNames = (data.layouts ?? []).map(layout => layout.name);
-    if (layoutNames.length > 1) {
-      const multi = await exportPdfBytes(data, {
-        paperSize: [100, 100],
-        dpi: 36,
-        layouts: layoutNames,
-        createCanvas: () => createFakeCanvas(64, 64).canvas,
-      });
-      validatePdfStructure(multi, { expectPages: layoutNames.length, expectImages: layoutNames.length });
-    }
-
-    rows.push({
-      name,
-      stroke: png.counter.stroke,
-      fill: png.counter.fill,
-      text: png.counter.fillText + png.counter.strokeText,
-      pngSize: blob.size,
-      pdfSize: pdfBytes.length,
-      svgSize: svg.length,
+    // 矢量 PDF：单页 A4（文字图层用影子 2D 画布光栅化）
+    const pdfBytes = await exportPdfVectorBytes(data, {
+      paperSize: 'A4',
+      orientation: 'landscape',
+      createCanvas: () => createFakeCanvas(64, 64).canvas,
     });
+    validatePdfStructure(pdfBytes, { expectPages: 1 });
+
+    rows.push({ name, svgSize: svg.length, pdfSize: pdfBytes.length });
   } catch (error) {
     failed++;
     console.error(`✘ ${name}: ${error instanceof Error ? error.message : String(error)}`);
@@ -163,32 +121,12 @@ for (const name of files) {
 }
 
 const pad = (value, width) => String(value).padEnd(width);
-console.log(`${pad('夹具', 22)}${pad('stroke', 8)}${pad('fill', 6)}${pad('text', 6)}${pad('png', 9)}${pad('pdf', 9)}svg`);
+console.log(`${pad('夹具', 22)}${pad('svg', 9)}pdf`);
 for (const row of rows) {
-  console.log(
-    `${pad(row.name, 22)}${pad(row.stroke, 8)}${pad(row.fill, 6)}${pad(row.text, 6)}`
-    + `${pad(`${row.pngSize}B`, 9)}${pad(`${row.pdfSize}B`, 9)}${row.svgSize}B`,
-  );
+  console.log(`${pad(row.name, 22)}${pad(`${row.svgSize}B`, 9)}${row.pdfSize}B`);
 }
 
-// PDF 尺寸断言：A4 横向页面应为 841.89 × 595.28 pt。
-const sizeCheck = createFakeCanvas(1, 1);
-const a4Landscape = await exportPdfBytes(
-  await parseDxf(readFileSync(fixtures.files['line-circle.dxf'], 'utf8'), undefined, { yieldIntervalMs: 0 }),
-  { paperSize: 'A4', orientation: 'landscape', dpi: 36, createCanvas: () => sizeCheck.canvas },
-);
-const mediaBox = /\/MediaBox \[0 0 ([\d.]+) ([\d.]+)\]/.exec(new TextDecoder('latin1').decode(a4Landscape));
-if (!mediaBox) {
-  console.error('✘ 未能读取 MediaBox');
-  failed++;
-} else {
-  const [width, height] = [Number(mediaBox[1]), Number(mediaBox[2])];
-  const ok = Math.abs(width - 841.89) < 0.02 && Math.abs(height - 595.28) < 0.02;
-  console.log(`\nA4 横向 MediaBox = ${width} × ${height} pt（期望 841.89 × 595.28）${ok ? '✔' : '✘'}`);
-  if (!ok) failed++;
-}
-
-// ---- 矢量 PDF（M7）----
+// ---- 矢量 PDF 几何/SMask 深度校验 ----
 const validateVectorPdf = (bytes, { expectPages }) => {
   const structure = validatePdfStructure(bytes, { expectPages });
   const text = new TextDecoder('latin1').decode(bytes);
