@@ -35,7 +35,8 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, styles = {}
     ].filter(Boolean).join(' ');
     return (
       <tr key={label} className="property-row">
-        <td className="property-label-cell">{translatedLabel}</td>
+        {/* P9：标签列可能被省略号截断，必须带 title。 */}
+        <td className="property-label-cell" title={translatedLabel}>{translatedLabel}</td>
         <td className={cls}>{value}</td>
       </tr>
     );
@@ -138,7 +139,6 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, styles = {}
    */
   const renderEntityProperties = (ent: AnyEntity) => {
       const typeDisplay = entNames[ent.type] || ent.type;
-      
       const commonRows = [
           renderSectionHeader('general', '基本信息'),
           renderPropertyRow("Type", <span className="property-type-value">{typeDisplay}</span>, { strong: true }),
@@ -211,10 +211,10 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, styles = {}
               const friendlyFont = primaryFontFile || bigFontFile || style?.name || styleName;
 
               specificRows = [
-                  renderPropertyRow("Content", <span className="text-xs">{ent.value.substring(0, 50)}{ent.value.length > 50 && "..."}</span>),
+                  renderPropertyRow("Content", <span title={ent.value.substring(0, 50)}>{ent.value.substring(0, 50)}{ent.value.length > 50 && "..."}</span>),
                   renderPropertyRow("Height", ent.height.toFixed(4)),
                   renderPropertyRow("StyleName", styleName),
-                  renderPropertyRow("Font", <span className="font-semibold">{friendlyFont}</span>),
+                  renderPropertyRow("Font", <span className="property-value-strong">{friendlyFont}</span>),
                   renderPropertyRow("Pos X", formatCoord(ent.position.x, 'x')),
                   renderPropertyRow("Pos Y", formatCoord(ent.position.y, 'y')),
                   renderPropertyRow("Rotation", `${ent.rotation?.toFixed(1)}°`),
@@ -346,20 +346,29 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, styles = {}
       }
 
       return (
-          <table className="properties-table">
-              <tbody>
-                  {commonRows}
-                  {specificRows}
-                  {styleRows}
-              </tbody>
-          </table>
+          <div className="property-group">
+            <table className="properties-table">
+                <tbody>
+                    {commonRows}
+                    {specificRows}
+                    {styleRows}
+                </tbody>
+            </table>
+          </div>
       );
   };
 
   return (
       <div className={`properties-panel ${className || ''}`}>
         <div className="properties-header">
-          {translate(lang, 'propertiesTitle')}
+          <span className="layer-panel-title" title={translate(lang, 'propertiesTitle')}>
+            {translate(lang, 'propertiesTitle')}
+          </span>
+          {entities.length > 0 && (
+            <span className="layer-panel-header-count" title={translate(lang, 'selectedCount', { count: entities.length })}>
+              {entities.length}
+            </span>
+          )}
         </div>
         <div className="properties-content">
           {entities.length === 0 ? (
@@ -380,7 +389,7 @@ const PropertiesPanel: React.FC<PropertiesPanelProps> = ({ entities, styles = {}
                     }, {} as Record<string, number>)
                   ).sort((a, b) => b[1] - a[1]).map(([typeName, count]) => (
                     <div key={typeName} className="property-type-row">
-                      <span className="property-type-name">{typeName}</span>
+                      <span className="property-type-name" title={typeName}>{typeName}</span>
                       <span className="property-type-count">× {count}</span>
                     </div>
                   ))}

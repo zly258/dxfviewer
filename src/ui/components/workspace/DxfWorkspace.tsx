@@ -332,12 +332,12 @@ function DxfWorkspace({ editor = true, initialFiles = [] }: DxfWorkspaceProps) {
   return (
     <div className={`app-main-container ${effectiveUiTheme === 'dark' ? 'theme-dark' : ''}`} style={{ '--canvas-bg': canvasBgColor } as React.CSSProperties}>
       {toastMessage && (
-        <div className="toast-container app-toast-container">
-          <div className="toast error">
+        <div className="cad-toast-container">
+          <div className="cad-toast error" role="status">
             <span className="toast-message">{toastMessage}</span>
-            <span className="toast-close" onClick={() => setToastMessage(null)} aria-label={t(lang, 'closeToast')}>
+            <button type="button" className="toast-close" onClick={() => setToastMessage(null)} title={t(lang, 'closeToast')} aria-label={t(lang, 'closeToast')}>
               <ViewerIcon name="close" />
-            </span>
+            </button>
           </div>
         </div>
       )}

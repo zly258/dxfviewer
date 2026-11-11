@@ -1,22 +1,26 @@
+/*
+ * 文件标签条（工具条行内，26px 标签）。
+ *
+ * 标签是「文档页签」而非开关按钮：active 用 --bg-chrome 白底 + accent 顶边，
+ * 与工具栏 .active（浅蓝底 + 蓝字）区分，符合 R16「同一容器不混用两种 active」。
+ */
 .tabs-container {
   display: flex;
   align-items: center;
   flex: 1 1 auto;
   min-width: 0;
-  min-height: var(--control-height-small);
-  background-color: var(--brush-surface);
-  color: var(--brush-text-primary);
-  border-bottom: 1px solid var(--brush-border);
+  height: 100%;
+  background-color: transparent;
+  color: var(--text-main);
   user-select: none;
   white-space: nowrap;
   position: relative;
-  z-index: 450;
 }
 
-/* 标签滚动视口：必须是真正的滚动容器，滚轮/触控/拖拽/箭头才有效 */
+/* 标签滚动视口：真正的滚动容器，滚轮/触控/拖拽/箭头均可用 */
 .tabs-scroll-viewport {
   display: flex;
-  align-items: stretch;
+  align-items: center;
   flex: 1 1 auto;
   min-width: 0;
   height: 100%;
@@ -36,29 +40,43 @@
   scroll-behavior: auto;
 }
 
+/* 标签项：26px 高、2px 圆角、--bg-chrome 底 */
 .tab-item {
   display: flex;
   align-items: center;
-  min-width: 96px;
-  max-width: 220px;
-  height: var(--control-height-small);
-  padding: 0 10px 0 12px;
-  background-color: var(--brush-surface-alt);
-  border-right: 1px solid var(--brush-border);
-  border-top: 2px solid transparent;
+  min-width: 92px;
+  max-width: 210px;
+  height: var(--control-h);
+  padding: 0 6px 0 8px;
+  margin-right: 3px;
+  background-color: var(--bg-chrome);
+  border: 1px solid var(--border-main);
+  border-radius: var(--radius);
   box-sizing: border-box;
   cursor: pointer;
   flex-shrink: 0;
+  color: var(--text-sec);
+  transition: background-color var(--t-fast), border-color var(--t-fast), color var(--t-fast);
 }
 
 .tab-item:hover {
-  background-color: var(--brush-control-hover);
+  background-color: var(--bg-hover);
+  border-color: var(--border-hover);
+  color: var(--text-main);
 }
 
+/* 当前页签：白底 + 蓝字 + accent 下边框（文档页签语义，与工具条开关态区分） */
 .tab-item.active {
-  background-color: var(--brush-window);
-  color: var(--brush-text-primary);
-  border-top-color: var(--brush-accent);
+  background-color: var(--bg-panel);
+  border-color: var(--accent-line);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.tab-item.active:hover {
+  background-color: var(--bg-panel);
+  border-color: var(--accent-line);
+  color: var(--accent);
 }
 
 .tab-name {
@@ -66,60 +84,78 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  flex: 1;
-  font-size: var(--font-size-base);
+  flex: 1 1 auto;
+  font-size: var(--fs-body);
+  line-height: 1;
 }
 
+/* 关闭按钮：18×18，悬停转危险色（R3 双声明） */
 .tab-close {
   display: flex;
   align-items: center;
   justify-content: center;
   width: 18px;
   height: 18px;
-  margin-left: 8px;
+  margin-left: 4px;
+  flex: 0 0 auto;
   border-radius: 2px;
-  line-height: 1;
-  opacity: 0.72;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background-color var(--t-fast), color var(--t-fast);
 }
 
 .tab-close:hover {
-  background-color: var(--brush-control-hover);
-  opacity: 1;
+  background-color: var(--danger-soft);
+  color: var(--danger);
 }
 
+.tab-close svg {
+  width: 12px;
+  height: 12px;
+}
+
+.tab-item.no-close {
+  padding-right: 8px;
+}
+
+/* 标签右键菜单：固定定位、4px 圆角、z-index 1200（菜单层） */
 .tab-context-menu {
   position: fixed;
-  min-width: 148px;
-  padding: 4px 0;
-  background-color: var(--brush-window);
-  color: var(--brush-text-primary);
-  border: 1px solid var(--brush-border);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
-  z-index: 3000;
+  min-width: 150px;
+  padding: 3px;
+  border: 1px solid var(--border-main);
+  border-radius: var(--radius-lg);
+  background-color: var(--bg-panel);
+  color: var(--text-main);
+  box-shadow: var(--shadow-overlay);
+  z-index: 1200;
+  box-sizing: border-box;
 }
 
 .tab-context-menu button {
   display: block;
   width: 100%;
-  height: var(--row-height);
-  padding: 0 14px;
+  height: var(--control-h);
+  padding: 0 8px;
   border: 0;
+  border-radius: 2px;
   background: transparent;
   color: inherit;
   text-align: left;
-  font-size: var(--font-size-base);
+  font-size: var(--fs-body);
   cursor: pointer;
+  transition: background-color var(--t-fast), color var(--t-fast);
 }
 
 .tab-context-menu button:hover {
-  background-color: var(--brush-control-hover);
-  color: var(--brush-text-primary);
+  background-color: var(--bg-hover);
+  color: var(--text-main);
 }
 
 .tab-context-divider {
   height: 1px;
-  margin: 4px 0;
-  background-color: var(--brush-border);
+  margin: 3px 4px;
+  background-color: var(--border-sub);
 }
 
 .tab-viewer-host {
@@ -127,66 +163,55 @@
   inset: 0;
 }
 
+.tabs-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+  background-color: var(--bg-viewport);
+}
+
+/* 标签密度阶梯：多标签时收窄 */
 .tabs-container.compact .tab-item {
-  min-width: 78px;
-  max-width: 168px;
-  padding-left: 10px;
-  padding-right: 8px;
+  min-width: 74px;
+  max-width: 160px;
+  padding-left: 7px;
+  padding-right: 5px;
 }
 
 .tabs-container.dense .tab-item {
-  min-width: 56px;
-  max-width: 128px;
-  padding-left: 8px;
-  padding-right: 6px;
+  min-width: 54px;
+  max-width: 122px;
+  padding-left: 6px;
+  padding-right: 4px;
 }
 
 .tabs-container.dense .tab-close {
-  margin-left: 4px;
+  margin-left: 2px;
 }
 
+/* 左右滚动箭头：22px 小号控件 */
 .tab-scroll-button {
-  width: 24px;
-  height: var(--control-height-small);
-  border: 0;
-  border-right: 1px solid var(--brush-border);
-  background: var(--brush-surface);
-  color: var(--brush-text-secondary);
-  cursor: pointer;
-  flex-shrink: 0;
+  width: 20px;
+  height: var(--control-h-sm);
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-.tab-scroll-button:last-child {
-  border-right: 0;
-  border-left: 1px solid var(--brush-border);
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background-color var(--t-fast), color var(--t-fast);
 }
 
 .tab-scroll-button svg {
-  width: var(--icon-size-small);
-  height: var(--icon-size-small);
+  width: var(--icon-size-sm);
+  height: var(--icon-size-sm);
 }
 
 .tab-scroll-button:hover {
-  background: var(--brush-control-hover);
-  color: var(--brush-text-primary);
+  background-color: var(--bg-hover);
+  color: var(--text-main);
 }
-
-.tab-close svg,
-.toast-close svg,
-.about-modal-close svg,
-.text-search-close svg,
-.layer-search-clear svg {
-  width: var(--icon-size-small);
-  height: var(--icon-size-small);
-  flex-shrink: 0;
-}
-
-
-
-
-
-
-

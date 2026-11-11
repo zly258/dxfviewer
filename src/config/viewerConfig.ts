@@ -53,11 +53,11 @@ export const canvasThemeFromUiTheme = (uiTheme: ResolvedUiTheme): CanvasTheme =>
 export const LAYOUT_CONFIG = {
   minViewportWidth: 100,
   minViewportHeight: 100,
-  fallbackLayerPanelWidth: 256,
-  fallbackPropertiesWidth: 320,
-  // 与 CSS 变量保持一致：--toolbar-height 44px / --status-bar-height 32px
-  fallbackToolbarHeight: 44,
-  fallbackStatusBarHeight: 32,
+  fallbackLayerPanelWidth: 272,
+  fallbackPropertiesWidth: 340,
+  // 与 CSS 变量保持一致：--header-h 42px / --toolbar-h 32px / --footer-h 30px
+  fallbackToolbarHeight: 42,
+  fallbackStatusBarHeight: 30,
 };
 
 export const ZOOM_CONFIG = {
@@ -295,13 +295,26 @@ export const LOD_RENDER_CONFIG = {
   minimumEntityScreenSizePixels: 1,
 };
 
+/**
+ * 侧栏宽度：与 web-ui-style R9 的三栏骨架一致 ——
+ * 左栏 clamp(250px, 22vw, 320px)、右栏 clamp(320px, 27vw, 440px)。
+ * 用户仍可拖拽调整，但被约束在同一区间内。
+ */
 export const PANEL_CONFIG = {
-  layerPanelInitialWidth: 270,
-  layerPanelMinWidth: 160,
-  layerPanelMaxWidth: 520,
-  propertiesPanelInitialWidth: 330,
-  propertiesPanelMinWidth: 180,
-  propertiesPanelMaxWidth: 560,
+  layerPanelMinWidth: 250,
+  layerPanelMaxWidth: 320,
+  layerPanelViewportRatio: 0.22,
+  layerPanelInitialWidth: 272,
+  propertiesPanelMinWidth: 320,
+  propertiesPanelMaxWidth: 440,
+  propertiesPanelViewportRatio: 0.27,
+  propertiesPanelInitialWidth: 340,
+};
+
+/** 按 clamp(min, ratio*vw, max) 计算侧栏初始宽度。 */
+export const clampPanelWidth = (min: number, ratio: number, max: number): number => {
+  const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1600;
+  return Math.round(Math.min(max, Math.max(min, viewportWidth * ratio)));
 };
 
 export const CONTEXT_MENU_CONFIG = {

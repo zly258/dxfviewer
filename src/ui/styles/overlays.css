@@ -1,82 +1,114 @@
+/*
+ * 浮层：Loading 遮罩 + Toast（§10、§11、R12）。
+ *
+ * z-index 阶梯（R13）：视口内浮层 20/25 < 顶栏 50 < 菜单 60–200 < 用户菜单 1200
+ * < 错误/进度/遮罩 8800–9000 < 弹窗 10050 < Toast 100000。
+ */
 .hidden-file-input {
   display: none;
 }
 
+/* ── 加载遮罩：视口内浮层，不阻塞指针 ── */
 .loading-overlay {
   position: absolute;
   inset: 0;
-  z-index: 2100;
+  z-index: 25;
   display: flex;
   align-items: center;
   justify-content: center;
   pointer-events: none;
-  background-color: rgba(247, 248, 250, 0.5);
-  backdrop-filter: blur(1.5px);
+  background-color: color-mix(in srgb, var(--bg-viewport) 62%, transparent);
 }
 
+/* ── Toast：顶部居中 top:20px、白底 1px 边框、--shadow-card、z-index 100000 ── */
+.cad-toast-container,
 .toast-container {
-  position: absolute;
-  bottom: 48px;
+  position: fixed;
+  top: 20px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 2200;
+  z-index: 100000;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
 }
 
-/* MD2 snackbar：反色面、4dp 圆角、6dp elevation */
+.cad-toast,
 .toast {
-  min-width: 288px;
-  max-width: min(560px, calc(100vw - 48px));
-  min-height: 48px;
+  min-width: 220px;
+  max-width: min(460px, calc(100vw - 32px));
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 14px 16px;
-  border: 0;
-  border-radius: var(--radius-medium);
-  background-color: var(--brush-tooltip-bg);
-  color: rgba(255, 255, 255, 0.87);
-  box-shadow: 0 3px 5px -1px rgba(0, 0, 0, 0.2), 0 6px 10px 0 rgba(0, 0, 0, 0.14), 0 1px 18px 0 rgba(0, 0, 0, 0.12);
-  animation: toastIn 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  gap: 10px;
+  padding: 7px 10px;
+  border: 1px solid var(--border-main);
+  border-radius: var(--radius);
+  background-color: var(--bg-panel);
+  color: var(--text-main);
+  box-shadow: var(--shadow-card);
+  font-size: var(--fs-body);
+  pointer-events: auto;
+  animation: cadToastIn 0.16s ease-out;
 }
 
-.theme-dark .toast {
-  background-color: var(--brush-tooltip-bg);
-  color: rgba(0, 0, 0, 0.87);
+/* 类型色只作用于文字与边框（R14：语义色不做装饰） */
+.toast.success,
+.cad-toast.success {
+  border-color: var(--success-line);
+  color: var(--success);
+}
+
+.toast.error,
+.cad-toast.error {
+  border-color: var(--danger-line);
+  color: var(--danger);
+}
+
+.toast.warn,
+.cad-toast.warn {
+  border-color: var(--warn-line);
+  color: var(--warn);
+}
+
+.toast.info,
+.cad-toast.info {
+  border-color: var(--accent-line);
+  color: var(--accent);
 }
 
 .toast-message {
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
   color: inherit;
-  font-size: var(--font-size-base);
-  line-height: 1.43;
+  font-size: var(--fs-body);
+  line-height: 1.4;
   word-break: break-word;
 }
 
 .toast-close {
-  width: 32px;
-  height: var(--control-height-small);
-  flex-shrink: 0;
-  display: flex;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--radius-full);
-  color: inherit;
-  opacity: 0.7;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--text-muted);
   cursor: pointer;
-  transition: opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background-color var(--t-fast), color var(--t-fast);
+}
+
+.toast-close svg {
+  width: 12px;
+  height: 12px;
 }
 
 .toast-close:hover {
-  opacity: 1;
-  background-color: var(--brush-control-hover);
+  background-color: var(--bg-hover);
+  color: var(--danger);
 }
-
-
-
-
-

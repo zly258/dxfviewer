@@ -27,6 +27,10 @@ export interface ViewerNoticeProps {
   onDismiss: () => void;
 }
 
+/**
+ * 加载浮层（web-ui-style §11 Loading 三件套）。
+ * 结构：spinner + 标题/文件名 + 百分比 → 4px 进度条。
+ */
 export function LoadingOverlay({ lang, fileName, progress }: LoadingOverlayProps) {
   const safeProgress = Math.max(0, Math.min(100, progress));
   const fallbackName = t(lang, 'dxfFile');
@@ -35,53 +39,74 @@ export function LoadingOverlay({ lang, fileName, progress }: LoadingOverlayProps
   return (
     <div className="loading-overlay" aria-live="polite" aria-busy="true">
       <div className="loading-card" title={fileName || fallbackName}>
-        <div className="loading-header">
-          <span className="loading-spinner" aria-hidden="true" />
+        <div className="cad-loading-head">
+          <span className="cad-spinner cad-spinner-sm" aria-hidden="true" />
           <div className="loading-text-block">
-            <div className="loading-title">{title}</div>
-            <div className="loading-file">{fileName || fallbackName}</div>
+            <div className="cad-loading-title" title={title}>{title}</div>
+            <div className="loading-file" title={fileName || fallbackName}>{fileName || fallbackName}</div>
           </div>
-          <div className="loading-progress-text">{safeProgress}%</div>
+          <span className="cad-loading-pct">{safeProgress}%</span>
         </div>
-        <div className="loading-progressbar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={safeProgress}>
-          <div className="loading-progressbar-value" style={{ width: `${safeProgress}%` }} />
+        <div
+          className="cad-loading-track"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={safeProgress}
+        >
+          <i style={{ width: `${safeProgress}%` }} />
         </div>
       </div>
     </div>
   );
 }
 
+/**
+ * Toast（§10）：白底 + 1px 边框 + --shadow-card，类型色只作用于文字与边框。
+ */
 export function Toast({ toast, lang, onClose }: ToastProps) {
   return (
-    <div className="toast-container">
-      <div className={`toast ${toast.isError ? 'error' : 'success'}`}>
+    <div className="cad-toast-container">
+      <div className={`cad-toast ${toast.isError ? 'error' : 'success'}`} role="status">
         <span className="toast-message">{toast.msg}</span>
-        <span className="toast-close" onClick={onClose} aria-label={t(lang, 'closeToast')}>
+        <button type="button" className="toast-close" onClick={onClose} title={t(lang, 'closeToast')} aria-label={t(lang, 'closeToast')}>
           <ViewerIcon name="close" />
-        </span>
-      </div>
-    </div>
-  );
-}
-
-export function ViewerNotice({ lang, message, hasEntities, onFitView, onDismiss }: ViewerNoticeProps) {
-  return (
-    <div className="viewer-error-panel">
-      <div className="viewer-error-title">
-        {t(lang, 'nothingVisible')}
-      </div>
-      <div className="viewer-error-message">{message}</div>
-      <div className="viewer-error-actions">
-        {hasEntities && (
-          <button type="button" className="viewer-error-button" onClick={onFitView}>
-            {t(lang, 'fitView')}
-          </button>
-        )}
-        <button type="button" className="viewer-error-button primary" onClick={onDismiss}>
-          {t(lang, 'dismiss')}
         </button>
       </div>
     </div>
   );
 }
 
+/**
+ * 运行期提示条（§13）：只提示不阻塞，带「确定」关闭。
+ */
+export function ViewerNotice({ lang, message, hasEntities, onFitView, onDismiss }: ViewerNoticeProps) {
+  return (
+    <div className="viewer-error-panel" role="alert">
+      <div className="viewer-error-title">{t(lang, 'nothingVisible')}</div>
+      <div className="viewer-error-message">{message}</div>
+      <div className="viewer-error-actions">
+        {hasEntities && (
+          <button
+            type="button"
+            className="viewer-error-button"
+            onClick={onFitView}
+            title={t(lang, 'fitView')}
+            aria-label={t(lang, 'fitView')}
+          >
+            <ViewerIcon name="fit" />
+          </button>
+        )}
+        <button
+          type="button"
+          className="viewer-error-button primary"
+          onClick={onDismiss}
+          title={t(lang, 'dismiss')}
+          aria-label={t(lang, 'dismiss')}
+        >
+          <ViewerIcon name="close" />
+        </button>
+      </div>
+    </div>
+  );
+}

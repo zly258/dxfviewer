@@ -1,3 +1,9 @@
+/*
+ * 基础重置（web-ui-style）。
+ *
+ * 三条铁律：html/body 高度 100%、body overflow:hidden、根容器 flex 纵向撑满。
+ * 页面本身永不滚动，滚动只发生在面板内部的滚动容器上。
+ */
 html,
 body,
 #root {
@@ -9,10 +15,15 @@ body,
 }
 
 body {
-  font-family: var(--font-family);
-  font-size: var(--font-size-base);
-  background-color: var(--brush-window);
-  color: var(--brush-text-primary);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  font-family: var(--font-sans);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  background-color: var(--bg-app);
+  color: var(--text-main);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -22,6 +33,7 @@ input,
 select,
 textarea {
   font: inherit;
+  color: inherit;
 }
 
 button {
@@ -30,20 +42,39 @@ button {
 
 svg {
   display: block;
+  flex-shrink: 0;
 }
 
+/* R14：焦点可见 —— 所有可交互元素统一焦点环。 */
 button:focus-visible,
 input:focus-visible,
 select:focus-visible,
-textarea:focus-visible {
-  outline: 1.5px solid var(--brush-accent);
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--accent);
   outline-offset: 1px;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brush-accent) 18%, transparent);
+}
+
+/* 数字列等宽（不换字体族，只开 tabular-nums）。 */
+.mono {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* 统一显隐工具类（P18：显隐只用类，不用 style.display）。 */
+.hidden {
+  display: none !important;
+}
+
+/* 滚动条：8px、胶囊滑块、浅色轨道（工作台树 9px 见 panel.css）。 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scroll-thumb) transparent;
 }
 
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
@@ -52,12 +83,15 @@ textarea:focus-visible {
 
 ::-webkit-scrollbar-thumb {
   border: 2px solid transparent;
-  border-radius: 999px;
-  background-color: var(--brush-scroll-thumb);
+  border-radius: var(--radius-pill);
+  background-color: var(--scroll-thumb);
   background-clip: content-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background-color: var(--brush-scroll-thumb-hover);
+  background-color: var(--scroll-thumb-hover);
 }
 
+::-webkit-scrollbar-corner {
+  background: transparent;
+}

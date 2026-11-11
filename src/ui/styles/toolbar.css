@@ -1,109 +1,271 @@
 /*
- * 工具栏 / 菜单 / 图标按钮（WPF UI Skills 风格）。
+ * 按钮 / 工具条 / 下拉菜单（web-ui-style §1、§8）。
  *
- * 状态契约（R1）：每个改变背景的状态同时声明前景色。
- * 图标渲染（R10）：fill=currentColor 继承宿主前景，Outlined 字重。
- * 控件高度（R7）：图标按钮 30×30（Layout.IconButton.Small），带文本 32px。
- * 焦点（R2 补充）：focus-visible 用 outline 环而非纯背景色。
+ * R3 状态契约：任何改 background 的规则必须同时声明 color。
+ * R4 禁用态：用令牌换色，禁止 opacity。
+ * R8 图标：内联 SVG + currentColor，无 emoji、无图标字体。
  */
 
-/* ── 图标渲染（全部继承 currentColor） ── */
-.toolbar-icon svg,
-.text-search-icon,
-.text-search-nav svg,
-.layer-search-icon,
-.layer-tool-btn svg,
-.tab-scroll-button svg,
-.mobile-tool-button svg,
-.mobile-side-close svg,
-.mobile-view-item svg,
-.tab-close svg,
-.toast-close svg,
-.about-modal-close svg,
-.text-search-close svg,
-.layer-search-clear svg,
-.layer-checkbox-icon,
-.chevron {
-  fill: currentColor;
-  stroke: none;
-}
-
-/* ── 工具栏容器 ── */
-.toolbar {
-  height: var(--toolbar-height);
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-  gap: var(--icon-button-gap);
-  padding: 0 8px;
-  background-color: var(--brush-surface);
-  border-bottom: 1px solid var(--brush-border);
-  box-sizing: border-box;
-  user-select: none;
-  z-index: 501;
-}
-
-.menu-tab-row {
-  box-shadow: none;
-  border-bottom: 1px solid var(--brush-border);
-}
-
-/* ── 工具栏按钮（图标 30×30 / 带文本 32px 高） ── */
-.toolbar-button {
-  height: var(--icon-button-size);
-  min-width: var(--icon-button-size);
+/* ── 标准按钮 .tb-btn：26px 高、12.5px、0 9px、3px 圆角 ── */
+.tb-btn {
+  height: var(--control-h);
+  padding: 0 9px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: var(--icon-button-gap);
-  padding: 0 8px;
-  border: 0;
-  border-radius: var(--radius-small);
-  background: transparent;
-  color: var(--brush-text-secondary);
+  gap: 4px;
+  flex: 0 0 auto;
+  border: 1px solid var(--border-main);
+  border-radius: var(--radius);
+  background-color: var(--bg-chrome);
+  color: var(--text-main);
   font-family: inherit;
-  font-size: var(--font-size-base);
-  letter-spacing: 0.02em;
-  line-height: var(--icon-button-size);
+  font-size: var(--fs-body);
+  font-weight: 400;
+  line-height: 1;
+  white-space: nowrap;
   cursor: pointer;
   box-sizing: border-box;
+  transition: background-color var(--t-fast), border-color var(--t-fast), color var(--t-fast);
+}
+
+.tb-btn:hover:not(:disabled) {
+  background-color: var(--bg-hover);
+  border-color: var(--border-hover);
+  color: var(--text-main);
+}
+
+.tb-btn:active:not(:disabled) {
+  background-color: var(--bg-hover);
+  border-color: var(--border-main);
+  color: var(--text-main);
+}
+
+/* 开关型 / 主按钮：白字只压在 accent 深底上 */
+.tb-btn.active,
+.tb-btn-primary {
+  background-color: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+
+.tb-btn.active:hover:not(:disabled),
+.tb-btn-primary:hover:not(:disabled) {
+  background-color: var(--accent-hover);
+  border-color: var(--accent-hover);
+  color: var(--on-accent);
+}
+
+/* 危险按钮：透明底 + 红字 + 浅红描边 */
+.tb-btn-danger {
+  background-color: transparent;
+  border-color: var(--danger-line);
+  color: var(--danger);
+}
+
+.tb-btn-danger:hover:not(:disabled) {
+  background-color: var(--danger-soft);
+  border-color: var(--danger-line);
+  color: var(--danger);
+}
+
+/* 小号按钮：22px / 11.5px / 0 7px */
+.tb-btn-sm {
+  height: var(--control-h-sm);
+  padding: 0 7px;
+  font-size: var(--fs-caption);
+}
+
+/* R4：禁用态用令牌，不用 opacity */
+.tb-btn:disabled {
+  background-color: var(--bg-band);
+  border-color: var(--border-sub);
+  color: var(--text-muted);
+  cursor: default;
+}
+
+/* ── 页签 .filter-tab（§1.2）：26px、透明 → 悬停浅底 → 选中浅蓝底蓝字 ── */
+.filter-tab {
+  height: var(--control-h);
+  padding: 0 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  flex: 0 0 auto;
+  max-width: 200px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background-color: transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: var(--fs-body);
+  font-weight: 400;
+  white-space: nowrap;
+  cursor: pointer;
+  box-sizing: border-box;
+  transition: background-color var(--t-fast), border-color var(--t-fast), color var(--t-fast);
+}
+
+.filter-tab:hover {
+  background-color: var(--bg-hover);
+  border-color: transparent;
+  color: var(--text-main);
+}
+
+.filter-tab.active,
+.filter-tab.active:hover {
+  background-color: var(--accent-soft);
+  border-color: var(--accent-line);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.filter-tab-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filter-tab-count {
+  flex: 0 0 auto;
+  min-width: 16px;
+  height: 14px;
+  padding: 0 4px;
+  border-radius: var(--radius-pill);
+  box-sizing: border-box;
+  background-color: var(--bg-chrome);
+  color: var(--text-muted);
+  font-size: var(--fs-micro);
+  font-weight: 400;
+  line-height: 14px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.filter-tab.active .filter-tab-count {
+  background-color: var(--accent);
+  color: var(--on-accent);
+}
+
+/* ── 纯图标按钮：24×24、透明底 ── */
+.tb-icon-btn {
+  width: var(--icon-btn);
+  height: var(--icon-btn);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  flex: 0 0 auto;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-sec);
+  cursor: pointer;
+  box-sizing: border-box;
+  transition: background-color var(--t-fast), border-color var(--t-fast), color var(--t-fast);
+}
+
+.tb-icon-btn:hover:not(:disabled) {
+  background-color: var(--bg-hover);
+  border-color: transparent;
+  color: var(--text-main);
+}
+
+.tb-icon-btn.active {
+  background-color: var(--accent-soft);
+  border-color: var(--accent-line);
+  color: var(--accent);
+}
+
+.tb-icon-btn:disabled {
+  background: transparent;
+  color: var(--text-muted);
+  cursor: default;
+}
+
+.tb-icon-btn svg {
+  width: var(--icon-size);
+  height: var(--icon-size);
+}
+
+/* 工具条分隔符（原 .toolbar-separator） */
+.tb-sep {
+  width: 1px;
+  height: 16px;
+  margin: 0 3px;
+  flex: 0 0 auto;
+  background-color: var(--border-sub);
+}
+
+/* 工具栏容器：32px 行高、--bg-band 底 */
+.toolbar {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 2px;
+  padding: 0;
+  box-sizing: border-box;
+  background-color: transparent;
+  border: 0;
+  user-select: none;
+}
+
+/* 工具条按钮：24×24 纯图标（零内边距，图标 16px 撑满视觉） */
+.toolbar-button {
+  height: var(--icon-btn);
+  min-width: var(--icon-btn);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  flex: 0 0 auto;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-sec);
+  font-family: inherit;
+  font-size: var(--fs-body);
+  line-height: 1;
+  cursor: pointer;
+  box-sizing: border-box;
+  transition: background-color var(--t-fast), border-color var(--t-fast), color var(--t-fast);
 }
 
 .toolbar-icon-button {
-  width: var(--icon-button-size);
+  width: var(--icon-btn);
   padding: 0;
 }
 
-/* hover：R1 双声明 */
 .toolbar-button:hover:not(:disabled) {
-  background-color: var(--brush-control-hover);
-  color: var(--brush-text-primary);
+  background-color: var(--bg-hover);
+  border-color: transparent;
+  color: var(--text-main);
 }
 
-/* pressed：R1 双声明 */
 .toolbar-button:active:not(:disabled) {
-  background-color: var(--brush-control-pressed);
-  color: var(--brush-text-primary);
+  background-color: var(--bg-hover);
+  border-color: var(--border-main);
+  color: var(--text-main);
 }
 
-/* focus：WPF IsKeyboardFocused → 焦点环 */
 .toolbar-button:focus-visible {
-  outline: 1.5px solid var(--brush-focus);
-  outline-offset: -1px;
-  border-radius: var(--radius-small);
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
-/* 打开的菜单按钮：accent subtle 底 + accent 字 */
 .toolbar-button.active,
 .toolbar-menu.active > .toolbar-button {
-  background-color: var(--brush-accent-subtle);
-  color: var(--brush-accent);
+  background-color: var(--accent-soft);
+  border-color: var(--accent-line);
+  color: var(--accent);
 }
 
-/* disabled：R2 —— 显式颜色，不用 opacity */
 .toolbar-button:disabled {
   background: transparent;
-  color: var(--brush-text-disabled);
+  color: var(--text-muted);
   cursor: default;
 }
 
@@ -123,41 +285,43 @@
 
 .toolbar-menu {
   position: relative;
-  height: var(--icon-button-size);
+  height: var(--icon-btn);
+  flex: 0 0 auto;
 }
 
 .toolbar-separator {
   width: 1px;
-  height: 20px;
-  margin: 0 6px;
-  background-color: var(--divider);
-  flex-shrink: 0;
+  height: 16px;
+  margin: 0 3px;
+  flex: 0 0 auto;
+  background-color: var(--border-sub);
 }
 
-/* ── 下拉菜单（WPF ContextMenu 风格：Surface 底 + Border 边 + Shadow 面板） ── */
+/* ── 下拉菜单：4px 圆角、--shadow-overlay、z-index 200 ── */
 .dropdown-menu {
   position: absolute;
-  top: calc(100% + 2px);
+  top: calc(100% + 3px);
   left: 0;
-  z-index: 900;
-  min-width: 216px;
-  padding: 4px 0;
-  border: 1px solid var(--brush-border);
-  border-radius: var(--radius-medium);
-  background-color: var(--brush-surface);
-  box-shadow: var(--shadow-menu);
+  z-index: 200;
+  min-width: 150px;
+  padding: 3px;
+  border: 1px solid var(--border-main);
+  border-radius: var(--radius-lg);
+  background-color: var(--bg-panel);
+  box-shadow: var(--shadow-overlay);
   box-sizing: border-box;
+  animation: cadFadeIn 0.1s ease-out;
 }
 
-/* 菜单项：高 32（R7 Small），hover 双声明（R1） */
 .dropdown-item,
 .dropdown-header {
   width: 100%;
-  height: var(--control-height-small);
+  height: var(--control-h);
   display: flex;
   align-items: center;
   box-sizing: border-box;
   border: 0;
+  border-radius: 2px;
   background: transparent;
   font-family: inherit;
   text-align: left;
@@ -166,69 +330,84 @@
 
 .dropdown-item {
   position: relative;
-  justify-content: space-between;
-  padding: 0 12px;
-  color: var(--brush-text-primary);
-  font-size: var(--font-size-base);
-  letter-spacing: 0.01em;
+  justify-content: flex-start;
+  padding: 0 22px 0 8px;
+  color: var(--text-main);
+  font-size: var(--fs-body);
   cursor: pointer;
+  transition: background-color var(--t-fast), color var(--t-fast);
 }
 
-/* hover：R1 双声明 */
 .dropdown-item:hover:not(:disabled) {
-  background-color: var(--brush-control-hover);
-  color: var(--brush-text-primary);
+  background-color: var(--bg-hover);
+  color: var(--text-main);
 }
 
-/* pressed：R1 双声明 */
 .dropdown-item:active:not(:disabled) {
-  background-color: var(--brush-control-pressed);
-  color: var(--brush-text-primary);
+  background-color: var(--bg-hover);
+  color: var(--text-main);
 }
 
-/* disabled：R2 显式颜色 */
 .dropdown-item:disabled {
-  color: var(--brush-text-disabled);
   background: transparent;
+  color: var(--text-muted);
   cursor: default;
 }
 
-/* 选中标记：WPF MenuItem.IsChecked → Icon.Geo.Check */
+/* 选中标记：右侧对勾（SVG mask，随前景色） */
 .dropdown-item.checked {
-  color: var(--brush-accent);
+  color: var(--accent);
 }
 
 .dropdown-item.checked::after {
   content: '';
   position: absolute;
-  right: 12px;
-  width: var(--icon-size-small);
-  height: var(--icon-size-small);
-  background-color: var(--brush-accent);
-  -webkit-mask-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' fill='currentColor' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M9.55,18 L3.85,12.3 L5.275,10.875 L9.55,15.15 L18.725,5.975 L20.15,7.4 L9.55,18 Z M0,0 L24,24'/%3E%3C/svg%3E");
-  mask-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' fill='currentColor' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M9.55,18 L3.85,12.3 L5.275,10.875 L9.55,15.15 L18.725,5.975 L20.15,7.4 L9.55,18 Z M0,0 L24,24'/%3E%3C/svg%3E");
+  right: 7px;
+  top: 50%;
+  width: var(--icon-size-sm);
+  height: var(--icon-size-sm);
+  margin-top: calc(var(--icon-size-sm) / -2);
+  background-color: var(--accent);
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' fill='currentColor' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M9.55,18 L3.85,12.3 L5.275,10.875 L9.55,15.15 L18.725,5.975 L20.15,7.4 L9.55,18 Z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' fill='currentColor' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M9.55,18 L3.85,12.3 L5.275,10.875 L9.55,15.15 L18.725,5.975 L20.15,7.4 L9.55,18 Z'/%3E%3C/svg%3E");
   -webkit-mask-size: contain;
   mask-size: contain;
   -webkit-mask-repeat: no-repeat;
   mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+}
+
+.dropdown-item.checked:hover:not(:disabled) {
+  background-color: var(--accent-soft);
+  color: var(--accent);
 }
 
 .dropdown-header {
-  padding: 0 12px;
-  color: var(--brush-text-secondary);
-  font-size: var(--font-size-micro);
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  height: var(--row-height);
+  padding: 0 8px;
+  color: var(--text-muted);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  height: 20px;
 }
 
-/* 分隔线（WPF Separator） */
-.divider {
+/* 分隔线 */
+.divider,
+.dropdown-divider {
   height: 1px;
-  margin: 4px 8px;
-  background-color: var(--brush-border);
+  margin: 3px 4px;
+  background-color: var(--border-sub);
 }
 
+/* 顶栏内下拉：右对齐到按钮右缘，避免溢出视口 */
+.dropdown-menu-right {
+  left: auto;
+  right: 0;
+}
 
+/* 文本按钮内的图标尺寸（.tb-btn 目前仅作通用组件保留） */
+.tb-btn > svg {
+  width: var(--icon-size);
+  height: var(--icon-size);
+}
 

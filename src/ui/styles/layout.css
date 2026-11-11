@@ -1,3 +1,17 @@
+/*
+ * 页面骨架（web-ui-style R9）。
+ *
+ * ┌ app-header 42px ── 品牌 | 文件标题 [类型] | 视图 导出 关于 ┐
+ * ├ ui-toolbar-row 32px ── 打开 导航 充满 搜索 | 标签条 ──────────┤
+ * ├────────────┬──────────────────────────────┬────────────────┤
+ * │ 左栏        │ 视口（flex:1 min-width:0）    │ 右栏            │
+ * │ clamp(250,  │ canvas 100%×100%              │ clamp(320,     │
+ * │ 22vw,320)   │                               │ 27vw,440)      │
+ * ├────────────┴──────────────────────────────┴────────────────┤
+ * └ app-footer 30px ── 坐标 | 选择 | 空间 实体 ──────────────────┘
+ *
+ * 页面本身永不滚动；滚动只发生在侧栏内部容器。
+ */
 .app-container {
   display: flex;
   flex-direction: column;
@@ -6,68 +20,111 @@
   min-height: 0;
   overflow: hidden;
   position: relative;
-  background-color: var(--brush-window);
-  color: var(--brush-text-primary);
-  letter-spacing: 0.01em;
+  background-color: var(--bg-app);
+  color: var(--text-main);
 }
 
-.menu-tab-row {
+/* ── 顶栏 42px：左侧文件标题 + 类型角标、右侧操作（不放 logo） ── */
+.app-header {
+  height: var(--header-h);
+  flex: 0 0 auto;
   display: flex;
-  align-items: stretch;
-  flex-shrink: 0;
-  height: var(--toolbar-height);
-  background-color: var(--brush-surface);
-  border-bottom: 1px solid var(--brush-border);
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
   box-sizing: border-box;
-  position: relative;
-  z-index: 500;
-  /* 不能用 overflow:hidden —— 工具栏下拉菜单是绝对定位子元素，会被整块裁掉。 */
+  background-color: var(--bg-chrome);
+  border-bottom: 1px solid var(--border-strong);
+  z-index: 50;
+  user-select: none;
 }
 
-.menu-tab-row .toolbar,
-.menu-tab-row .tabs-container {
-  border-bottom: 0;
+.app-header-title {
+  min-width: 0;
+  flex: 0 1 auto;
+  max-width: 46vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-main);
+  font-size: var(--fs-page);
+  font-weight: 600;
+  line-height: 1.2;
 }
 
-/* 子元素撑满父级内容盒（44px - 1px 底边线），避免盖住行底边线。
-   percentage height 相对父级 content box 解析，因此自动等于 43px。 */
-.menu-tab-row .toolbar {
-  flex-shrink: 0;
-  height: 100%;
-  min-height: 0;
-  overflow: visible;
+/* 类型角标（对应 .header-type-tag）：11px/600、2px 圆角、浅蓝底蓝字。 */
+.app-header-tag {
+  flex: 0 0 auto;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 5px;
+  border-radius: 2px;
+  background-color: var(--accent-soft);
+  color: var(--accent);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  line-height: 1;
 }
 
+.app-header-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+
+/* ── 工具条行 32px ── */
+.ui-toolbar-row {
+  height: var(--toolbar-h);
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 6px;
+  box-sizing: border-box;
+  background-color: var(--bg-band);
+  border-bottom: 1px solid var(--border-main);
+  user-select: none;
+}
+
+/* 工具条与标签条之间的分隔（.menu-tab-strip 承载文件标签） */
 .menu-tab-strip {
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
   height: 100%;
+  display: flex;
+  align-items: center;
   overflow: hidden;
-  border-left: 1px solid var(--brush-border);
 }
 
-.menu-tab-strip .tabs-container {
-  height: 100%;
+/* 工具条行内的标签条：与工具按钮之间加 1px 分隔与内边距 */
+.ui-toolbar-row > .menu-tab-strip {
+  margin-left: 2px;
+  padding-left: 8px;
+  border-left: 1px solid var(--border-sub);
+}
+
+/* ── 三栏主体 ── */
+.app-body {
+  display: flex;
+  flex: 1 1 auto;
   min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  position: relative;
+  background-color: var(--bg-app);
 }
 
+/* 兼容旧类名：原 .main-content 即三栏主体。 */
 .main-content {
   display: flex;
-  flex: 1;
+  flex: 1 1 auto;
   min-height: 0;
-  overflow: hidden;
-  position: relative;
-}
-
-.viewer-container {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
   min-width: 0;
-  min-height: 0;
   overflow: hidden;
   position: relative;
-  background-color: var(--brush-window);
 }
 
 .side-panel-shell {
@@ -75,40 +132,68 @@
   flex-shrink: 0;
   height: 100%;
   position: relative;
-  z-index: 150;
-  background-color: var(--brush-surface);
+  z-index: 20;
+  background-color: var(--bg-panel);
 }
 
 .side-panel-frame {
   flex-shrink: 0;
   height: 100%;
+  min-height: 0;
   overflow: hidden;
 }
 
-.menu-tab-strip .tabs-container {
-  height: 100%;
+.viewer-container {
+  flex: 1 1 auto;
+  min-width: 0;
   min-height: 0;
-  border-bottom: 0;
-  background-color: transparent;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+  background-color: var(--bg-viewport);
 }
 
-.menu-tab-strip .tabs-scroll-viewport {
-  height: 100%;
+/* ── 空间切换条（图纸/模型），28px 过滤行高度 ── */
+.space-switch-bar {
+  flex: 0 0 auto;
+  height: var(--filter-h);
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 8px;
+  box-sizing: border-box;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-top: 1px solid var(--border-main);
+  background-color: var(--bg-band);
+  scrollbar-width: none;
 }
 
-.menu-tab-strip .tab-item {
-  height: calc(100% - 1px);
+.space-switch-bar::-webkit-scrollbar {
+  display: none;
 }
 
-.menu-tab-strip .tab-scroll-button {
-  height: calc(100% - 1px);
+/* ── 底栏 30px ── */
+.app-footer {
+  height: var(--footer-h);
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 10px;
+  box-sizing: border-box;
+  border-top: 1px solid var(--border-main);
+  background-color: var(--bg-band);
+  color: var(--text-muted);
+  font-size: var(--fs-small);
+  line-height: 1;
+  user-select: none;
 }
 
-.menu-tab-strip .tab-context-menu {
-  height: auto;
-}
-
-/* 移动端基础适配：安全区、触控目标、右键菜单和搜索面板。 */
+/* ─────────────────────────────────────────────────────────────
+ * 窄屏 / 移动端适配：保持紧凑尺寸，触控目标放大到 32px。
+ * ───────────────────────────────────────────────────────────── */
 @media (max-width: 768px) {
   html,
   body,
@@ -123,9 +208,16 @@
 
   .app-container.is-mobile {
     width: 100vw;
-    height: 100dvh !important;
+    height: 100dvh;
     min-height: 100dvh;
     overflow: hidden;
+  }
+
+  .app-container.is-mobile .ui-toolbar-row {
+    height: var(--filter-h);
+    max-height: var(--filter-h);
+    overflow: hidden;
+    padding: 0 6px;
   }
 
   .app-container.is-mobile .viewer-container {
@@ -137,24 +229,9 @@
     min-height: 0;
   }
 
-  .app-container.is-mobile .menu-tab-row {
-    flex-shrink: 0;
-    max-height: 34px;
-    overflow: hidden;
-  }
-
-  .app-container.is-mobile .tabs-container,
-  .app-container.is-mobile .tabs-scroll-viewport,
-  .app-container.is-mobile .tab-item,
-  .app-container.is-mobile .tab-scroll-button {
-    height: 34px;
-    min-height: 34px;
-  }
-
-  .app-container.is-mobile .tab-item {
-    min-width: 90px;
-    max-width: 150px;
-    padding: 0 8px;
+  .app-header {
+    padding: 0 6px;
+    gap: 6px;
   }
 
   .mobile-tool-button,
@@ -162,128 +239,109 @@
     -webkit-tap-highlight-color: transparent;
   }
 
-  .canvas-context-menu {
-    --context-menu-width: 160px;
-    min-width: var(--context-menu-width);
-    padding: 6px;
-  }
-
-  .canvas-context-menu button {
-    height: 40px;
-    padding: 0 12px;
-    font-size: var(--font-size-base);
-  }
-
+  /* 视口内浮层：搜索面板贴住顶边，避开右侧工具栏。 */
   .is-mobile .text-search-panel {
-    top: calc(max(12px, env(safe-area-inset-top, 0px)) + 46px);
-    left: max(12px, env(safe-area-inset-left, 0px));
-    right: calc(max(10px, env(safe-area-inset-right, 0px)) + 58px);
+    top: max(8px, env(safe-area-inset-top, 0px));
+    left: max(8px, env(safe-area-inset-left, 0px));
+    right: calc(max(8px, env(safe-area-inset-right, 0px)) + 52px);
     width: auto;
-    z-index: 1075;
+    z-index: 25;
   }
 
   .is-mobile .text-search-row {
-    height: 40px;
-    padding-left: 10px;
-    border-radius: 12px;
+    height: 32px;
+    padding-left: 8px;
+    border-radius: var(--radius-lg);
   }
 
   .is-mobile .text-search-input {
-    height: 34px;
-    font-size: var(--font-size-base);
+    height: 32px;
+    font-size: var(--fs-body);
   }
 
   .is-mobile .text-search-nav,
   .is-mobile .text-search-close {
-    width: 34px;
-    height: 34px;
+    width: 28px;
+    height: 28px;
   }
 
   .is-mobile .text-search-results {
     max-height: min(42dvh, calc(100dvh - 210px));
-    border-radius: 12px;
+    border-radius: var(--radius-lg);
   }
 
   .is-mobile .text-search-result {
-    min-height: 44px;
-    padding: 7px 10px;
+    min-height: 40px;
+    padding: 6px 8px;
   }
 
-  .toast-container,
-  .app-toast-container {
-    top: calc(env(safe-area-inset-top, 0px) + 10px);
-    width: calc(100% - 24px);
+  .cad-toast-container {
+    top: calc(env(safe-area-inset-top, 0px) + 8px);
+    width: calc(100% - 16px);
   }
 
-  .toast {
+  .cad-toast {
     min-width: 0;
     width: 100%;
   }
 
   .about-modal-content,
   .viewer-error-panel {
-    width: calc(100vw - 28px);
-    max-height: calc(100dvh - 48px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    width: calc(100vw - 24px);
+    max-height: calc(100dvh - 40px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
   }
-}
 
-@media (max-width: 768px) {
-  /* 顶部坐标浮层：默认隐藏（components.css），仅在移动端显示为半透明药丸。
-     用 .is-mobile 前缀提高优先级，避免被 components.css 中靠后的 display:none 覆盖。 */
+  /* 顶部坐标药丸（移动端视口浮层，z-index 25 与测距 HUD 同层） */
   .is-mobile .mobile-coord-chip {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
     position: absolute;
-    top: max(12px, env(safe-area-inset-top, 0px));
-    left: max(12px, env(safe-area-inset-left, 0px));
+    top: max(8px, env(safe-area-inset-top, 0px));
+    left: max(8px, env(safe-area-inset-left, 0px));
     right: auto;
-    z-index: 1080;
-    padding: 7px 10px;
-    border: 1px solid var(--brush-border);
-    border-radius: 12px;
-    background-color: color-mix(in srgb, var(--brush-surface) 92%, transparent);
-    color: var(--brush-text-secondary);
-    font-size: var(--font-size-micro);
-    font-family: Consolas, "Cascadia Mono", monospace;
+    z-index: 25;
+    padding: 4px 7px;
+    border: 1px solid var(--border-main);
+    border-radius: var(--radius);
+    background-color: var(--bg-chrome);
+    color: var(--text-muted);
+    font-size: var(--fs-micro);
     line-height: 1;
-    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.14);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
+    box-shadow: var(--shadow-card);
     box-sizing: border-box;
     pointer-events: none;
-    max-width: calc(100vw - 92px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
+    max-width: calc(100vw - 76px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
     overflow: hidden;
     white-space: nowrap;
+    font-variant-numeric: tabular-nums;
   }
 
   .mobile-coord-chip .coord-selected {
-    color: var(--brush-accent);
+    color: var(--accent);
     font-weight: 600;
   }
 
-  /* 右侧工具栏：小屏/横屏下允许滚动，避免按钮被裁切 */
+  /* 右侧竖排工具条：32px 按钮，视口内浮层 z-index 25。 */
   .is-mobile .mobile-right-toolbar {
     display: flex;
     position: absolute;
-    top: max(12px, env(safe-area-inset-top, 0px));
-    right: max(10px, env(safe-area-inset-right, 0px));
+    top: max(8px, env(safe-area-inset-top, 0px));
+    right: max(8px, env(safe-area-inset-right, 0px));
     bottom: auto;
-    z-index: 1080;
+    z-index: 25;
     flex-direction: column;
-    gap: 4px;
-    padding: 6px;
-    max-height: calc(100dvh - max(12px, env(safe-area-inset-top, 0px)) - max(12px, env(safe-area-inset-bottom, 0px)));
+    gap: 2px;
+    padding: 3px;
+    max-height: calc(100dvh - max(8px, env(safe-area-inset-top, 0px)) - max(8px, env(safe-area-inset-bottom, 0px)));
     overflow-y: auto;
     overscroll-behavior: contain;
     scrollbar-width: none;
-    border: 1px solid var(--brush-border);
-    border-radius: 15px;
-    background-color: color-mix(in srgb, var(--brush-surface) 92%, transparent);
-    color: var(--brush-text-secondary);
-    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.18);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid var(--border-main);
+    border-radius: var(--radius-lg);
+    background-color: var(--bg-panel);
+    color: var(--text-sec);
+    box-shadow: var(--shadow-overlay);
   }
 
   .mobile-right-toolbar::-webkit-scrollbar {
@@ -291,19 +349,18 @@
   }
 
   .mobile-tool-button {
-    width: 40px;
-    height: 40px;
+    width: 32px;
+    height: 32px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     padding: 0;
     border: 1px solid transparent;
-    border-radius: 11px;
+    border-radius: var(--radius);
     background: transparent;
-    color: var(--brush-text-secondary);
+    color: var(--text-sec);
     cursor: pointer;
-    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
-    -webkit-tap-highlight-color: transparent;
+    transition: background-color var(--t-fast), border-color var(--t-fast), color var(--t-fast);
     flex-shrink: 0;
   }
 
@@ -314,23 +371,28 @@
     height: var(--icon-size);
   }
 
-  .mobile-tool-button:active:not(:disabled),
+  .mobile-tool-button:active:not(:disabled) {
+    background-color: var(--bg-hover);
+    border-color: var(--border-main);
+    color: var(--text-main);
+  }
+
   .mobile-tool-button.active {
-    background-color: var(--brush-accent-subtle);
-    border-color: transparent;
-    color: var(--brush-accent);
+    background-color: var(--accent-soft);
+    border-color: var(--accent-line);
+    color: var(--accent);
   }
 
   .mobile-tool-button:disabled {
-    color: var(--brush-text-disabled);
-    background: var(--brush-control-disabled);
+    background: transparent;
+    color: var(--text-muted);
     cursor: default;
   }
 
   .mobile-tool-separator {
     height: 1px;
-    margin: 3px 6px;
-    background-color: var(--brush-border);
+    margin: 2px 4px;
+    background-color: var(--border-sub);
     flex-shrink: 0;
   }
 
@@ -338,26 +400,26 @@
     display: block;
     position: absolute;
     inset: 0;
-    z-index: 1060;
-    background-color: rgba(15, 23, 42, 0.16);
+    z-index: 20;
+    background-color: var(--scrim);
   }
 
   .is-mobile .mobile-side-panel {
     display: flex;
     flex-direction: column;
     position: absolute;
-    top: max(12px, env(safe-area-inset-top, 0px));
-    right: calc(max(10px, env(safe-area-inset-right, 0px)) + 58px);
-    bottom: max(12px, env(safe-area-inset-bottom, 0px));
-    width: min(330px, calc(100vw - 88px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)));
-    z-index: 1070;
+    top: max(8px, env(safe-area-inset-top, 0px));
+    right: calc(max(8px, env(safe-area-inset-right, 0px)) + 42px);
+    bottom: max(8px, env(safe-area-inset-bottom, 0px));
+    width: min(320px, calc(100vw - 64px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)));
+    z-index: 25;
     overflow: hidden;
-    border: 1px solid var(--brush-border);
-    border-radius: 14px;
-    background-color: var(--brush-surface);
-    color: var(--brush-text-primary);
-    box-shadow: var(--shadow-panel);
-    transform: translateX(14px);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-lg);
+    background-color: var(--bg-panel);
+    color: var(--text-main);
+    box-shadow: var(--shadow-overlay);
+    transform: translateX(10px);
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.16s ease, transform 0.16s ease;
@@ -370,35 +432,38 @@
   }
 
   .mobile-side-panel-header {
-    height: 42px;
+    height: var(--modal-head-h);
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 8px;
     flex-shrink: 0;
-    padding: 0 8px 0 12px;
-    border-bottom: 1px solid var(--brush-border);
-    background-color: var(--brush-surface-alt);
-    color: var(--brush-text-primary);
+    padding: 0 4px 0 10px;
+    border-bottom: 1px solid var(--border-main);
+    background-color: var(--bg-band);
+    color: var(--text-main);
+    font-size: var(--fs-title);
     font-weight: 600;
     box-sizing: border-box;
   }
 
   .mobile-side-close {
-    width: 32px;
-    height: var(--control-height-small);
+    width: 24px;
+    height: 24px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     padding: 0;
     border: 0;
-    border-radius: 8px;
+    border-radius: var(--radius);
     background: transparent;
-    color: var(--brush-text-secondary);
+    color: var(--text-muted);
+    cursor: pointer;
   }
 
   .mobile-side-close:active {
-    background-color: var(--brush-control-hover);
-    color: var(--brush-text-primary);
+    background-color: var(--bg-hover);
+    color: var(--danger);
   }
 
   .mobile-side-panel-content {
@@ -410,10 +475,10 @@
 
   .mobile-side-panel-content .layer-panel,
   .mobile-side-panel-content .properties-panel {
-    width: 100% !important;
-    height: 100% !important;
-    border: 0 !important;
-    background-color: transparent !important;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    background-color: transparent;
   }
 
   .mobile-side-panel-content .layer-panel-header,
@@ -421,49 +486,50 @@
     display: none;
   }
 
-  .mobile-side-panel-content .layer-row {
-    min-height: 38px;
-    height: auto;
-    padding: 0 12px;
+  .mobile-side-panel-content .tree-row {
+    height: 32px;
   }
 
-  .mobile-side-panel-content .entity-row {
-    min-height: var(--control-height);
-    height: auto;
-    padding-left: 36px;
+  .mobile-side-panel-content .tree-comp {
+    height: 32px;
+    padding-left: 30px;
   }
 
   .mobile-view-list {
-    padding: 8px;
+    padding: 5px;
   }
 
   .mobile-view-item {
     width: 100%;
-    min-height: 42px;
+    min-height: 32px;
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 0 10px;
+    gap: 8px;
+    padding: 0 8px;
     border: 0;
-    border-radius: 9px;
+    border-radius: var(--radius);
     background: transparent;
-    color: var(--brush-text-primary);
-    font-size: var(--font-size-base);
+    color: var(--text-main);
+    font-size: var(--fs-body);
     text-align: left;
+    cursor: pointer;
   }
 
   .mobile-view-item.checked {
-    color: var(--brush-accent);
+    background-color: var(--accent-soft);
+    color: var(--accent);
     font-weight: 600;
   }
 
   .mobile-view-item:active {
-    background-color: var(--brush-control-hover);
+    background-color: var(--bg-hover);
+    color: var(--text-main);
+  }
+
+  .mobile-view-section-title {
+    padding: 6px 8px 3px;
+    color: var(--text-muted);
+    font-size: var(--fs-micro);
+    font-weight: 600;
   }
 }
-
-
-
-
-
-

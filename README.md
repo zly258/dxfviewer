@@ -19,7 +19,7 @@ DXF Viewer 是一个基于 React 的 DXF 查看组件，交互渲染提供 WebGL
 - 属性面板显示块引用的属性（ATTRIB 标记 → 值），支持两栏斑马纹表格视图。
 - 支持多 Tab 工作区 `DxfWorkspace`，也支持单独嵌入核心查看器 `DxfViewer`。
 - 支持桌面端顶部工具栏和移动端右侧工具栏，移动端不使用底部抽屉。
-- 支持系统主题、浅色主题、深色主题，全套风格基于 `wpf-ui-style` 规范实现低饱和工业桌面色板与高保真图标。
+- 支持系统主题、浅色主题、深色主题；浅色为默认基线，全套风格基于 `web-ui-style` 规范实现浅色 Fluent 工业 CAD 网页端（12.5px 正文 / 26px 控件 / 三栏骨架 / 令牌唯一）。
 - 支持图层面板、属性面板、右键菜单、隐藏选中、隔离选中、关闭图层、全部显示。
 - 支持视图历史，上一个视图 / 下一个视图 / 充满视图。
 - 支持当前空间文字搜索和定位，搜索结果使用内缩式轻量高亮。
@@ -180,11 +180,13 @@ npm run convert -- drawing.dxf x.svg --list-layouts     # 查看布局列表
 npm ci
 npm run typecheck        # tsc --noEmit
 npm run build            # 构建库（含 .d.ts）
-npm run check            # 构建 + 夹具解析 + 渲染/导出冒烟 + 隐藏/隔离渲染回归 + 读写往返校验
+npm run check            # 构建 + 夹具解析 + 渲染/导出冒烟 + 隐藏/隔离渲染回归 + 读写往返校验 + UI 风格审计
 npm run check:fixtures   # 解析运行时生成的夹具（含图纸空间与 LEADER/SHAPE）
 npm run check:render     # 无头渲染 + PNG/PDF 结构与尺寸校验
 npm run check:visibility # 隐藏/隔离渲染等价性 + 扁平 BVH 与参考实现一致性
 npm run check:roundtrip  # parse → writeDxf → parse 逐实体几何比对
+npm run check:ui         # web-ui-style 静态审计（裸色值/未定义变量/禁用态 opacity/z-index/字号/圆角/对比度）
+npm run check:ui-style   # web-ui-style 浏览器实测（顶栏 42 / 工具条 32 / 底栏 30 / 控件 26 / 三栏宽度上限，需先 npm run dev）
 npm run test:real        # 对指定目录的真实施工图做全链路批量测试（只读源目录）
 npm run bench-parse      # 合成大图解析/建索引/渲染基准（手动运行）
 npm run dev              # 启动示例工程
@@ -198,7 +200,7 @@ npm run build:all
 
 ```text
 src/
-  ui/              界面层：components（查看器/面板/工具栏）、hooks、i18n、styles（WPF 风格令牌）
+  ui/              界面层：components（查看器/面板/工具栏）、hooks、i18n、styles（web-ui-style 设计令牌）
   io/              输入输出层：parser（DXF 解析）、writer（写出）、dxf（组码）、loader（解析 Worker）
   render/          渲染层：engine（双引擎契约）/ webgl / canvas（可切换对比）/ picking / text / vector
   core/            领域算法：几何、曲线采样、文字布局、范围计算
@@ -396,7 +398,7 @@ Note: `dxfviewer-example` is a real example workspace and exists in the full rep
 
 ```text
 src/
-  ui/              UI layer: components (viewer/panels/toolbar), hooks, i18n, styles (WPF-style tokens)
+  ui/              UI layer: components (viewer/panels/toolbar), hooks, i18n, styles (web-ui-style design tokens)
   io/              I/O layer: parser (DXF), writer, dxf (group codes), loader (parse worker)
   render/          Render layer: engine (dual-engine contract) / webgl / canvas (switchable) / picking / text / vector
   core/            Domain algorithms: geometry, curve sampling, text layout, extents

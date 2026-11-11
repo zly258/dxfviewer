@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { AnyEntity, EntityType, DxfLayer } from '@/types';
+import { AnyEntity, DxfLayer } from '@/types';
 import { getAutoCadColor } from '@/utils/colorUtils';
 import { Language, ENTITY_TYPE_NAMES, t as translate } from '@/ui/i18n';
 import ViewerIcon from '@/ui/components/common/ViewerIcon';
@@ -15,20 +15,32 @@ interface LayerPanelProps {
   className?: string;
 }
 
-const ROW_HEIGHT = 26; // 列表项高度。
+/** 树行高（web-ui-style §7 VTREE_ROW_H = 26）。 */
+const ROW_HEIGHT = 26;
+/** 虚拟滚动 overscan 行数。 */
+const OVERSCAN = 10;
 
 type SortKey = 'name' | 'count';
 type SortDir = 'asc' | 'desc';
 
-type FlatItem = 
+type FlatItem =
   | { type: 'layer'; name: string; layer: DxfLayer; count: number; expanded: boolean }
   | { type: 'entity'; id: string; entity: AnyEntity };
 
-const LayerPanel: React.FC<LayerPanelProps> = ({ 
-  layers, 
-  entities, 
-  selectedEntityIds, 
-  onSelectIds, 
+/**
+ * 图层结构树（web-ui-style §7）。
+ *
+ * - 树行 26px，--text-sec，hover --bg-hover，选中 --accent-soft + --accent；
+ * - 图层行 = 展开箭头 + 可见性复选 + 色块 + 名称 + 计数；
+ * - 构件行用左侧 1px 引导线 + 缩进表达层级；
+ * - 大列表虚拟滚动（固定行高 + overscan），不一次渲染全部行；
+ * - P9：所有省略号文本都带 title。
+ */
+const LayerPanel: React.FC<LayerPanelProps> = ({
+  layers,
+  entities,
+  selectedEntityIds,
+  onSelectIds,
   lang,
   hiddenLayers = new Set(),
   onToggleLayerVisibility,
@@ -66,23 +78,20 @@ const LayerPanel: React.FC<LayerPanelProps> = ({
     }, {} as Record<string, AnyEntity[]>);
   }, [entities]);
 
-  // 生成扁平化的列表用于虚拟滚动
+  // 生成扁平化列表用于虚拟滚动
   const flatList = useMemo(() => {
     const list: FlatItem[] = [];
     let layerNames = Object.keys(layers);
 
-    // 搜索过滤
     const q = searchQuery.trim().toLowerCase();
     if (q) {
       layerNames = layerNames.filter(name => name.toLowerCase().includes(q));
     }
 
-    // 空图层过滤
     if (hideEmptyLayers) {
       layerNames = layerNames.filter(name => (entitiesByLayer[name]?.length ?? 0) > 0);
     }
 
-    // 排序
     layerNames.sort((a, b) => {
       let cmp = 0;
       if (sortKey === 'name') {
@@ -97,57 +106,52 @@ const LayerPanel: React.FC<LayerPanelProps> = ({
     });
 
     for (const name of layerNames) {
-        const layerEnts = entitiesByLayer[name] || [];
-        const isExpanded = expandedLayers.has(name);
-        
-        list.push({
-            type: 'layer',
-            name,
-            layer: layers[name],
-            count: layerEnts.length,
-            expanded: isExpanded
-        });
+      const layerEnts = entitiesByLayer[name] || [];
+      const isExpanded = expandedLayers.has(name);
 
-        if (isExpanded) {
-            for (const ent of layerEnts) {
-                list.push({
-                    type: 'entity',
-                    id: ent.id,
-                    entity: ent
-                });
-            }
+      list.push({
+        type: 'layer',
+        name,
+        layer: layers[name],
+        count: layerEnts.length,
+        expanded: isExpanded
+      });
+
+      if (isExpanded) {
+        for (const ent of layerEnts) {
+          list.push({ type: 'entity', id: ent.id, entity: ent });
         }
+      }
     }
     return list;
   }, [layers, entitiesByLayer, expandedLayers, searchQuery, hideEmptyLayers, sortKey, sortDir]);
 
   const totalHeight = flatList.length * ROW_HEIGHT;
-  
+
   // 监听容器高度变化
   useEffect(() => {
-      const resizeObserver = new ResizeObserver((entries) => {
-          for (const entry of entries) {
-              setContainerHeight(entry.contentRect.height);
-          }
-      });
-      if (containerRef.current) {
-          resizeObserver.observe(containerRef.current);
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setContainerHeight(entry.contentRect.height);
       }
-      return () => resizeObserver.disconnect();
+    });
+    if (containerRef.current) {
+      resizeObserver.observe(containerRef.current);
+    }
+    return () => resizeObserver.disconnect();
   }, []);
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
-      setScrollTop(e.currentTarget.scrollTop);
+    setScrollTop(e.currentTarget.scrollTop);
   };
 
   // 计算可见范围索引
-  const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - 2); 
-  const endIndex = Math.min(flatList.length, Math.ceil((scrollTop + containerHeight) / ROW_HEIGHT) + 2); 
+  const startIndex = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
+  const endIndex = Math.min(flatList.length, Math.ceil((scrollTop + containerHeight) / ROW_HEIGHT) + OVERSCAN);
 
   const visibleItems = flatList.slice(startIndex, endIndex);
   const offsetY = startIndex * ROW_HEIGHT;
 
-  // 展开/收起图层
   const toggleLayer = (layerName: string) => {
     const next = new Set(expandedLayers);
     if (next.has(layerName)) next.delete(layerName);
@@ -155,22 +159,17 @@ const LayerPanel: React.FC<LayerPanelProps> = ({
     setExpandedLayers(next);
   };
 
-  // 处理项点击
   const handleItemClick = (id: string, multi: boolean) => {
-      if (multi) {
-          const newSet = new Set(selectedEntityIds);
-          if (newSet.has(id)) newSet.delete(id);
-          else newSet.add(id);
-          onSelectIds(newSet);
-      } else {
-          onSelectIds(new Set([id]));
-      }
+    if (multi) {
+      const newSet = new Set(selectedEntityIds);
+      if (newSet.has(id)) newSet.delete(id);
+      else newSet.add(id);
+      onSelectIds(newSet);
+    } else {
+      onSelectIds(new Set([id]));
+    }
   };
 
-  // 获取实体图标
-  const getEntityIcon = (type: EntityType) => <span className="entity-icon">{type.substring(0, 1)}</span>;
-  
-  // 获取图层颜色十六进制
   const getLayerColorHex = (layer: DxfLayer) => getAutoCadColor(layer.color);
 
   const layerCount = Object.keys(layers).length;
@@ -179,11 +178,14 @@ const LayerPanel: React.FC<LayerPanelProps> = ({
   return (
     <div className={`layer-panel ${className || ''}`}>
       <div className="layer-panel-header">
-        <span className="layer-panel-title">{translate(lang, 'layersTitle')}</span>
+        <span className="layer-panel-title" title={translate(lang, 'layersTitle')}>
+          {translate(lang, 'layersTitle')}
+        </span>
         {layerCount > 0 && (
-          <span className="layer-panel-header-count">{filteredCount}/{layerCount}</span>
+          <span className="layer-panel-header-count" title={`${filteredCount}/${layerCount}`}>
+            {filteredCount}/{layerCount}
+          </span>
         )}
-        {/* 排序/过滤收进 MD 溢出菜单，搜索行保持干净 */}
         <div className="layer-header-menu" ref={menuRef}>
           <button
             type="button"
@@ -240,7 +242,7 @@ const LayerPanel: React.FC<LayerPanelProps> = ({
         </div>
       </div>
 
-      {/* 搜索行：仅 MD filled 搜索框 */}
+      {/* 搜索行：26px 输入框 */}
       <div className="layer-toolbar">
         <div className="layer-search-box">
           <ViewerIcon className="layer-search-icon" name="search" />
@@ -252,9 +254,11 @@ const LayerPanel: React.FC<LayerPanelProps> = ({
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             spellCheck={false}
+            aria-label={translate(lang, 'layerSearch')}
           />
           {searchQuery && (
             <button
+              type="button"
               className="layer-search-clear"
               onClick={() => { setSearchQuery(''); searchInputRef.current?.focus(); }}
               tabIndex={-1}
@@ -266,65 +270,65 @@ const LayerPanel: React.FC<LayerPanelProps> = ({
           )}
         </div>
       </div>
-      
-      <div 
+
+      <div
         ref={containerRef}
         className="layer-panel-content"
         onScroll={handleScroll}
       >
         {flatList.length === 0 && (
-          <div className="layer-empty-hint">
-            {translate(lang, 'layerEmptyHint')}
-          </div>
+          <div className="layer-empty-hint">{translate(lang, 'layerEmptyHint')}</div>
         )}
         <div style={{ height: totalHeight, position: 'relative' }}>
-            <div style={{ transform: `translateY(${offsetY}px)` }}>
-                {visibleItems.map((item) => {
-                    const key = item.type === 'layer' ? `L_${item.name}` : `E_${item.id}`;
-                    
-                    if (item.type === 'layer') {
-                        const colorHex = getLayerColorHex(item.layer);
-                        const isHidden = hiddenLayers.has(item.name);
-                        return (
-                            <div 
-                                key={key}
-                                className={`layer-row ${isHidden ? 'layer-hidden' : ''}`}
-                                onClick={() => toggleLayer(item.name)}
-                            >
-                                <ViewerIcon className={`chevron ${item.expanded ? 'expanded' : ''}`} name="chevronRight" />
-                                <div 
-                                    className="layer-visibility-toggle"
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        onToggleLayerVisibility?.(item.name);
-                                    }}
-                                    title={isHidden ? translate(lang, 'showLayer') : translate(lang, 'hideLayer')}
-                                >
-                                    <ViewerIcon className="layer-checkbox-icon" name={isHidden ? 'checkboxEmpty' : 'checkboxChecked'} />
-                                </div>
-                                <div className="layer-icon" style={{ backgroundColor: colorHex }}></div>
-                                <span className="layer-name">{item.name}</span>
-                                <span className="layer-count">{item.count}</span>
-                            </div>
-                        );
-                    } else {
-                        const isSelected = selectedEntityIds.has(item.id);
-                        return (
-                            <div 
-                                key={key}
-                                onClick={(e) => handleItemClick(item.id, e.ctrlKey || e.metaKey)}
-                                className={`entity-row ${isSelected ? 'selected' : ''}`}
-                            >
-                                {getEntityIcon(item.entity.type)}
-                                <span className="entity-name">
-                            {entNames[item.entity.type] || item.entity.type}
-                          </span>
-                                {isSelected && <div className="selection-dot"></div>}
-                            </div>
-                        );
-                    }
-                })}
-            </div>
+          <div style={{ transform: `translateY(${offsetY}px)` }}>
+            {visibleItems.map((item) => {
+              const key = item.type === 'layer' ? `L_${item.name}` : `E_${item.id}`;
+
+              if (item.type === 'layer') {
+                const colorHex = getLayerColorHex(item.layer);
+                const isHidden = hiddenLayers.has(item.name);
+                return (
+                  <div
+                    key={key}
+                    className={`tree-row tree-layer layer-row ${isHidden ? 'layer-hidden' : ''}`}
+                    onClick={() => toggleLayer(item.name)}
+                    title={item.name}
+                  >
+                    <ViewerIcon className={`chevron ${item.expanded ? 'expanded' : ''}`} name="chevronRight" />
+                    <span
+                      className="layer-visibility-toggle"
+                      role="checkbox"
+                      aria-checked={!isHidden}
+                      tabIndex={-1}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onToggleLayerVisibility?.(item.name);
+                      }}
+                      title={isHidden ? translate(lang, 'showLayer') : translate(lang, 'hideLayer')}
+                    >
+                      <span className={`tree-check ${isHidden ? '' : 'checked'}`} aria-hidden="true" />
+                    </span>
+                    <div className="layer-icon" style={{ backgroundColor: colorHex }} aria-hidden="true" />
+                    <span className="layer-name tree-label">{item.name}</span>
+                    <span className="layer-count tree-count">{item.count}</span>
+                  </div>
+                );
+              }
+
+              const isSelected = selectedEntityIds.has(item.id);
+              const typeLabel = entNames[item.entity.type] || item.entity.type;
+              return (
+                <div
+                  key={key}
+                  onClick={(e) => handleItemClick(item.id, e.ctrlKey || e.metaKey)}
+                  className={`tree-row tree-comp entity-row ${isSelected ? 'selected' : ''}`}
+                  title={typeLabel}
+                >
+                  <span className="entity-name tree-label">{typeLabel}</span>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
     </div>
@@ -332,4 +336,3 @@ const LayerPanel: React.FC<LayerPanelProps> = ({
 };
 
 export default React.memo(LayerPanel);
-

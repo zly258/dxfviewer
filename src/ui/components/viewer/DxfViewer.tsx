@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect, useRef, useMemo, lazy, Suspens
 import ViewerCanvas from '@/ui/components/viewer/ViewerCanvas';
 import type { EngineKind } from '@/render/engine';
 import ViewerToolbar, { ExportKind } from '@/ui/components/viewer/ViewerToolbar';
+import ViewerHeader from '@/ui/components/viewer/ViewerHeader';
 import { exportPng, exportPdfVector, exportSvg } from '@/export';
 import { writeDxf } from '@/writer';
 import MobileViewerControls from '@/ui/components/viewer/MobileViewerControls';
@@ -21,7 +22,7 @@ import { isAbortError } from '@/utils/abortError';
 import { calculateExtents, calculatePaperLayoutExtents } from '@/core/geometry/extents';
 import { fitExtentsToBox } from '@/render/viewportFitting';
 import { AnyEntity, ViewPort, DxfLayer, DxfBlock, DxfData, EntityType, DxfStyle, DxfLineType, Point2D, CanvasTheme, DrawingColorMode, UiTheme, DxfLayout, ResolvedUiTheme, DxfLoadResult, DxfLoadedData } from '@/types';
-import { CANVAS_THEME_COLORS, DEFAULT_LAYER, DEFAULT_VIEWPORT, LAYOUT_CONFIG, SHORTCUT_CONFIG, VIEWER_DEFAULTS, ZOOM_CONFIG, PANEL_CONFIG, canvasThemeFromUiTheme, getSystemUiTheme, resolveUiTheme } from '@/config/viewerConfig';
+import { CANVAS_THEME_COLORS, DEFAULT_LAYER, DEFAULT_VIEWPORT, LAYOUT_CONFIG, SHORTCUT_CONFIG, VIEWER_DEFAULTS, ZOOM_CONFIG, PANEL_CONFIG, clampPanelWidth, canvasThemeFromUiTheme, getSystemUiTheme, resolveUiTheme } from '@/config/viewerConfig';
 import { Language, t } from '@/ui/i18n';
 import { readViewerUiSettings, ViewerUiSettings, writeViewerUiSettings } from './viewerUiSettings';
 import { TextSearchMatch } from '@/utils/entityTextSearch';
@@ -106,8 +107,10 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
   const [worldOffset, setWorldOffset] = useState<Point2D | undefined>();
   const [showLayerPanel, setShowLayerPanel] = useState(savedUiSettingsRef.current.showLayerPanel ?? savedUiSettingsRef.current.showSidebar ?? true);
   const [showProperties, setShowProperties] = useState(savedUiSettingsRef.current.showProperties ?? true);
-  const [layerPanelWidth, setLayerPanelWidth] = useState(PANEL_CONFIG.layerPanelInitialWidth);
-  const [propertiesWidth, setPropertiesWidth] = useState(PANEL_CONFIG.propertiesPanelInitialWidth);
+  const [layerPanelWidth, setLayerPanelWidth] = useState(() =>
+    clampPanelWidth(PANEL_CONFIG.layerPanelMinWidth, PANEL_CONFIG.layerPanelViewportRatio, PANEL_CONFIG.layerPanelMaxWidth));
+  const [propertiesWidth, setPropertiesWidth] = useState(() =>
+    clampPanelWidth(PANEL_CONFIG.propertiesPanelMinWidth, PANEL_CONFIG.propertiesPanelViewportRatio, PANEL_CONFIG.propertiesPanelMaxWidth));
   const layerResizingRef = useRef(false);
   const propertiesResizingRef = useRef(false);
   const resizeStartXRef = useRef(0);
@@ -190,6 +193,13 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
   const viewerRef = useRef<HTMLDivElement>(null);
   const fitViewFrameRef = useRef<number | undefined>(undefined);
   const onLoadRef = useRef(onLoad);
+  /**
+   * 已成功加载完成的 initFile 标识：切换文件标签（active 变化）或右键标签时
+   * 不得重复加载/刷新；只有 initFile 真正变化、或上次加载被中断时才重新解析。
+   */
+  const loadedInitFileRef = useRef<string | File | undefined>(undefined);
+  /** 最近一次发起加载的 initFile（加载成功时提升为 loadedInitFileRef）。 */
+  const pendingInitFileRef = useRef<string | File | undefined>(undefined);
   
   const [parseErrorMessage, setParseErrorMessage] = useState<string | null>(null);
   const [renderErrorMessage, setRenderErrorMessage] = useState<string | null>(null);
@@ -222,7 +232,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
   }, [onOpenFailed, setHiddenEntityIds, setHiddenLayers, setIsolatedEntityIds, showToast]);
 
   const lang = controlledLang || internalLang;
-  const { isLoading, loadingProgress, loadingFileName, loadFromUrl, loadFromFile, cancel: cancelLoad } = useDxfLoader(lang, onError);
+  const { isLoading, loadingProgress, loadingFileName, loadFromUrl, loadFromFile } = useDxfLoader(lang, onError);
 
   const uiTheme = controlledUiTheme || internalUiTheme;
   const effectiveUiTheme = resolveUiTheme(uiTheme, systemTheme);
@@ -351,6 +361,8 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
 
   const applyLoadResult = useCallback((result: DxfLoadResult) => {
     const data = result.data;
+    // 标记该 initFile 已完成加载：切换标签时不再重复解析（不刷新重载）。
+    loadedInitFileRef.current = pendingInitFileRef.current;
     // 图纸切换后旧渲染缓存（测量/文字布局）全部作废，统一清空防止串图。
     clearAllRenderCaches();
     loadedDataRef.current = data;
@@ -401,15 +413,20 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
     }
   }, [applyLoadResult, loadFromFile, reportOpenFailure]);
 
+  /**
+   * 加载策略：首次显示（active）时加载一次；切换标签 / 右键标签只切显隐，不再解析。
+   *
+   * 只有「成功加载完成」才会写入 loadedInitFileRef（在 applyLoadResult 里提升），
+   * 因此 React StrictMode 开发态「挂载→卸载→再挂载」导致首次加载被取消后，
+   * 重挂载会自然地重新发起一次加载，不会卡在空状态。
+   */
   useEffect(() => {
-    if (!active || !initFile) {
-      cancelLoad();
-      return;
-    }
+    if (!initFile || !active) return;
+    if (loadedInitFileRef.current === initFile) return;
+    pendingInitFileRef.current = initFile;
     if (typeof initFile === 'string') void handleLoadFromUrl(initFile);
     else void handleLoadFromFile(initFile);
-    return cancelLoad;
-  }, [active, cancelLoad, handleLoadFromFile, handleLoadFromUrl, initFile]);
+  }, [active, handleLoadFromFile, handleLoadFromUrl, initFile]);
 
   const locateEntity = useCallback((entity: AnyEntity) => {
       const extents = calculateExtents([entity], blocks, styles);
@@ -743,7 +760,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
   ) : null;
 
   return (
-    <div ref={containerRef} className={`app-container ${effectiveUiTheme === 'dark' ? 'theme-dark' : ''} ${isMobile ? 'is-mobile' : ''} ${isDragOver ? 'drag-over' : ''}`} style={{ height: '100%', display: 'flex', flexDirection: 'column', '--canvas-bg': canvasBgColor } as React.CSSProperties}
+    <div ref={containerRef} className={`app-container ${effectiveUiTheme === 'dark' ? 'theme-dark' : ''} ${isMobile ? 'is-mobile' : ''} ${isDragOver ? 'drag-over' : ''}`} style={{ '--canvas-bg': canvasBgColor } as React.CSSProperties}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -759,37 +776,45 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
       {toastMessage && <Toast toast={toastMessage} lang={lang} onClose={() => setToastMessage(null)} />}
       {isLoading && <LoadingOverlay lang={lang} fileName={loadingFileName} progress={loadingProgress} />}
 
+      {/* 顶栏 42px：文件标题 [DXF] | 导出 关于（不放 logo） */}
+      <ViewerHeader
+        lang={lang}
+        fileName={fileName}
+        fileTag="DXF"
+        onExport={handleExport}
+        canExport={entities.length > 0}
+        onShowAbout={() => setShowAbout(true)}
+      />
+
+      {/* 工具条行 32px：视口工具 + 文件标签条（移动端仅渲染标签条） */}
       {(!isMobile || tabStrip) && (
-        <div className="menu-tab-row">
-        {!isMobile && (
-          <ViewerToolbar
-            onImport={handleImport}
-            onFitView={handleFitView}
-            onPreviousView={handlePreviousView}
-            onNextView={handleNextView}
-            onToggleSearch={() => setShowTextSearch(value => !value)}
-            isSearchActive={showTextSearch}
-            canGoPreviousView={canGoPreviousView}
-            canGoNextView={canGoNextView}
-            showOpen={showOpenMenu}
-            uiTheme={uiTheme}
-            onSetUiTheme={handleSetUiTheme}
-            drawingColorMode={drawingColorMode}
-            onSetDrawingColorMode={handleSetDrawingColorMode}
-            renderEngine={renderEngine}
-            onSetRenderEngine={setRenderEngine}
-            lang={lang}
-            onSetLang={handleSetLang}
-            showLayerPanel={showLayerPanel}
-            onToggleLayerPanel={() => setShowLayerPanel(v => !v)}
-            showProperties={showProperties}
-            onToggleProperties={() => setShowProperties(v => !v)}
-            onExport={handleExport}
-            canExport={entities.length > 0}
-            onShowAbout={() => setShowAbout(true)}
-          />
-        )}
-        {tabStrip && <div className="menu-tab-strip">{tabStrip}</div>}
+        <div className="ui-toolbar-row">
+          {!isMobile && (
+            <ViewerToolbar
+              onImport={handleImport}
+              onFitView={handleFitView}
+              onPreviousView={handlePreviousView}
+              onNextView={handleNextView}
+              onToggleSearch={() => setShowTextSearch(value => !value)}
+              isSearchActive={showTextSearch}
+              canGoPreviousView={canGoPreviousView}
+              canGoNextView={canGoNextView}
+              showOpen={showOpenMenu}
+              uiTheme={uiTheme}
+              onSetUiTheme={handleSetUiTheme}
+              drawingColorMode={drawingColorMode}
+              onSetDrawingColorMode={handleSetDrawingColorMode}
+              renderEngine={renderEngine}
+              onSetRenderEngine={setRenderEngine}
+              lang={lang}
+              onSetLang={handleSetLang}
+              showLayerPanel={showLayerPanel}
+              onToggleLayerPanel={() => setShowLayerPanel(v => !v)}
+              showProperties={showProperties}
+              onToggleProperties={() => setShowProperties(v => !v)}
+            />
+          )}
+          {tabStrip && <div className="menu-tab-strip">{tabStrip}</div>}
         </div>
       )}
 

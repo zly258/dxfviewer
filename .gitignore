@@ -17,6 +17,7 @@ playwright-report
 test-results
 coverage
 *.local
+artifacts
 
 # DXF 文件一律不入库（用户要求）：夹具由 scripts/fixtures.mjs 运行时生成
 *.dxf

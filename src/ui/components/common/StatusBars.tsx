@@ -21,6 +21,10 @@ const getLayoutLabel = (layout: DxfLayout, lang: Language) => {
   return layout.displayName || layout.name;
 };
 
+/**
+ * 模型/图纸空间切换页签（28px 过滤行，26px .filter-tab）。
+ * active 用浅蓝底 + 蓝字（P16：与工具条开关态同一种表达）。
+ */
 export function SpaceSwitchBar({ layouts, activeLayoutName, lang, onSelect }: SpaceSwitchBarProps) {
   return (
     <div className="space-switch-bar" role="tablist" aria-label={t(lang, 'spaceSwitchAriaLabel')}>
@@ -33,14 +37,12 @@ export function SpaceSwitchBar({ layouts, activeLayoutName, lang, onSelect }: Sp
             type="button"
             role="tab"
             aria-selected={active}
-            className={`space-tab ${active ? 'active' : ''}`}
+            className={`filter-tab ${active ? 'active' : ''}`}
             onClick={() => onSelect(layout.name)}
             title={`${label} · ${layout.entities.length}`}
           >
-            <>
-              <span className="space-tab-name">{label}</span>
-              <span className="space-tab-count">{layout.entities.length}</span>
-            </>
+            <span className="filter-tab-name">{label}</span>
+            <span className="filter-tab-count">{layout.entities.length}</span>
           </button>
         );
       })}
@@ -48,9 +50,12 @@ export function SpaceSwitchBar({ layouts, activeLayoutName, lang, onSelect }: Sp
   );
 }
 
+/**
+ * 底栏 30px（R9）：坐标 | 选择 | 空间与实体数。
+ */
 export function StatusBar({ lang, mouseCoords, selectedCount, activeLayoutName, entityCount }: StatusBarProps) {
   return (
-    <div className="status-bar">
+    <div className="app-footer status-bar">
       <div className="status-left">
         <div className="status-coords">
           <span>X: <span className="status-value">{mouseCoords.x.toFixed(3)}</span></span>
@@ -77,4 +82,3 @@ export function StatusBar({ lang, mouseCoords, selectedCount, activeLayoutName, 
     </div>
   );
 }
-

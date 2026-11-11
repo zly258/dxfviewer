@@ -867,20 +867,17 @@ const ViewerCanvas: React.FC<ViewerCanvasProps> = ({
     >
       <canvas key={engineKind} ref={canvasRef} />
       {engineKind === 'webgl' && TEXT_RENDER_MODE === 'overlay' && (
-        <canvas key={"text-${engineKind}"} ref={textCanvasRef} className="viewer-text-layer" />
+        <canvas key={`text-${engineKind}`} ref={textCanvasRef} className="viewer-text-layer" />
       )}
 
       {isBoxSelecting && (
         <div
+          className={`selection-box ${currentMousePos.x < dragStart.x ? 'crossing' : ''}`}
           style={{
-            position: 'absolute',
             left: Math.min(dragStart.x, currentMousePos.x),
             top: Math.min(dragStart.y, currentMousePos.y),
             width: Math.abs(currentMousePos.x - dragStart.x),
             height: Math.abs(currentMousePos.y - dragStart.y),
-            backgroundColor: currentMousePos.x < dragStart.x ? SELECTION_CONFIG.crossingSelectionFill : SELECTION_CONFIG.windowSelectionFill,
-            border: `1px ${currentMousePos.x < dragStart.x ? 'dashed' : 'solid'} ${currentMousePos.x < dragStart.x ? SELECTION_CONFIG.crossingSelectionBorder : SELECTION_CONFIG.windowSelectionBorder}`,
-            pointerEvents: 'none',
           }}
         />
       )}

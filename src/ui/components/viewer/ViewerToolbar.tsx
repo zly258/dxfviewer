@@ -30,14 +30,18 @@ interface ViewerToolbarProps {
   /** 导出（PNG/SVG/PDF/DXF），由 DxfViewer 提供实现 */
   onExport?: (kind: ExportKind) => void;
   canExport?: boolean;
-  onShowAbout?: () => void;
 }
-
 export type ExportKind = 'png' | 'svg' | 'pdf' | 'pdfVector' | 'dxf' | 'pngView' | 'svgView';
 
 type MenuKey = 'view' | 'export';
 
-/** 顶部工具栏只保留常用文件、视图、搜索、设置和关于入口，主题/语言/黑白模式放入视图菜单。 */
+/**
+ * 视口工具条（web-ui-style §1 / §8）。
+ *
+ * 布局：`ui-toolbar-row` 32px 行内的一组 26px 图标按钮 +
+ * `tb-sep` 分隔符 + 视图/导出下拉菜单；文件标签条由父级渲染在右侧。
+ * 所有纯图标按钮都带 title + aria-label（R8 / §1.3）。
+ */
 const ViewerToolbar: React.FC<ViewerToolbarProps> = ({
   onImport,
   onFitView,
@@ -62,7 +66,6 @@ const ViewerToolbar: React.FC<ViewerToolbarProps> = ({
   onToggleProperties,
   onExport,
   canExport = false,
-  onShowAbout
 }) => {
   const [activeMenu, setActiveMenu] = useState<MenuKey | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -71,8 +74,15 @@ const ViewerToolbar: React.FC<ViewerToolbarProps> = ({
   useEffect(() => {
     if (!activeMenu) return;
     const closeMenu = () => setActiveMenu(null);
+    const closeByEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setActiveMenu(null);
+    };
     window.addEventListener('click', closeMenu);
-    return () => window.removeEventListener('click', closeMenu);
+    window.addEventListener('keydown', closeByEscape);
+    return () => {
+      window.removeEventListener('click', closeMenu);
+      window.removeEventListener('keydown', closeByEscape);
+    };
   }, [activeMenu]);
 
   const toggleMenu = (event: React.MouseEvent, menu: MenuKey) => {
@@ -128,18 +138,16 @@ const ViewerToolbar: React.FC<ViewerToolbarProps> = ({
       />
 
       {showOpen && renderToolButton('open', tt.openFile, openFileDialog)}
-      {showOpen && <div className="toolbar-separator" role="separator" />}
+      {showOpen && <span className="tb-sep" role="separator" />}
 
       {renderToolButton('previous', tt.previousView, onPreviousView, !canGoPreviousView)}
       {renderToolButton('next', tt.nextView, onNextView, !canGoNextView)}
       {renderToolButton('fit', tt.fitView, onFitView)}
-
-      <div className="toolbar-separator" role="separator" />
-
       {renderToolButton('search', t(lang, 'searchText'), onToggleSearch, false, isSearchActive)}
 
-      <div className="toolbar-separator" role="separator" />
+      <span className="tb-sep" role="separator" />
 
+      {/* 视图菜单：纯图标按钮（无文字、无下拉箭头），tooltip 说明用途 */}
       <div className={`toolbar-menu ${activeMenu === 'view' ? 'active' : ''}`}>
         <button
           type="button"
@@ -154,6 +162,7 @@ const ViewerToolbar: React.FC<ViewerToolbarProps> = ({
         </button>
         {activeMenu === 'view' && (
           <div className="dropdown-menu" role="menu" onClick={(event) => event.stopPropagation()}>
+            <div className="dropdown-header">{tt.light} / {tt.dark}</div>
             <button type="button" onClick={() => closeMenuAndRun(() => onSetUiTheme('system'))} className={`dropdown-item ${uiTheme === 'system' ? 'checked' : ''}`}>
               <span>{tt.system}</span>
             </button>
@@ -237,20 +246,8 @@ const ViewerToolbar: React.FC<ViewerToolbarProps> = ({
           )}
         </div>
       )}
-
-      {onShowAbout && (
-        <>
-          <div className="toolbar-separator" role="separator" />
-          {renderToolButton('about', tt.about, () => closeMenuAndRun(onShowAbout))}
-        </>
-      )}
     </div>
   );
 };
 
 export default ViewerToolbar;
-
-
-
-
-

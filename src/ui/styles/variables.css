@@ -1,225 +1,308 @@
 /*
- * 设计令牌（WPF UI Skills 工业桌面风格）。
+ * 设计令牌 —— 唯一来源。
  *
- * 色板与字号直接对齐 wpf-ui-style/Theme/Tokens.xaml：
- * - 低饱和工业配色：WindowBackground #E9EDF2 / Surface #FAFBFC / Accent #2F6F9F；
- * - 字体统一 Microsoft YaHei 栈；正文 12.5px / 标题 13.5px / 辅助 12px；
- * - 控件高度 36（紧凑 32）、行高 30、圆角 2/4；
- * - 白字仅允许压在 Accent / Danger / Tooltip 深底上（R4 规则）。
+ * 严格对齐 web-ui-style（浅色 Fluent 工业 CAD 网页端）：
+ * - 背景四层：--bg-app（页面底）→ --bg-band（工具条带）→ --bg-panel/--bg-chrome（内容面）；
+ * - 边框三级：--border-sub（表格内线）→ --border-main（控件描边）→ --border-strong（顶栏下沿/弹窗轮廓）；
+ * - 文字三级：--text-main 17.82:1 / --text-sec 11.67:1 / --text-muted 6.08:1（白底）；
+ * - 强调色 --accent #0b5fa5；语义色 --danger/--success/--warn 只用于语义；
+ * - 紧凑尺寸：控件 26px、小号 22px、工具条行 32px、顶栏 42px、底栏 30px、树行 26px、属性行 22px；
+ * - 字号阶梯：11 / 11.5 / 12 / 12.5 / 13 / 15 / 16 / 18（禁止 14px、17px）；
+ * - 圆角：3px / 4px / 999px（门户卡片 10px 例外不适用于本组件库）。
  *
- * 变量名保持历史兼容（--bg-* / --accent-* 等被各组件引用），
- * 取值全面切换到 WPF 令牌体系；新增 --brush-* 别名与 Token 命名一一对应。
+ * R2：业务样式只用 --bg-app / --bg-chrome / --bg-band / --bg-panel（及 --bg-hover /
+ * --bg-input / --bg-viewport）；文件末尾的旧别名仅作兼容，禁止在新代码中引用。
  */
 :root {
-  --font-family: 'Microsoft YaHei UI', 'Microsoft YaHei', 'Segoe UI', 'PingFang SC', 'Noto Sans CJK SC', system-ui, sans-serif;
-  --font-size-display: 18px;   /* FontSize.Display：产品/关于主标题 */
-  --font-size-title: 13.5px;   /* FontSize.Title / Section */
-  --font-size-base: 12.5px;    /* FontSize.Body */
-  --font-size-small: 12px;     /* FontSize.Caption / Code */
-  --font-size-micro: 10.5px;   /* FontSize.Micro */
+  color-scheme: light;
+
+  /* ── 背景四层 ── */
+  --bg-app: #e8ebef;        /* 页面底、三栏之间的缝隙 */
+  --bg-chrome: #ffffff;     /* 顶栏、按钮底、卡片 */
+  --bg-band: #f0f2f5;       /* 工具条、分组头、表头、KPI 条 */
+  --bg-panel: #ffffff;      /* 侧栏与弹窗内容面 */
+  --bg-hover: #e3e8ee;      /* 悬停底 */
+  --bg-input: #ffffff;      /* 输入框底 */
+  --bg-viewport: #eef1f5;   /* 视口底、启动遮罩 */
+
+  /* ── 边框三级 ── */
+  --border-sub: #e2e6eb;
+  --border-main: #cdd3da;
+  --border-strong: #b3bac3;
+  --border-hover: #c7ccd3;
+
+  /* ── 文字三级 ── */
+  --text-main: #14181d;
+  --text-sec: #333940;
+  --text-muted: #5c636c;
+
+  /* ── 强调与语义 ── */
+  --accent: #0b5fa5;
+  --accent-hover: #094e88;
+  --accent-soft: #e3eef9;
+  --accent-line: #8fbde6;
+  --on-accent: #ffffff;
+
+  --danger: #b3261e;
+  --danger-soft: #fbeceb;
+  --danger-line: #e6b8b2;
+  --danger-bg: #fff7f6;
+
+  --success: #0b6b3a;
+  --success-soft: #edf8ee;
+  --success-line: #b7dfb7;
+
+  --warn: #8a5b00;
+  --warn-line: #e8d4a8;
+
+  /* ── 表格 / 树 ── */
+  --bg-table-head: #f5f7fa;
+  --bg-table-alt: #f7f9fb;
+  --tree-match-bg: #fef08a;
+  --tree-match-fg: #0f172a;
+
+  /* ── 滚动条 ── */
+  --scroll-thumb: #b6bdc7;
+  --scroll-thumb-hover: #8f97a3;
+  --scroll-track: #f2f4f7;
+
+  /* ── 形与阴影 ── */
+  --radius: 3px;
+  --radius-lg: 4px;
+  --radius-pill: 999px;
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.08);
+  --shadow-overlay: 0 6px 24px rgba(0, 0, 0, 0.18);
+  --scrim: rgba(0, 0, 0, 0.34);
+
+  /* ── 字体 ── */
+  --font-sans: "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+  --font-mono: var(--font-sans);
+  --fs-body: 12.5px;      /* 正文 / 按钮 / 输入 */
+  --fs-small: 12px;       /* 表格 / 标签 / 树行 */
+  --fs-caption: 11.5px;   /* 小号按钮 / 脚注 */
+  --fs-micro: 11px;       /* 计数 / 角标 */
+  --fs-title: 13px;       /* 弹窗与卡片标题 */
+  --fs-page: 16px;        /* 顶栏页标题 */
+  --fs-kpi: 18px;         /* KPI 数值 */
+  --lh-body: 1.45;
+  --lh-table: 1.35;
+
+  /* ── 尺寸阶梯 ── */
+  --control-h: 26px;
+  --control-h-sm: 22px;
+  --row-h: 26px;
+  --prop-row-h: 22px;
+  --header-h: 42px;
+  --footer-h: 30px;
+  --toolbar-h: 32px;
+  --filter-h: 28px;
+  --modal-head-h: 38px;
+  --icon-size: 16px;        /* 工具条 / 顶栏图标 */
+  --icon-size-sm: 14px;     /* 面板内紧凑图标 */
+  --icon-btn: 24px;         /* 纯图标按钮边长（图标 16px → 内边距 4px） */
+  --side-left-w: clamp(250px, 22vw, 320px);
+  --side-right-w: clamp(320px, 27vw, 440px);
+  --canvas-bg: var(--bg-viewport);
+
+  /* ── 动效 ── */
+  --t-fast: 0.12s ease;
+}
+
+/*
+ * 深色主题：同体系低饱和工业配色。
+ *
+ * 优化要点（对比度与层次）：
+ * - 背景仍保持「app 最暗 → viewport/input → chrome → panel → band → hover」的清晰阶梯，
+ *   每层至少相差 6~10 个亮度级，避免整屏糊成一片；
+ * - 边框整体提亮（sub/main/strong 三级），面板与工具条边界一眼可辨；
+ * - 文字三级在 panel / band / app 上均 ≥ 5.3:1（见 ui-audit 的暗色对比度检查）；
+ * - 强调色提亮为浅蓝 #79b8ea（深底上 7.3:1），选中态 accent-soft 用实色而非半透明。
+ */
+.theme-dark {
+  color-scheme: dark;
+
+  --bg-app: #0f1216;
+  --bg-viewport: #12161b;
+  --bg-input: #151a20;
+  --bg-chrome: #1b2027;
+  --bg-panel: #1e242c;
+  --bg-band: #272e38;
+  --bg-hover: #333b46;
+
+  --border-sub: #2c333d;
+  --border-main: #3a434f;
+  --border-strong: #55606e;
+  --border-hover: #5f6b7a;
+
+  --text-main: #eef2f7;
+  --text-sec: #c8d1db;
+  --text-muted: #98a3af;
+
+  --accent: #79b8ea;
+  --accent-hover: #9ccbf2;
+  --accent-soft: #16324a;
+  --accent-line: #4a7ea8;
+  --on-accent: #0f1a24;
+
+  --danger: #ef9a92;
+  --danger-soft: #3a2321;
+  --danger-line: #74453f;
+  --danger-bg: #2a1e1d;
+
+  --success: #86d3a6;
+  --success-soft: #1d3328;
+  --success-line: #3f6b52;
+
+  --warn: #e5bc74;
+  --warn-line: #6f5a36;
+
+  --bg-table-head: #2a313b;
+  --bg-table-alt: #232932;
+  --tree-match-bg: #7a6a1f;
+  --tree-match-fg: #fdfbe8;
+
+  --scroll-thumb: #4a5462;
+  --scroll-thumb-hover: #5f6a78;
+  --scroll-track: #1c222a;
+
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.55);
+  --shadow-overlay: 0 8px 28px rgba(0, 0, 0, 0.68);
+  --scrim: rgba(0, 0, 0, 0.62);
+}
+
+/* ─────────────────────────────────────────────────────────────
+ * 旧令牌别名（兼容层）。
+ *
+ * 仅用于让尚未迁移的历史引用继续生效；新代码禁止使用。
+ * 全部指向上面的标准令牌，因此深色主题自动跟随。
+ * ───────────────────────────────────────────────────────────── */
+:root,
+.theme-dark {
+  --font-family: var(--font-sans);
+  --font-size-base: var(--fs-body);
+  --font-size-small: var(--fs-small);
+  --font-size-micro: var(--fs-micro);
+  --font-size-title: var(--fs-title);
+  --font-size-display: var(--fs-kpi);
   --line-height-body: 21px;
   --line-height-caption: 20px;
 
-  /* 画刷（Brush.* → CSS 别名） */
-  --brush-window: #e9edf2;
-  --brush-surface: #fafbfc;
-  --brush-surface-alt: #f2f4f7;
-  --brush-surface-sunken: #f7f8fa;
-  --brush-border: #d0d5db;
-  --brush-border-strong: #aeb7c2;
-  --brush-text-primary: #1f2933;
-  --brush-text-secondary: #4b5563;
-  --brush-text-disabled: #667085;
-  --brush-accent: #2f6f9f;
-  --brush-accent-hover: #285f88;
-  --brush-accent-pressed: #22506f;
-  --brush-accent-subtle: #e4eef5;
-  --brush-accent-subtle-hover: #d8e6f0;
-  --brush-on-accent: #ffffff;
-  --brush-danger: #b43b32;
-  --brush-danger-hover: #97302a;
-  --brush-danger-pressed: #7e2823;
-  --brush-danger-subtle: #fbedec;
-  --brush-success: #2a704e;
-  --brush-success-subtle: #e9f4ee;
-  --brush-warning: #7a5a1e;
-  --brush-warning-subtle: #f7f0e3;
-  --brush-control-hover: #f0f3f6;
-  --brush-control-pressed: #e4e8ee;
-  --brush-control-disabled: #f2f4f7;
-  --brush-selection: #e4eef5;
-  --brush-selection-hover: #d8e6f0;
-  --brush-focus: #2f6f9f;
-  --brush-tooltip-bg: #1f2933;
+  --brush-window: var(--bg-app);
+  --brush-surface: var(--bg-panel);
+  --brush-surface-alt: var(--bg-band);
+  --brush-surface-sunken: var(--bg-app);
+  --brush-border: var(--border-main);
+  --brush-border-strong: var(--border-strong);
+  --brush-text-primary: var(--text-main);
+  --brush-text-secondary: var(--text-sec);
+  --brush-text-disabled: var(--text-muted);
+  --brush-accent: var(--accent);
+  --brush-accent-hover: var(--accent-hover);
+  --brush-accent-pressed: var(--accent-hover);
+  --brush-accent-subtle: var(--accent-soft);
+  --brush-accent-subtle-hover: var(--accent-soft);
+  --brush-on-accent: var(--on-accent);
+  --brush-danger: var(--danger);
+  --brush-danger-hover: var(--danger);
+  --brush-danger-pressed: var(--danger);
+  --brush-danger-subtle: var(--danger-soft);
+  --brush-success: var(--success);
+  --brush-success-subtle: var(--success-soft);
+  --brush-warning: var(--warn);
+  --brush-warning-subtle: var(--bg-band);
+  --brush-control-hover: var(--bg-hover);
+  --brush-control-pressed: var(--bg-hover);
+  --brush-control-disabled: var(--bg-band);
+  --brush-selection: var(--accent-soft);
+  --brush-selection-hover: var(--accent-soft);
+  --brush-focus: var(--accent);
+  --brush-tooltip-bg: #1f2429;
   --brush-tooltip-fg: #ffffff;
-  --brush-scroll-thumb: #c3cad3;
-  --brush-scroll-thumb-hover: #a7b0bb;
+  --brush-scroll-thumb: var(--scroll-thumb);
+  --brush-scroll-thumb-hover: var(--scroll-thumb-hover);
 
-  /* 历史兼容层（组件样式引用的旧变量名 → WPF 令牌取值） */
-  --bg-primary: var(--brush-window);
-  --bg-secondary: var(--brush-surface);
-  --bg-tertiary: var(--brush-surface-alt);
-  --bg-elevated: var(--brush-surface);
-  --bg-hover: var(--brush-control-hover);
-  --bg-active: var(--brush-control-pressed);
-  --bg-selected: var(--brush-selection);
+  --bg-primary: var(--bg-app);
+  --bg-secondary: var(--bg-panel);
+  --bg-tertiary: var(--bg-band);
+  --bg-elevated: var(--bg-panel);
+  --bg-active: var(--bg-hover);
+  --bg-selected: var(--accent-soft);
 
-  --border-color: var(--brush-border);
-  --border-strong: var(--brush-border-strong);
-  --text-primary: var(--brush-text-primary);
-  --text-secondary: var(--brush-text-secondary);
-  --text-muted: var(--brush-text-disabled);
-  --text-bright: #000000;
+  --border-color: var(--border-main);
+  --text-primary: var(--text-main);
+  --text-secondary: var(--text-sec);
+  --text-bright: var(--text-main);
 
-  --state-hover: var(--brush-control-hover);
-  --state-active: var(--brush-control-pressed);
-  --state-focus: var(--brush-accent-subtle);
-  --divider: var(--brush-border);
+  --state-hover: var(--bg-hover);
+  --state-active: var(--bg-hover);
+  --state-focus: var(--accent-soft);
+  --divider: var(--border-sub);
 
-  /* 品牌色（历史名） */
-  --accent-blue: var(--brush-accent);
-  --accent-blue-hover: var(--brush-accent-hover);
-  --accent-blue-soft: var(--brush-accent-subtle);
-  --success-color: var(--brush-success);
-  --error-color: var(--brush-danger);
-  --warning-color: var(--brush-warning);
+  --accent-blue: var(--accent);
+  --accent-blue-hover: var(--accent-hover);
+  --accent-blue-soft: var(--accent-soft);
+  --success-color: var(--success);
+  --error-color: var(--danger);
+  --warning-color: var(--warn);
 
-  /* 浮层投影（低幅度、桌面风格） */
-  --shadow-sm: 0 1px 2px rgba(31, 41, 51, 0.10), 0 1px 3px rgba(31, 41, 51, 0.08);
-  --shadow-menu: 0 4px 8px rgba(31, 41, 51, 0.14), 0 2px 4px rgba(31, 41, 51, 0.10);
-  --shadow-panel: 0 8px 20px rgba(31, 41, 51, 0.16), 0 2px 6px rgba(31, 41, 51, 0.10);
+  --shadow-sm: var(--shadow-card);
+  --shadow-menu: var(--shadow-overlay);
+  --shadow-panel: var(--shadow-overlay);
 
-  /* 圆角（Radius.Small=2 / Card·Input=4 / Pill=10） */
-  --radius-small: 2px;
-  --radius-medium: 4px;
-  --radius-large: 4px;
-  --radius-full: 9999px;
+  --radius-small: var(--radius);
+  --radius-medium: var(--radius-lg);
+  --radius-large: var(--radius-lg);
+  --radius-full: var(--radius-pill);
 
-  /* 布局（Layout.* / 尺寸阶梯） */
-  --control-height: 36px;          /* Layout.ControlHeight */
-  --control-height-small: 32px;    /* Layout.ControlHeight.Small */
-  --row-height: 30px;              /* Layout.RowHeight */
-  --header-height: 32px;           /* Layout.HeaderHeight */
-  --toolbar-height: 44px;
-  --icon-size: 18px;               /* 增大工具栏图标大小（由 16px 微调至 18px，控件与顶栏高度 44px/30px 保持不变） */
-  --icon-size-small: 15px;         /* 图层/标签等紧凑图标微调至 15px */
-  --icon-button-size: 30px;        /* Layout.IconButton.Small */
-  --icon-button-gap: 6px;          /* R10：图标与文字 6px 间距 */
-  --icon-button-radius: var(--radius-small);
-  --layer-panel-width: 280px;
+  --control-height: var(--control-h);
+  --control-height-small: var(--control-h-sm);
+  --row-height: var(--row-h);
+  --header-height: var(--header-h);
+  --toolbar-height: var(--toolbar-h);
+  --icon-size-small: var(--icon-size-sm);
+  --icon-button-size: var(--control-h);
+  --icon-button-gap: 4px;
+  --icon-button-radius: var(--radius);
+  --layer-panel-width: 260px;
   --properties-width: 340px;
-  --status-bar-height: 32px;
-  --status-bar-bg: var(--brush-surface);
-  --status-bar-text: var(--brush-text-secondary);
-  /* 浮层遮罩（加载/弹窗 scrim） */
-  --overlay-scrim: rgba(31, 41, 51, 0.45);
+  --status-bar-height: var(--footer-h);
+  --status-bar-bg: var(--bg-band);
+  --status-bar-text: var(--text-muted);
+  --overlay-scrim: var(--scrim);
 }
 
-/* 深色主题：同体系低饱和工业配色，文字/边框反转，主色提亮保证对比度。 */
-.theme-dark {
-  --brush-window: #1a1d22;
-  --brush-surface: #21252b;
-  --brush-surface-alt: #262b32;
-  --brush-surface-sunken: #1f2329;
-  --brush-border: #3a4048;
-  --brush-border-strong: #4d545e;
-  --brush-text-primary: #e6e9ed;
-  --brush-text-secondary: #9aa3ae;
-  --brush-text-disabled: #6b7480;
-  --brush-accent: #5c9fd6;
-  --brush-accent-hover: #6faedf;
-  --brush-accent-pressed: #4a8cc4;
-  --brush-accent-subtle: rgba(92, 159, 214, 0.16);
-  --brush-accent-subtle-hover: rgba(92, 159, 214, 0.24);
-  --brush-on-accent: #10202e;
-  --brush-danger: #d06a62;
-  --brush-danger-hover: #dc7f77;
-  --brush-danger-pressed: #b85a52;
-  --brush-danger-subtle: rgba(208, 106, 98, 0.16);
-  --brush-success: #6cb98f;
-  --brush-success-subtle: rgba(108, 185, 143, 0.16);
-  --brush-warning: #d4a75a;
-  --brush-warning-subtle: rgba(212, 167, 90, 0.16);
-  --brush-control-hover: #2a2f36;
-  --brush-control-pressed: #30363e;
-  --brush-control-disabled: #262b32;
-  --brush-selection: rgba(92, 159, 214, 0.20);
-  --brush-selection-hover: rgba(92, 159, 214, 0.30);
-  --brush-focus: #5c9fd6;
-  --brush-tooltip-bg: #e6e9ed;
-  --brush-tooltip-fg: #1f2933;
-  --brush-scroll-thumb: #4d545e;
-  --brush-scroll-thumb-hover: #5f6771;
-
-  --bg-primary: var(--brush-window);
-  --bg-secondary: var(--brush-surface);
-  --bg-tertiary: var(--brush-surface-alt);
-  --bg-elevated: #2b3038;
-  --bg-hover: var(--brush-control-hover);
-  --bg-active: var(--brush-control-pressed);
-  --bg-selected: var(--brush-selection);
-
-  --border-color: var(--brush-border);
-  --border-strong: var(--brush-border-strong);
-  --text-primary: var(--brush-text-primary);
-  --text-secondary: var(--brush-text-secondary);
-  --text-muted: var(--brush-text-disabled);
-  --text-bright: #ffffff;
-
-  --state-hover: var(--brush-control-hover);
-  --state-active: var(--brush-control-pressed);
-  --state-focus: var(--brush-accent-subtle);
-  --divider: var(--brush-border);
-
-  --accent-blue: var(--brush-accent);
-  --accent-blue-hover: var(--brush-accent-hover);
-  --accent-blue-soft: var(--brush-accent-subtle);
-  --success-color: var(--brush-success);
-  --error-color: var(--brush-danger);
-  --warning-color: var(--brush-warning);
-
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.4);
-  --shadow-menu: 0 4px 8px rgba(0, 0, 0, 0.5), 0 2px 4px rgba(0, 0, 0, 0.4);
-  --shadow-panel: 0 8px 20px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.4);
-
-  --status-bar-bg: var(--brush-surface);
-  --status-bar-text: var(--brush-text-secondary);
-  --overlay-scrim: rgba(0, 0, 0, 0.55);
-}
-
-@keyframes dropdownFadeIn {
-  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-.theme-dark .entity-row.selected {
-  color: var(--text-bright);
-}
-
-.theme-dark .layer-icon {
-  border-color: var(--brush-border-strong);
-}
-
-.theme-dark .loading-overlay {
-  background-color: rgba(0, 0, 0, 0.6);
-}
-
-@keyframes loading-spin {
+/* ── 动画 ── */
+@keyframes cadSpin {
   to { transform: rotate(360deg); }
 }
 
-@keyframes toastIn {
-  from { transform: translateY(16px); opacity: 0; }
+@keyframes cadToastIn {
+  from { transform: translateY(-6px); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
 }
 
-@keyframes overlayFadeIn {
+@keyframes cadFadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
 }
 
-@keyframes dialogScaleIn {
-  from { opacity: 0; transform: translate(-50%, -45%) scale(0.95); }
-  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+@keyframes cadSkeleton {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .cad-spinner {
+    animation-duration: 1.6s;
+  }
+
+  .cad-toast,
+  .modal-backdrop,
+  .app-modal {
+    animation: none;
+  }
+
+  .skeleton::after {
+    animation: none;
+  }
+}

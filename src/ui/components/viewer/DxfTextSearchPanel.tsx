@@ -139,8 +139,11 @@ const DxfTextSearchPanel: React.FC<DxfTextSearchPanelProps> = ({ entities, block
               type="button"
               className={`text-search-result ${index === activeIndex ? 'active' : ''}`}
               onClick={() => locateByIndex(index)}
+              title={match.preview}
             >
-              <span className="text-search-result-type">{entityTypeNames[match.entity.type] || match.entity.type}</span>
+              <span className="text-search-result-type" title={entityTypeNames[match.entity.type] || match.entity.type}>
+                {entityTypeNames[match.entity.type] || match.entity.type}
+              </span>
               <span className="text-search-result-text">{renderHighlightedPreview(match.preview, query)}</span>
             </button>
           ))}
