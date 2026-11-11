@@ -110,8 +110,8 @@
 }
 
 .tab-close svg {
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
 }
 
 .tab-item.no-close {
@@ -207,8 +207,8 @@
 }
 
 .tab-scroll-button svg {
-  width: var(--icon-size-sm);
-  height: var(--icon-size-sm);
+  width: 14px;
+  height: 14px;
 }
 
 .tab-scroll-button:hover {

@@ -97,9 +97,10 @@
   --toolbar-h: 32px;
   --filter-h: 28px;
   --modal-head-h: 38px;
-  --icon-size: 16px;        /* 工具条 / 顶栏图标 */
-  --icon-size-sm: 14px;     /* 面板内紧凑图标 */
-  --icon-btn: 24px;         /* 纯图标按钮边长（图标 16px → 内边距 4px） */
+  /* 图标视觉尺寸：按钮边长保持不变（--icon-btn 24px），图标占满内框以显得更大更清楚 */
+  --icon-size: 18px;        /* 工具条 / 顶栏图标 */
+  --icon-size-sm: 16px;     /* 面板内紧凑图标 */
+  --icon-btn: 24px;         /* 纯图标按钮边长（图标 18px → 内边距 3px） */
   --side-left-w: clamp(250px, 22vw, 320px);
   --side-right-w: clamp(320px, 27vw, 440px);
   --canvas-bg: var(--bg-viewport);

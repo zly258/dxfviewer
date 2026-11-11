@@ -1,8 +1,26 @@
 {
   "name": "@zhangly1403/dxfviewer",
   "version": "1.6.0",
-  "author": "zly258 <contributors@dxfviewer.invalid>",
+  "description": "React DXF viewer with WebGL / Canvas dual engines, built for very large drawings.",
+  "author": "DXF Viewer contributors",
   "license": "MIT",
+  "homepage": "https://github.com/zly258/dxfviewer#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zly258/dxfviewer.git"
+  },
+  "bugs": {
+    "url": "https://github.com/zly258/dxfviewer/issues"
+  },
+  "keywords": [
+    "dxf",
+    "cad",
+    "viewer",
+    "webgl",
+    "canvas",
+    "react",
+    "drawing"
+  ],
   "publishConfig": {
     "access": "public"
   },
@@ -35,7 +53,8 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "README_zh.md"
   ],
   "scripts": {
     "dev": "npm --workspace dxfviewer-example run dev",

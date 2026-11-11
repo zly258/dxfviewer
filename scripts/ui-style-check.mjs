@@ -148,7 +148,7 @@ const pureIconButtons = await page.evaluate(() => {
 check('按钮全部为纯图标（无文字）', pureIconButtons.withText, 0);
 check('每个按钮都含 SVG 图标', pureIconButtons.withSvg, pureIconButtons.total);
 check('每个按钮都有 title/aria-label', pureIconButtons.labelled, pureIconButtons.total);
-check('图标尺寸 16px', pureIconButtons.iconSize, 16);
+check('图标尺寸 18px（按钮仍 24px）', pureIconButtons.iconSize, 18);
 
 await page.setInputFiles('.toolbar .hidden-file-input', SAMPLE).catch(() => {});
 await page.waitForTimeout(2200);
