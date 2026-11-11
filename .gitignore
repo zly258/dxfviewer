@@ -38,8 +38,9 @@ samples/cli-out*
 *.sln
 *.sw?
 
-# Hidden directories (dot-prefixed folders, e.g. .workbuddy)
+# Hidden directories (dot-prefixed folders, e.g. .workbuddy)；.github 需要纳入版本管理
 .*/
+!.github/
 
 
 # Local bundled fonts
