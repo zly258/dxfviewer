@@ -1,0 +1,87 @@
+name: Publish to npm
+
+# 发布到 npm 的两种触发方式：
+#   1. 发布 GitHub Release（tag 形如 v1.7.0）→ 自动构建并发布正式版本；
+#   2. Actions → Publish to npm → Run workflow → 手动运行，默认 dry_run=true
+#      （只构建 + npm pack --dry-run，不实际发布）。
+#
+# 认证：npm 侧的 Trusted Publishing（OIDC），无需在仓库里配置任何 token。
+# 需要 npm 包设置里把 Trusted Publisher 指向本仓库 + 本工作流文件名 + environment `npm`。
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: '只做构建与打包校验，不实际发布'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  id-token: write # Trusted Publishing / provenance 必需
+
+concurrency:
+  group: npm-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: build & publish
+    runs-on: ubuntu-latest
+    environment:
+      name: npm
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          # Node 24 自带 npm 11.x：Trusted Publishing 需要 npm >= 11.5.1
+          node-version: 24
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 类型检查
+        run: npm run typecheck
+
+      - name: 构建库
+        run: npm run build:lib
+
+      - name: 校验版本与 tag 一致
+        if: github.event_name == 'release'
+        env:
+          REF_NAME: ${{ github.event.release.tag_name }}
+        run: |
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          TAG_VERSION="${REF_NAME#v}"
+          echo "package.json = ${PKG_VERSION} / tag = ${REF_NAME}"
+          if [ "${PKG_VERSION}" != "${TAG_VERSION}" ]; then
+            echo "::error::package.json 版本 (${PKG_VERSION}) 与 tag (${REF_NAME}) 不一致"
+            exit 1
+          fi
+          if npm view "@zhangly1403/dxfviewer@${PKG_VERSION}" version >/dev/null 2>&1; then
+            echo "::error::版本 ${PKG_VERSION} 已存在于 npm，请先升级版本号"
+            exit 1
+          fi
+
+      - name: 打包预检
+        run: npm pack --dry-run
+
+      - name: 发布（dry run）
+        if: github.event_name == 'workflow_dispatch' && inputs.dry_run
+        run: echo "dry_run=true，跳过实际发布"
+
+      - name: 发布到 npm
+        if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run)
+        run: npm publish --provenance --access public
+
+      - name: 发布结果
+        if: github.event_name == 'release'
+        run: |
+          echo "已发布 @zhangly1403/dxfviewer@$(node -p "require('./package.json').version")"
+          echo "https://www.npmjs.com/package/@zhangly1403/dxfviewer"
