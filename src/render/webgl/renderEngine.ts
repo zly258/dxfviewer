@@ -12,7 +12,7 @@
  */
 
 import type { CanvasTheme } from '@/types';
-import { CANVAS_THEME_COLORS } from '@/config/viewerConfig';
+import { CANVAS_THEME_COLORS, TEXT_RENDER_CONFIG } from '@/config/viewerConfig';
 import { GlDevice, GlProgram } from './glDevice';
 import { SHADER_SOURCES } from './shaders';
 import {
@@ -229,10 +229,14 @@ export class RenderEngine implements InteractiveRenderEngine {
     // 字形图集上传（首次使用时）。
     this.atlas.uploadDirtyPages();
 
-    // 文字 LOD 阈值：文字屏幕高度低于该值（px）时跳过该条文字指令。
+    // 文字 LOD 阈值：文字投影高度低于该值（CSS 像素）时跳过该条文字指令。
     // 采用逐 op 字高判定（而非分块最小值），避免"一张图里有一行极小字 →
-    // 整块文字都不显示"的过度剔除——这是"必须放很大才能看到文字"的根因。
-    const minTextScreenPx = 3;
+    // 整块文字都不显示"的过度剔除。
+    // 与 Canvas 引擎共用同一常量，保证双引擎在任意缩放下显示的文字集合一致。
+    const minTextScreenPx = TEXT_RENDER_CONFIG.minimumTextRenderPixelHeight;
+    // 判定用 CSS 像素：pxPerModel 含 dpr（设备像素），此处换算回 CSS 像素，
+    // 否则高 DPI 屏上阈值被放大一倍、文字会更晚出现。
+    const pxPerModelCss = viewPort.zoom;
 
     for (const chunk of visibleChunks) {
       const gpu = chunk.gpu;
@@ -241,11 +245,11 @@ export class RenderEngine implements InteractiveRenderEngine {
 
       const proj = projOf(chunk.originX, chunk.originY);
       // 分块内最小字高都达标的，整块文字直接画（快速路径）。
-      const allTextVisible = chunk.textOpsStart < 0 || chunk.minTextHeight * pxPerModel >= minTextScreenPx;
+      const allTextVisible = chunk.textOpsStart < 0 || chunk.minTextHeight * pxPerModelCss >= minTextScreenPx;
       for (let opIdx = 0; opIdx < chunk.drawOps.length; opIdx++) {
         const op = chunk.drawOps[opIdx];
         if (!allTextVisible && opIdx >= chunk.textOpsStart && op.textHeight !== undefined
-          && op.textHeight * pxPerModel < minTextScreenPx) continue;
+          && op.textHeight * pxPerModelCss < minTextScreenPx) continue;
         applyScissor(op.clipRectId);
         switch (op.mesh) {
           case 'line': {

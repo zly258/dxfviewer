@@ -12,6 +12,14 @@ export default defineConfig({
     sourcemap: false,
     assetsInlineLimit: 0,
     chunkSizeWarningLimit: 200,
+    rollupOptions: {
+      input: {
+        // 完整工作区示例
+        main: path.resolve(__dirname, 'index.html'),
+        // 极简单文件预览示例（DxfPreview）
+        preview: path.resolve(__dirname, 'preview.html'),
+      },
+    },
   },
   server: {
     port: 3001,
@@ -21,6 +29,7 @@ export default defineConfig({
     alias: {
       '@zhangly1403/dxfviewer/style.css': path.resolve(__dirname, '../dist/style.css'),
       // 子入口必须列在主入口之前（Vite 对象别名按声明序精确匹配）
+      '@zhangly1403/dxfviewer/preview': path.resolve(__dirname, '../dist/preview.js'),
       '@zhangly1403/dxfviewer/parser': path.resolve(__dirname, '../dist/parser.js'),
       '@zhangly1403/dxfviewer/writer': path.resolve(__dirname, '../dist/writer.js'),
       '@zhangly1403/dxfviewer/render': path.resolve(__dirname, '../dist/render.js'),

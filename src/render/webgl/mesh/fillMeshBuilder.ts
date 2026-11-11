@@ -194,6 +194,9 @@ export class FillMeshBuilder {
   vertices: Float32Array;
   colors: Uint8Array;
   vertexCount = 0;
+  /** 分块原点：写入时以 float64 减去。 */
+  originX = 0;
+  originY = 0;
 
   constructor(capacityHint = 0) {
     const cap = Math.max(1024, capacityHint * 3);
@@ -222,15 +225,16 @@ export class FillMeshBuilder {
     const vBase = this.vertexCount * FILL_VERTEX_STRIDE_FLOATS;
     const cBase = this.vertexCount * 4;
     const [r, g, b, a] = style.color;
-    const xs = [ax, bx, cx];
-    const ys = [ay, by, cy];
+    const ox = this.originX, oy = this.originY;
+    const v = this.vertices, c = this.colors;
+    v[vBase] = ax - ox; v[vBase + 1] = ay - oy;
+    v[vBase + 2] = bx - ox; v[vBase + 3] = by - oy;
+    v[vBase + 4] = cx - ox; v[vBase + 5] = cy - oy;
     for (let i = 0; i < 3; i++) {
-      this.vertices[vBase + i * 2] = xs[i];
-      this.vertices[vBase + i * 2 + 1] = ys[i];
-      this.colors[cBase + i * 4] = r;
-      this.colors[cBase + i * 4 + 1] = g;
-      this.colors[cBase + i * 4 + 2] = b;
-      this.colors[cBase + i * 4 + 3] = a;
+      c[cBase + i * 4] = r;
+      c[cBase + i * 4 + 1] = g;
+      c[cBase + i * 4 + 2] = b;
+      c[cBase + i * 4 + 3] = a;
     }
     this.vertexCount += 3;
   }

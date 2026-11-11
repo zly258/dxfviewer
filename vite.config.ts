@@ -5,6 +5,7 @@ import dts from 'vite-plugin-dts';
 
 const libraryEntries = {
   dxfviewer: path.resolve(__dirname, 'src/index.ts'),
+  preview: path.resolve(__dirname, 'src/preview.ts'),
   parser: path.resolve(__dirname, 'src/parser.ts'),
   writer: path.resolve(__dirname, 'src/writer.ts'),
   render: path.resolve(__dirname, 'src/render.ts'),
@@ -13,6 +14,7 @@ const libraryEntries = {
 
 /** 入口 → 产物文件名。新增入口时同步维护，避免全部落到 dxfviewer.js。 */
 const ENTRY_FILE_NAMES: Record<string, string> = {
+  '/src/preview.ts': 'preview.js',
   '/src/parser.ts': 'parser.js',
   '/src/writer.ts': 'writer.js',
   '/src/render.ts': 'render.js',

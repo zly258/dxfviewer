@@ -4,6 +4,7 @@
  */
 
 import type { AnyEntity, CanvasTheme, DxfBlock, DxfLayer, DxfLineType, DxfStyle, DrawingColorMode, ViewPort } from '@/types';
+import type { SceneIndex } from '@/render/picking/sceneIndex';
 
 export type EngineKind = 'webgl' | 'canvas';
 
@@ -22,6 +23,8 @@ export interface EngineSceneOptions {
   hiddenLayers?: Set<string>;
   hiddenEntityIds?: ReadonlySet<string>;
   isolatedEntityIds?: ReadonlySet<string> | null;
+  /** 宿主已就绪的场景索引（拾取与视口剔除共用）；未提供时引擎自行兜底。 */
+  sceneIndex?: SceneIndex | null;
 }
 
 /** 单帧渲染参数。 */
@@ -40,6 +43,15 @@ export interface InteractiveRenderEngine {
   readonly kind: EngineKind;
   /** 场景重建（实体/图层/样式/可见性/主题变化时调用；低频）。 */
   setScene(options: EngineSceneOptions): void;
+  /**
+   * 注入宿主已构建好的场景索引（可选）。
+   *
+   * 宿主（ViewerCanvas）为拾取本来就要建一份索引：大图纸在 Worker 里异步建、
+   * 小图纸同步建。引擎若自行再建一份，就是纯粹重复的 CPU 开销
+   * （10 万实体同步建树约 170ms，且卡在主线程）。支持该方法的引擎在索引
+   * 就绪后直接复用，无需重建场景。
+   */
+  setSceneIndex?(index: SceneIndex | null): void;
   /** 渲染一帧（平移缩放期间每帧调用）。 */
   render(params: EngineRenderParams): void;
   setTheme(theme: CanvasTheme, background: string): void;

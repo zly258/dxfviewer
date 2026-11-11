@@ -20,6 +20,9 @@ export class GlyphMeshBuilder {
   vertices: Float32Array;
   colors: Uint8Array;
   vertexCount = 0;
+  /** 分块原点：写入时以 float64 减去。 */
+  originX = 0;
+  originY = 0;
 
   constructor(capacityHint = 0) {
     const cap = Math.max(1024, capacityHint * 4);
@@ -70,8 +73,8 @@ export class GlyphMeshBuilder {
     const order = [0, 1, 2, 0, 2, 3];
     for (let i = 0; i < 6; i++) {
       const ci = order[i];
-      this.vertices[vBase + i * 5] = corners[ci][0];
-      this.vertices[vBase + i * 5 + 1] = corners[ci][1];
+      this.vertices[vBase + i * 5] = corners[ci][0] - this.originX;
+      this.vertices[vBase + i * 5 + 1] = corners[ci][1] - this.originY;
       this.vertices[vBase + i * 5 + 2] = uvs[ci][0];
       this.vertices[vBase + i * 5 + 3] = uvs[ci][1];
       this.vertices[vBase + i * 5 + 4] = page;
@@ -96,6 +99,8 @@ export class PointMeshBuilder {
   vertices: Float32Array;
   colors: Uint8Array;
   vertexCount = 0;
+  originX = 0;
+  originY = 0;
 
   constructor(capacityHint = 64) {
     const cap = Math.max(64, capacityHint);
@@ -123,8 +128,8 @@ export class PointMeshBuilder {
     this.ensureCapacity(1);
     const vBase = this.vertexCount * POINT_VERTEX_STRIDE_FLOATS;
     const cBase = this.vertexCount * 4;
-    this.vertices[vBase] = x;
-    this.vertices[vBase + 1] = y;
+    this.vertices[vBase] = x - this.originX;
+    this.vertices[vBase + 1] = y - this.originY;
     const [r, g, b, a] = style.color;
     this.colors[cBase] = r;
     this.colors[cBase + 1] = g;

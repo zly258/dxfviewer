@@ -42,6 +42,9 @@ export class LineMeshBuilder {
   indexCount = 0;
   /** 每次 addPolyline 的索引段记录（reset 清空）。 */
   ops: LinePolylineOp[] = [];
+  /** 分块原点：写入顶点时以 float64 减去，避免先落 float32 世界坐标再相减造成的精度损失。 */
+  originX = 0;
+  originY = 0;
 
   private static readonly INITIAL_VERTICES = 4096;
   private static readonly INITIAL_INDICES = 6144;
@@ -159,8 +162,8 @@ export class LineMeshBuilder {
       const vBase = this.vertexCount * LINE_VERTEX_STRIDE_FLOATS;
       const cBase = this.vertexCount * 4;
       // 顶点 0：+side
-      this.vertices[vBase] = x;
-      this.vertices[vBase + 1] = y;
+      this.vertices[vBase] = x - this.originX;
+      this.vertices[vBase + 1] = y - this.originY;
       this.vertices[vBase + 2] = mx;
       this.vertices[vBase + 3] = my;
       this.vertices[vBase + 4] = miterScale;   // +side × scale
@@ -169,8 +172,8 @@ export class LineMeshBuilder {
       this.vertices[vBase + 7] = dashIdx;
       this.colors[cBase] = r; this.colors[cBase + 1] = g; this.colors[cBase + 2] = b; this.colors[cBase + 3] = a;
       // 顶点 1：-side
-      this.vertices[vBase + 8] = x;
-      this.vertices[vBase + 9] = y;
+      this.vertices[vBase + 8] = x - this.originX;
+      this.vertices[vBase + 9] = y - this.originY;
       this.vertices[vBase + 10] = mx;
       this.vertices[vBase + 11] = my;
       this.vertices[vBase + 12] = -miterScale; // -side × scale
@@ -215,11 +218,14 @@ export class LineMeshBuilder {
   }
 
   /** 追加单条线段（LINE/RAY/XLINE 的便捷入口）。 */
-  addSegment(ax: number, ay: number, bx: number, by: number, style: LineStyle): { vertexStart: number; vertexCount: number } {
-    return this.addPolyline([ax, ay, bx, by], style, false);
-  }
+  /** 线段写入的复用缓冲（避免每条线段分配一个数组）。 */
+  private readonly segmentScratch = new Float64Array(4);
 
-  /** 导出 GPU 就绪的紧凑数组（截断到实际使用长度，零拷贝子数组共享缓冲）。 */
+  addSegment(ax: number, ay: number, bx: number, by: number, style: LineStyle): { vertexStart: number; vertexCount: number } {
+    const s = this.segmentScratch;
+    s[0] = ax; s[1] = ay; s[2] = bx; s[3] = by;
+    return this.addPolyline(s, style, false);
+  }
   finish(): { vertices: Float32Array; colors: Uint8Array; indices: Uint32Array } {
     return {
       vertices: this.vertices.subarray(0, this.vertexCount * LINE_VERTEX_STRIDE_FLOATS),

@@ -1,7 +1,7 @@
 /**
  * DXF 写出器往返测试。
  *
- * 对 samples/dxf/*.dxf 逐个执行：
+ * 对运行时生成的夹具（scripts/fixtures.mjs）逐个执行：
  *   parse → writeDxf(AC1015) → parse → 逐实体几何比对
  *
  * 校验项：

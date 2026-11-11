@@ -9,7 +9,7 @@
 ```
 src/
 ├── ui/                    # 界面层（React）
-│   ├── components/        #   查看器/面板/工具栏
+│   ├── components/        #   查看器/面板/工具栏；preview/ 为极简预览（单画布、无工具栏）
 │   ├── hooks/             #   视图状态（视口历史/图层可见性/响应式）
 │   ├── i18n.ts            #   多语言
 │   └── styles/            #   设计令牌与组件样式（WPF 风格）
@@ -30,7 +30,7 @@ src/
 ├── core/                  # 领域算法（几何/曲线采样/文字布局/范围计算）
 ├── export/                # 导出（取景 + PNG/WebGL 栅格 + SVG/PDF 矢量）
 ├── config/ types/ utils/  # 配置 / 数据模型 / 工具
-└── index.ts parser.ts writer.ts render.ts export.ts   # 公共子入口
+└── index.ts preview.ts parser.ts writer.ts render.ts export.ts   # 公共子入口（preview = 极简预览）
 ```
 
 ## 0.1 引擎切换

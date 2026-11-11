@@ -33,6 +33,10 @@
       "types": "./dist/dxfviewer.d.ts",
       "import": "./dist/dxfviewer.js"
     },
+    "./preview": {
+      "types": "./dist/preview.d.ts",
+      "import": "./dist/preview.js"
+    },
     "./parser": {
       "types": "./dist/parser.d.ts",
       "import": "./dist/parser.js"
@@ -54,7 +58,8 @@
   "files": [
     "dist",
     "README.md",
-    "README_zh.md"
+    "README_zh.md",
+    "LICENSE"
   ],
   "scripts": {
     "dev": "npm --workspace dxfviewer-example run dev",
@@ -66,9 +71,12 @@
     "check:render": "node scripts/render-smoke.mjs",
     "check:roundtrip": "node scripts/roundtrip.mjs",
     "check:visibility": "node scripts/check-visibility.mjs",
+    "check:symbols": "node scripts/check-symbols.mjs",
+    "check:preview": "node scripts/check-preview.mjs",
+    "check:large": "node scripts/check-large.mjs",
     "check:ui": "node scripts/ui-audit.mjs --strict",
     "check:ui-style": "node scripts/ui-style-check.mjs",
-    "check": "npm run build:lib && npm run check:fixtures && npm run check:render && npm run check:accuracy && npm run check:visibility && npm run check:roundtrip && npm run check:ui",
+    "check": "npm run build:lib && npm run check:fixtures && npm run check:render && npm run check:accuracy && npm run check:symbols && npm run check:visibility && npm run check:roundtrip && npm run check:ui",
     "convert": "node scripts/dxfviewer-cli.mjs",
     "test:real": "node scripts/real-dxf-test.mjs",
     "build:example": "npm run build:lib && npm --workspace dxfviewer-example run build",

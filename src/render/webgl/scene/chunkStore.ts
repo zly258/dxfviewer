@@ -114,8 +114,6 @@ export interface Chunk {
   pointColor: Uint8Array;
 
   hatchRegions: HatchRegion[];
-  /** 虚线模式索引段（构建期追加，draw 时按 dashIdx 分组 draw）。 */
-  lineDashRanges: LineDashRange[];
   drawOps: ChunkDrawOp[];
   entityRanges: Map<string, EntityGeometryRanges>;
 
@@ -172,7 +170,6 @@ export class SceneAccumulator {
         pointData: new Float32Array(0),
         pointColor: new Uint8Array(0),
         hatchRegions: [],
-        lineDashRanges: [],
         drawOps: [],
         textOpsStart: -1,
         minTextHeight: 0,

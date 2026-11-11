@@ -13,7 +13,7 @@ import { performance } from 'node:perf_hooks';
 import { createFakeCanvas } from './canvas-mock.mjs';
 
 const { parseDxf } = await import(new URL('../dist/parser.js', import.meta.url).href);
-const { renderVectorScene, createSceneIndex } = await import(new URL('../dist/render.js', import.meta.url).href);
+const { renderVectorScene, createSceneIndex, buildScene } = await import(new URL('../dist/render.js', import.meta.url).href);
 
 const total = Number(process.argv[2]) || 100_000;
 
@@ -85,7 +85,20 @@ const dxfText = lines.join('\n') + '\n';
 
 console.log(`合成 DXF：${(dxfText.length / 1024 / 1024).toFixed(1)} MB，${lines.length} 行，目标实体 ${total}`);
 
-// ─── 计时 ───────────────────────────────────────────────────────
+// ─── 计时：完整加载流水线（与浏览器内真实链路一致） ───────────────
+// 浏览器实际链路：Worker 解码 + parseDxf → structuredClone 回主线程 →
+// 建场景索引（Worker）→ 烘焙 WebGL 分块场景 → 出帧。
+const ITER = Number(process.env.BENCH_ITER) || 3;
+const best = (fn, iter = ITER) => {
+  let min = Infinity;
+  for (let i = 0; i < iter; i++) {
+    const t = performance.now();
+    fn();
+    min = Math.min(min, performance.now() - t);
+  }
+  return min;
+};
+
 let data;
 {
   const start = performance.now();
@@ -94,12 +107,41 @@ let data;
   console.log(`parseDxf：${ms.toFixed(0)} ms（${data.entities.length} 实体，${(dxfText.length / 1024 / 1024 / (ms / 1000)).toFixed(1)} MB/s）`);
 }
 
+// Worker → 主线程的数据搬运（结构化克隆，无 transferable 可用时的真实开销）。
+{
+  const ms = best(() => structuredClone(data), 2);
+  console.log(`structuredClone（Worker 回传）：${ms.toFixed(0)} ms`);
+}
+
 let index;
 {
   const start = performance.now();
   index = createSceneIndex(data.entities);
   const ms = performance.now() - start;
   console.log(`createSceneIndex：${ms.toFixed(0)} ms`);
+}
+
+// WebGL 分块场景烘焙（素数 = CPU 侧唯一的重活；平移缩放不再重建）。
+{
+  const atlas = {
+    get: () => undefined,
+    getCapRatio: () => 0.7,
+    uploadDirtyPages: () => {},
+    stats: { pages: 0, glyphs: 0 },
+  };
+  const base = {
+    entities: data.entities,
+    layers: data.layers,
+    blocks: data.blocks,
+    styles: data.styles,
+    lineTypes: data.lineTypes,
+    ltScale: 1,
+    theme: 'white',
+    drawingColorMode: 'original',
+  };
+  const ms = best(() => buildScene(base, atlas));
+  const scene = buildScene(base, atlas);
+  console.log(`buildScene（WebGL 分块烘焙）：${ms.toFixed(0)} ms，分块 ${scene.stats.chunks}，线段顶点 ${scene.stats.lineVertices}`);
 }
 
 {
@@ -126,4 +168,6 @@ let index;
   const ms = (performance.now() - start) / runs;
   console.log(`renderVectorScene 平均：${ms.toFixed(1)} ms/帧（${runs} 次）`);
 }
+
+console.log('\n提示：BENCH_ITER=5 可提高采样次数取最优值（噪声更小）。');
 

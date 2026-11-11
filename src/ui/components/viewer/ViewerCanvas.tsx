@@ -377,6 +377,9 @@ const ViewerCanvas: React.FC<ViewerCanvasProps> = ({
 
   // ── 场景索引（拾取用，与渲染无关） ──
   const [sceneIndex, setSceneIndex] = useState<SceneIndex | undefined>(undefined);
+  /** 索引镜像：引擎（重）创建后立即注入，避免闭包读到旧值。 */
+  const sceneIndexRef = useRef<SceneIndex | undefined>(undefined);
+  sceneIndexRef.current = sceneIndex;
   useEffect(() => {
     if (entities.length < SCENE_INDEX_ASYNC_THRESHOLD) {
       setSceneIndex(createSceneIndex(entities));
@@ -398,6 +401,12 @@ const ViewerCanvas: React.FC<ViewerCanvasProps> = ({
       handle?.cancel();
     };
   }, [entities]);
+
+  // 索引就绪 / 引擎重建后注入引擎，省掉引擎内部重复建树。
+  useEffect(() => {
+    engineRef.current?.setSceneIndex?.(sceneIndexRef.current ?? null);
+    requestFrame();
+  }, [sceneIndex, engineKind, requestFrame]);
 
   // 视图 prop 由外部变化（适应视图 / 历史回退）：重绘。
   useEffect(() => {

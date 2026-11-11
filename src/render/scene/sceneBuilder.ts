@@ -36,11 +36,11 @@ import { resolveEntityColor } from '@/utils/entityColor';
 import { resolveCadStrokeStyle } from '@/utils/lineStyle';
 import { sampleSplinePoints, sampleHatchLoop } from '@/core/geometry/curveSampling';
 import { isDimensionBlockLocal } from '@/core/geometry/transform';
-import { getEffectiveTextHeight, getCadTextAnchorPosition } from '@/utils/textUtils';
+import { getEffectiveTextHeight, getCadTextAnchorPosition, cleanMText, cleanCadText } from '@/utils/textUtils';
 import { LineMeshBuilder, LineStyle, LinePolylineOp } from '../webgl/mesh/lineMeshBuilder';
 import { FillMeshBuilder } from '../webgl/mesh/fillMeshBuilder';
 import { GlyphMeshBuilder, PointMeshBuilder, TextStyle } from '../webgl/mesh/glyphPointMeshBuilders';
-import { Chunk, WorldRect, ChunkDrawOp, LineDashRange, HatchRegion, EntityGeometryRanges } from '../webgl/scene/chunkStore';
+import { Chunk, WorldRect, ChunkDrawOp, HatchRegion, EntityGeometryRanges } from '../webgl/scene/chunkStore';
 import { resolveStrokeFont } from '../text/shx/strokeFontRegistry';
 import { shapeStrokeText, strokeShapingBounds } from '../text/strokeTextShaper';
 import { hasOutlineFont, layoutOutlineTextEntity } from '../text/outlineText';
@@ -84,7 +84,6 @@ export interface BuiltScene {
   chunks: Chunk[];
   dashPatterns: number[][];
   clipRects: WorldRect[];
-  entityChunks: Map<string, number[]>;
   stats: {
     entities: number;
     bakedEntities: number;
@@ -96,17 +95,6 @@ export interface BuiltScene {
   };
 }
 
-const stripMTextCodes = (value: string): string =>
-  value
-    .replace(/\\[Pp]/g, '\n')
-    .replace(/\\[fF][^;]*;/g, '')
-    .replace(/\\[HhWwAaCc][^;]*;/g, '')
-    .replace(/\\[TtSsQqXx]/g, '')
-    .replace(/[{}]/g, '')
-    .replace(/%%[dD]/g, '°')
-    .replace(/%%[pP]/g, '±')
-    .replace(/%%[cC]/g, '⌀');
-
 type Rgba = [number, number, number, number];
 
 const hexToRgba = (color: string): Rgba => [
@@ -116,8 +104,21 @@ const hexToRgba = (color: string): Rgba => [
   255,
 ];
 
+/**
+ * 颜色解析缓存：图纸中颜色取值高度重复（BYLAYER + 索引色），
+ * 100k 实体逐次 parseInt 是可见的热点。
+ */
+const rgbaCache = new Map<string, Rgba>();
+const hexToRgbaCached = (color: string): Rgba => {
+  const cached = rgbaCache.get(color);
+  if (cached) return cached;
+  const rgba = hexToRgba(color);
+  if (rgbaCache.size < 4096) rgbaCache.set(color, rgba);
+  return rgba;
+};
+
 const lineStyleOf = (color: string, dashIdx: number, widthPx: number): LineStyle => {
-  const c = hexToRgba(color);
+  const c = hexToRgbaCached(color);
   return { color: c, dashIdx, widthPx };
 };
 
@@ -248,7 +249,6 @@ class ChunkBaker {
   readonly glyphs = new GlyphMeshBuilder(64);
   readonly points = new PointMeshBuilder(16);
   readonly drawOps: ChunkDrawOp[] = [];
-  readonly lineDashRanges: LineDashRange[] = [];
   readonly hatchRegions: HatchRegion[] = [];
   readonly entityRanges = new Map<string, EntityGeometryRanges>();
   readonly bounds: WorldRect = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
@@ -261,7 +261,14 @@ class ChunkBaker {
     readonly gridIndex: number,
     readonly originX: number,
     readonly originY: number,
-  ) {}
+  ) {
+    // 写入即局部化：顶点在 float64 下减去分块原点后才落入 float32，
+    // 收尾无需再对全部顶点做一遍减法，大图纸少一次全量遍历。
+    for (const builder of [this.line, this.fill, this.glyphs, this.points]) {
+      builder.originX = originX;
+      builder.originY = originY;
+    }
+  }
 
   updateBounds(minX: number, minY: number, maxX: number, maxY: number): void {
     if (minX < this.bounds.minX) this.bounds.minX = minX;
@@ -315,42 +322,11 @@ class ChunkBaker {
 
   /** 收尾：局部化顶点 + 导出紧凑数组 → Chunk。 */
   finalize(): Chunk {
-    // ── line：世界坐标 → 分块局部 ──
-    const lineVertCount = this.line.vertexCount;
-    const lineVerts = this.line.vertices;
-    for (let i = 0; i < lineVertCount; i++) {
-      lineVerts[i * 8] -= this.originX;
-      lineVerts[i * 8 + 1] -= this.originY;
-    }
+    // 顶点在写入时已局部化（见构造函数），这里只导出紧凑数组。
     const lineOut = this.line.finish();
-
-    // ── fill ──
-    const fillVertCount = this.fill.vertexCount;
-    const fillVerts = this.fill.vertices;
-    for (let i = 0; i < fillVertCount; i++) {
-      fillVerts[i * 2] -= this.originX;
-      fillVerts[i * 2 + 1] -= this.originY;
-    }
     const fillOut = this.fill.finish();
-
-    // ── glyph：5 float/顶点（x,y,u,v,page），前两列局部化 ──
-    const glyphVertCount = this.glyphs.vertexCount;
-    const glyphVerts = this.glyphs.vertices;
-    for (let i = 0; i < glyphVertCount; i++) {
-      glyphVerts[i * 5] -= this.originX;
-      glyphVerts[i * 5 + 1] -= this.originY;
-    }
     const glyphOut = this.glyphs.finish();
-
-    // ── point ──
-    const pointVertCount = this.points.vertexCount;
-    const pointVerts = this.points.vertices;
-    for (let i = 0; i < pointVertCount; i++) {
-      pointVerts[i * 2] -= this.originX;
-      pointVerts[i * 2 + 1] -= this.originY;
-    }
     const pointOut = this.points.finish();
-
     const bounds = Number.isFinite(this.bounds.minX)
       ? this.bounds
       : { minX: this.originX - 1, minY: this.originY - 1, maxX: this.originX + 1, maxY: this.originY + 1 };
@@ -369,7 +345,6 @@ class ChunkBaker {
       pointData: pointOut.vertices,
       pointColor: pointOut.colors,
       hatchRegions: this.hatchRegions,
-      lineDashRanges: this.lineDashRanges,
       // 文字 op 追加在几何 op 之后（CAD 习惯：文字绘制在上层）；
       // 渲染端按 minTextHeight × 屏幕像素密度整批剔除过小文字。
       drawOps: Number.isFinite(this.minTextHeight)
@@ -388,11 +363,11 @@ class SceneBaker {
   private readonly bakers: ChunkBaker[] = [];
   private readonly dashPatterns: number[][] = [];
   private readonly dashPatternIndex = new Map<string, number>();
-  private readonly entityChunks = new Map<string, number[]>();
   private readonly clipRects: WorldRect[] = [];
   private currentBaker: ChunkBaker | null = null;
-  private entityIdStack: string[] = [];
-  private entityOpsMap = new Map<string, EntityOpRecord[]>();
+  /** 实体记录帧栈（块嵌套时父实体同时收集子几何）；帧对象复用，避免逐实体分配。 */
+  private entityFrames: Array<{ id: string; ops: EntityOpRecord[] }> = [];
+  private entityDepth = 0;
   /** 文字烘焙标志：期间的 drawOp 推入文字列表（渲染时按屏幕高度整批剔除）。 */
   private inTextBake = false;
   private curTextHeight = 0;
@@ -468,79 +443,69 @@ class SceneBaker {
   // ── 实体范围记录 ──
 
   private beginEntity(id: string): void {
-    this.entityIdStack.push(id);
-    if (!this.entityOpsMap.has(id)) {
-      this.entityOpsMap.set(id, []);
+    let frame = this.entityFrames[this.entityDepth];
+    if (!frame) {
+      frame = { id, ops: [] };
+      this.entityFrames[this.entityDepth] = frame;
     }
+    frame.id = id;
+    frame.ops.length = 0;
+    this.entityDepth++;
   }
 
   private endEntity(): void {
-    const id = this.entityIdStack.pop();
-    if (!id) return;
-    const ops = this.entityOpsMap.get(id);
-    this.entityOpsMap.delete(id);
-    if (!ops || !ops.length) return;
+    if (this.entityDepth === 0) return;
+    const frame = this.entityFrames[--this.entityDepth];
+    const ops = frame.ops;
+    if (!ops.length) return;
 
     // 汇总该实体的几何范围（按分块与几何类型分组，支持 line/fill/glyph/point 高亮）。
-    const byBaker = new Map<ChunkBaker, EntityGeometryRanges>();
-    for (const op of ops) {
-      let ranges = byBaker.get(op.baker);
-      if (!ranges) {
-        ranges = {};
-        byBaker.set(op.baker, ranges);
+    // 单个实体涉及的分块极少，线性查找比 Map 更省。
+    let bakers: ChunkBaker[] | null = null;
+    let rangesList: EntityGeometryRanges[] | null = null;
+    for (let i = 0; i < ops.length; i++) {
+      const op = ops[i];
+      let slot = -1;
+      if (bakers) {
+        for (let k = 0; k < bakers.length; k++) if (bakers[k] === op.baker) { slot = k; break; }
       }
+      if (slot < 0) {
+        if (!bakers) { bakers = []; rangesList = []; }
+        bakers.push(op.baker);
+        rangesList!.push({});
+        slot = bakers.length - 1;
+      }
+      const ranges = rangesList![slot];
       const existing = ranges[op.kind];
-      if (existing && existing.start + existing.count === op.start) {
-        existing.count += op.count;
-      } else if (!existing) {
+      if (!existing) {
         ranges[op.kind] = { start: op.start, count: op.count };
+      } else if (existing.start + existing.count === op.start) {
+        existing.count += op.count;
       } else {
         const end = Math.max(existing.start + existing.count, op.start + op.count);
         existing.start = Math.min(existing.start, op.start);
         existing.count = end - existing.start;
       }
     }
-    for (const [baker, ranges] of byBaker) {
-      baker.entityRanges.set(id, ranges);
-      let list = this.entityChunks.get(id);
-      if (!list) { list = []; this.entityChunks.set(id, list); }
-      if (!list.includes(baker.gridIndex)) list.push(baker.gridIndex);
+    if (bakers) {
+      for (let k = 0; k < bakers.length; k++) bakers[k].entityRanges.set(frame.id, rangesList![k]);
     }
   }
 
   private recordEntityOp(baker: ChunkBaker, kind: 'line' | 'fill' | 'glyph' | 'point', start: number, count: number): void {
-    if (!this.entityIdStack.length || count <= 0) return;
-    for (const id of this.entityIdStack) {
-      const list = this.entityOpsMap.get(id);
-      if (list) {
-        list.push({ baker, kind, start, count });
-      }
+    if (this.entityDepth === 0 || count <= 0) return;
+    for (let d = 0; d < this.entityDepth; d++) {
+      this.entityFrames[d].ops.push({ baker, kind, start, count });
     }
   }
-
   // ── 线型/线宽 ──
 
-  private dashIdxFor(ent: AnyEntity, layer: DxfLayer | undefined, parentLineType?: string): number {
-    const stroke = resolveCadStrokeStyle({
-      entity: ent, layer,
-      parentLineType: parentLineType || this.currentParentLineType,
-      parentLineweight: this.currentParentLineweight,
-      lineTypes: this.options.lineTypes,
-      globalLineTypeScale: this.options.ltScale,
-      viewScale: 1,
-      isSelected: false,
-    });
-    if (!stroke.dashPattern.length) return 0;
-    const key = stroke.dashPattern.join(',');
-    const existing = this.dashPatternIndex.get(key);
-    if (existing !== undefined) return existing + 1;
-    const idx = this.dashPatterns.length;
-    this.dashPatterns.push(stroke.dashPattern);
-    this.dashPatternIndex.set(key, idx);
-    return idx + 1;
-  }
-
-  private widthPxFor(ent: AnyEntity, layer: DxfLayer | undefined): number {
+  /**
+   * 解析实体笔样式：虚线模式索引 + 屏幕线宽。
+   * 一个实体只调用一次 resolveCadStrokeStyle（此前按虚线、线宽各解析一次，
+   * 10 万实体图纸上直接翻倍）。
+   */
+  private strokeFor(ent: AnyEntity, layer: DxfLayer | undefined): { dashIdx: number; widthPx: number } {
     const stroke = resolveCadStrokeStyle({
       entity: ent, layer,
       parentLineType: this.currentParentLineType,
@@ -550,15 +515,37 @@ class SceneBaker {
       viewScale: 1,
       isSelected: false,
     });
+
+    let dashIdx = 0;
+    const pattern = stroke.dashPattern;
+    if (pattern && pattern.length) {
+      const key = pattern.join(',');
+      const existing = this.dashPatternIndex.get(key);
+      if (existing !== undefined) {
+        dashIdx = existing + 1;
+      } else {
+        dashIdx = this.dashPatterns.length + 1;
+        this.dashPatterns.push(pattern);
+        this.dashPatternIndex.set(key, dashIdx - 1);
+      }
+    }
+
     let width = stroke.lineWidth;
-    if ((ent as any).constantWidth !== undefined && (ent as any).constantWidth > 0) {
-      width = Math.max(LINE_RENDER_CONFIG.minimumScreenLineWidth, Math.min((ent as any).constantWidth, LINE_RENDER_CONFIG.maximumScreenLineWidth));
+    const constantWidth = (ent as { constantWidth?: number }).constantWidth;
+    if (constantWidth !== undefined && constantWidth > 0) {
+      width = Math.max(
+        LINE_RENDER_CONFIG.minimumScreenLineWidth,
+        Math.min(constantWidth, LINE_RENDER_CONFIG.maximumScreenLineWidth),
+      );
     }
     // 导出补偿：在 CAD 钳制后的屏幕线宽基础上按输出尺寸放大。
-    return width * (this.options.lineWidthScale ?? 1);
+    return { dashIdx, widthPx: width * (this.options.lineWidthScale ?? 1) };
   }
 
   // ── 几何写入（世界坐标；写入所属分块的构建器） ──
+
+  /** 曲线细分复用缓冲：万级曲线时避免每条曲线分配一个新数组。 */
+  private readonly flatScratch: number[] = [];
 
   private writePolyline(flat: number[], style: LineStyle, closed: boolean): void {
     if (flat.length < 4) return;
@@ -585,7 +572,6 @@ class SceneBaker {
     const ops = baker.line.ops;
     for (let i = opCountBefore; i < ops.length; i++) {
       const op = ops[i] as LinePolylineOp;
-      baker.lineDashRanges.push({ dashIdx: op.dashIdx, indexStart: op.indexStart, indexCount: op.indexCount });
       this.pushDrawOp('line', op.indexStart, op.indexCount, op.dashIdx);
       this.recordEntityOp(baker, 'line', op.indexStart, op.indexCount);
     }
@@ -670,7 +656,6 @@ class SceneBaker {
       chunks,
       dashPatterns: this.dashPatterns,
       clipRects: this.clipRects,
-      entityChunks: this.entityChunks,
       stats: { ...this.stats },
     };
   }
@@ -713,19 +698,24 @@ class SceneBaker {
           break;
       }
     }
+    // 笔样式（虚线索引 + 屏幕线宽）按实体解析一次，供下面各几何分支复用。
+    let resolvedStroke: { dashIdx: number; widthPx: number } | null = null;
+    const strokeOf = (): { dashIdx: number; widthPx: number } =>
+      (resolvedStroke ??= this.strokeFor(ent, layer));
+
     switch (ent.type) {
       case EntityType.LINE:
         this.writeSegment(ent.start.x, ent.start.y, ent.end.x, ent.end.y,
-          lineStyleOf(color, this.dashIdxFor(ent, layer), this.widthPxFor(ent, layer)));
+          lineStyleOf(color, strokeOf().dashIdx, strokeOf().widthPx));
         break;
       case EntityType.RAY: {
-        const style = lineStyleOf(color, this.dashIdxFor(ent, layer), this.widthPxFor(ent, layer));
+        const style = lineStyleOf(color, strokeOf().dashIdx, strokeOf().widthPx);
         this.writeSegment(ent.basePoint.x, ent.basePoint.y,
           ent.basePoint.x + ent.direction.x * EXTENT_GUIDE, ent.basePoint.y + ent.direction.y * EXTENT_GUIDE, style);
         break;
       }
       case EntityType.XLINE: {
-        const style = lineStyleOf(color, this.dashIdxFor(ent, layer), this.widthPxFor(ent, layer));
+        const style = lineStyleOf(color, strokeOf().dashIdx, strokeOf().widthPx);
         this.writeSegment(
           ent.basePoint.x - ent.direction.x * EXTENT_GUIDE, ent.basePoint.y - ent.direction.y * EXTENT_GUIDE,
           ent.basePoint.x + ent.direction.x * EXTENT_GUIDE, ent.basePoint.y + ent.direction.y * EXTENT_GUIDE, style);
@@ -737,12 +727,13 @@ class SceneBaker {
       case EntityType.CIRCLE: {
         if (ent.radius <= 0) break;
         const segs = arcSegmentCount(ent.radius);
-        const flat: number[] = [];
+        const flat = this.flatScratch;
+        flat.length = 0;
         for (let i = 0; i < segs; i++) {
           const a = (i / segs) * Math.PI * 2;
           flat.push(ent.center.x + Math.cos(a) * ent.radius, ent.center.y + Math.sin(a) * ent.radius);
         }
-        this.writePolyline(flat, lineStyleOf(color, this.dashIdxFor(ent, layer), this.widthPxFor(ent, layer)), true);
+        this.writePolyline(flat, lineStyleOf(color, strokeOf().dashIdx, strokeOf().widthPx), true);
         break;
       }
       case EntityType.ARC: {
@@ -752,12 +743,13 @@ class SceneBaker {
         if (end <= start) end += Math.PI * 2;
         const sweep = end - start;
         const segs = Math.max(2, Math.ceil(sweep * ent.radius / CURVE_TOLERANCE));
-        const flat: number[] = [];
+        const flat = this.flatScratch;
+        flat.length = 0;
         for (let i = 0; i <= segs; i++) {
           const a = start + sweep * (i / segs);
           flat.push(ent.center.x + Math.cos(a) * ent.radius, ent.center.y + Math.sin(a) * ent.radius);
         }
-        this.writePolyline(flat, lineStyleOf(color, this.dashIdxFor(ent, layer), this.widthPxFor(ent, layer)), false);
+        this.writePolyline(flat, lineStyleOf(color, strokeOf().dashIdx, strokeOf().widthPx), false);
         break;
       }
       case EntityType.ELLIPSE: {
@@ -771,22 +763,23 @@ class SceneBaker {
         if (end <= start) end += Math.PI * 2;
         const sweep = end - start;
         const segs = Math.max(8, Math.ceil(arcSegmentCount(majorLen) * Math.min(1, sweep / (Math.PI * 2))));
-        const flat: number[] = [];
+        const flat = this.flatScratch;
+        flat.length = 0;
         for (let i = 0; i <= segs; i++) {
           const t = start + sweep * (i / segs);
           const ex = Math.cos(t) * majorLen;
           const ey = Math.sin(t) * minorLen;
           flat.push(ent.center.x + ex * cosT - ey * sinT, ent.center.y + ex * sinT + ey * cosT);
         }
-        this.writePolyline(flat, lineStyleOf(color, this.dashIdxFor(ent, layer), this.widthPxFor(ent, layer)), sweep >= Math.PI * 2 - 1e-9);
+        this.writePolyline(flat, lineStyleOf(color, strokeOf().dashIdx, strokeOf().widthPx), sweep >= Math.PI * 2 - 1e-9);
         break;
       }
       case EntityType.LWPOLYLINE:
       case EntityType.POLYLINE:
-        this.writeBulgePolyline(ent.points, ent.bulges, ent.closed, ent, layer, color);
+        this.writeBulgePolyline(ent.points, ent.bulges, ent.closed, strokeOf(), color);
         break;
       case EntityType.MLINE:
-        this.writeBulgePolyline(ent.vertices, undefined, !!ent.closed, ent, layer, color);
+        this.writeBulgePolyline(ent.vertices, undefined, !!ent.closed, strokeOf(), color);
         break;
       case EntityType.SPLINE: {
         const samples = ent.calculatedPoints?.length
@@ -795,9 +788,10 @@ class SceneBaker {
             ? ent.fitPoints
             : sampleSplinePoints(ent.controlPoints || [], ent.degree || 3, ent.knots, ent.weights);
         if (samples && samples.length >= 2) {
-          const flat: number[] = [];
+          const flat = this.flatScratch;
+          flat.length = 0;
           for (const p of samples) flat.push(p.x, p.y);
-          this.writePolyline(flat, lineStyleOf(color, this.dashIdxFor(ent, layer), this.widthPxFor(ent, layer)), false);
+          this.writePolyline(flat, lineStyleOf(color, strokeOf().dashIdx, strokeOf().widthPx), false);
         }
         break;
       }
@@ -855,12 +849,12 @@ class SceneBaker {
     points: Point2D[],
     bulges: number[] | undefined,
     closed: boolean,
-    ent: AnyEntity,
-    layer: DxfLayer | undefined,
+    stroke: { dashIdx: number; widthPx: number },
     color: string,
   ): void {
     if (points.length < 2) return;
-    const flat: number[] = [];
+    const flat = this.flatScratch;
+    flat.length = 0;
     const segCount = closed ? points.length : points.length - 1;
     for (let i = 0; i < points.length; i++) {
       const p = points[i];
@@ -890,7 +884,7 @@ class SceneBaker {
         flat.push(cx + Math.cos(a) * radius, cy + Math.sin(a) * radius);
       }
     }
-    this.writePolyline(flat, lineStyleOf(color, this.dashIdxFor(ent, layer), this.widthPxFor(ent, layer)), closed);
+    this.writePolyline(flat, lineStyleOf(color, stroke.dashIdx, stroke.widthPx), closed);
   }
 
   // ── HATCH ──
@@ -1089,7 +1083,7 @@ class SceneBaker {
 
   private bakeLeader(ent: DxfLeader, layer: DxfLayer | undefined, color: string, depth: number): void {
     void depth;
-    const style = lineStyleOf(color, this.dashIdxFor(ent, layer), this.widthPxFor(ent, layer));
+    const style = lineStyleOf(color, this.strokeFor(ent, layer).dashIdx, this.strokeFor(ent, layer).widthPx);
     if (ent.points.length >= 2) {
       const flat: number[] = [];
       for (const p of ent.points) flat.push(p.x, p.y);
@@ -1111,7 +1105,8 @@ class SceneBaker {
 
   private bakeMLeader(ent: DxfMLeader, layer: DxfLayer | undefined, color: string, depth: number): void {
     void depth;
-    const style = lineStyleOf(color, this.dashIdxFor(ent, layer), this.widthPxFor(ent, layer));
+    const mLeaderStroke = this.strokeFor(ent, layer);
+    const style = lineStyleOf(color, mLeaderStroke.dashIdx, mLeaderStroke.widthPx);
     for (const line of ent.leaderLines) {
       if (line.length >= 2) {
         const flat: number[] = [];
@@ -1226,7 +1221,8 @@ class SceneBaker {
     }
 
     const isMText = ent.type === EntityType.MTEXT;
-    const lines = (isMText ? stripMTextCodes(rawValue) : rawValue.replace(/%%[dDpPcC]/g, m => m === '%%d' || m === '%%D' ? '°' : m === '%%p' || m === '%%P' ? '±' : '⌀')).split('\n');
+    // 统一走完整解码（%%130 钢筋符号、%%140 上标、%%146 圈号等 TSSD 扩展码，以及 \\U+XXXX、堆叠分数）。
+    const lines = (isMText ? cleanMText(rawValue) : cleanCadText(rawValue)).split('\n');
 
     const position = getCadTextAnchorPosition(ent);
     const rotation = ((ent.rotation || 0) * Math.PI) / 180;
@@ -1320,20 +1316,20 @@ class SceneBaker {
     const cos = Math.cos(layout.rotation);
     const sin = Math.sin(layout.rotation);
     const origin = layout.origin;
-    const applyXf = (lx: number, ly: number): [number, number] => ([
-      origin.x + lx * cos - ly * sin,
-      origin.y + lx * sin + ly * cos,
-    ]);
-
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     const fillStyle = { color: hexToRgba(color) };
 
     for (const line of layout.lines) {
       const v = line.vertices;
       if (v.length < 6) continue;
-      const worldVerts = new Float32Array(v.length);
+      // 每行独立统计包围盒并独立路由：此前跨行累积的包围盒会让后续行落入其它分块，
+      // 而分块包围盒只更新了最后一块——视口剔除随即把那块文字整体丢掉
+      // （表现为"远处看不到文字、放大到那个位置才出现"）。
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      const worldVerts = new Float64Array(v.length);
       for (let i = 0; i < v.length; i += 2) {
-        const [wx, wy] = applyXf(line.localX + v[i], line.localY + v[i + 1]);
+        const lx = line.localX + v[i], ly = line.localY + v[i + 1];
+        const wx = origin.x + lx * cos - ly * sin;
+        const wy = origin.y + lx * sin + ly * cos;
         worldVerts[i] = wx;
         worldVerts[i + 1] = wy;
         if (wx < minX) minX = wx;
@@ -1358,13 +1354,9 @@ class SceneBaker {
         this.stats.fillVertices += appended;
         this.recordEntityOp(baker, 'fill', vertexStart, appended);
       }
-    }
-
-    if (this.currentBaker && Number.isFinite(minX)) {
-      this.baker.updateBounds(minX, minY, maxX, maxY);
+      baker.updateBounds(minX, minY, maxX, maxY);
     }
   }
-
   /**
    * 字形世界缩放系数：CAD 字高 H 表示「大写字高」，
    * 系统字体按 em 光栅化（capHeight ≈ 0.7em），必须换算才能得到正确视觉字高。

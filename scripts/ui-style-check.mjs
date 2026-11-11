@@ -24,7 +24,10 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const BASE_URL = process.env.DXFVIEWER_URL || 'http://localhost:3001';
 const UPDATE_SHOTS = process.argv.includes('--update-screenshots');
 const SHOT_DIR = path.join(ROOT, 'artifacts', 'ui-style');
-const SAMPLE = path.join(ROOT, 'samples', 'special-symbols-full-test.dxf');
+// 图纸一律运行时生成（*.dxf 不入库），不依赖任何本地样例文件。
+const { materializeFixtures } = await import('./fixtures.mjs');
+const fixtures = await materializeFixtures('dxfviewer-ui-style-');
+const SAMPLE = fixtures.files['special-codes.dxf'];
 
 const failures = [];
 const check = (label, actual, expected) => {
@@ -176,7 +179,7 @@ if (UPDATE_SHOTS) {
 /* ── 1.5 回归：切换 / 右键文件标签不得重复解析（不刷新重载） ── */
 const readsBeforeSwitch = await page.evaluate(() => window.__fileReads || 0);
 const tabCount = await page.evaluate(() => Array.from(document.querySelectorAll('.tab-item')).length);
-const secondSample = path.join(ROOT, 'samples', 'stress-20k.dxf');
+const secondSample = fixtures.files['text-mtext.dxf'];
 if (tabCount === 1 && fs.existsSync(secondSample)) {
   // 打开第二个文件形成多标签页
   await page.setInputFiles('.toolbar .hidden-file-input', secondSample).catch(() => {});
@@ -425,6 +428,7 @@ if (pageErrors.length) pageErrors.forEach(e => console.log(`    ${e}`));
 check('控制台无错误', consoleErrors, (v) => v.length === 0);
 if (consoleErrors.length) consoleErrors.forEach(e => console.log(`    ${e}`));
 
+await fixtures.cleanup();
 await browser.close();
 
 console.log('');

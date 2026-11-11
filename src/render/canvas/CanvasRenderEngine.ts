@@ -16,6 +16,7 @@
 import type { AnyEntity, CanvasTheme } from '@/types';
 import { CANVAS_THEME_COLORS } from '@/config/viewerConfig';
 import { createSceneIndex, type SceneIndex } from '@/render/picking/sceneIndex';
+import { SCENE_INDEX_ASYNC_THRESHOLD } from '@/render/picking/sceneIndexBuilder';
 import { buildPathCache, PATH_CACHE_MIN_COVERAGE, type PathCache } from './pathCache';
 import { renderEntitiesToCanvas } from './canvasRenderService';
 import type {
@@ -50,10 +51,27 @@ export class CanvasRenderEngine implements InteractiveRenderEngine {
 
   setScene(options: EngineSceneOptions): void {
     this.sceneOptions = options;
-    // 场景索引：拾取/剔除共用；大图异步建树由查看器层负责，这里同步兜底。
-    this.sceneIndex = options.entities.length > 0 ? createSceneIndex(options.entities) : null;
+    // 场景索引：拾取/剔除共用。优先级：
+    // 1. 宿主随场景传入的现成索引（ViewerCanvas 小图纸同步建好后直接给）；
+    // 2. 大图纸（≥ 异步阈值）不在主线程建树——宿主正在 Worker 里建，
+    //    就绪后通过 setSceneIndex 注入。此前这里无条件同步建一遍，
+    //    10 万实体要多花约 170ms 并阻塞主线程；
+    // 3. 其余情况同步兜底。
+    if (options.sceneIndex !== undefined) {
+      this.sceneIndex = options.sceneIndex;
+    } else if (options.entities.length > 0 && options.entities.length < SCENE_INDEX_ASYNC_THRESHOLD) {
+      this.sceneIndex = createSceneIndex(options.entities);
+    } else {
+      this.sceneIndex = null;
+    }
     this.pathCacheSource = null; // 强制重建
     this.pathCache = null;
+  }
+
+  /** 复用宿主已建好的索引（大图纸由 Worker 异步产出），避免重复建树。 */
+  setSceneIndex(index: SceneIndex | null): void {
+    if (this.sceneIndex === index) return;
+    this.sceneIndex = index;
   }
 
   setTheme(theme: CanvasTheme, background: string): void {

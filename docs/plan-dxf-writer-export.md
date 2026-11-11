@@ -1,4 +1,9 @@
-# 演进计划：DXF 读写 + 渲染 + 导出（PNG / PDF）
+# 演进记录：DXF 读写 + 渲染 + 导出（PNG / PDF）
+
+> **状态：已交付，本文为历史演进记录。**
+> 里程碑 M0–M8 对应的能力均已落地并纳入 `npm run check` 回归；
+> 下面的任务分解与排期保留下来，便于追溯设计取舍与当初的决策依据。
+> 面向使用者的说明请见 README。
 
 > 状态：**已完成**（2026-10-30）—— M0–M9 全部交付并通过自动化校验
 > （`npm run check`：夹具解析 7/7、渲染+PNG/PDF/SVG/矢量PDF 冒烟 7/7、读写往返 7/7 + 构建器 + 保真往返、句柄与引用完整性、矢量内容流断言、Flate 解压验证通过）。
@@ -66,7 +71,7 @@
 ### M0 — 准备（1 人日）
 
 - [x] **M0-1 决策确认**：D1/D2/D3 已定（见 §8），开工前无需再等；D4/D5/D6 见 §8「待定」
-- [ ] **M0-2 夹具收集**：`samples/dxf/` 放置 6–8 个代表性文件
+- [x] **M0-2 夹具收集**：改为**运行时生成**（`scripts/fixtures.mjs`），图纸文件不入库
   - `line-circle.dxf`（最小冒烟）
   - `polyline-bulge.dxf`（含凸度圆弧段）
   - `spline.dxf`（控制点 + 节点 + 权重）
@@ -394,7 +399,7 @@ import { DxfViewer, DxfWorkspace } from '@zhangly1403/dxfviewer';
 
 | 脚本 | 用途 |
 |---|---|
-| `scripts/roundtrip.mjs` | `samples/dxf/*` 逐个 parse→write→parse，输出几何比对报告 |
+| `scripts/roundtrip.mjs` | 运行时生成的夹具逐个 parse→write→parse，输出几何比对报告 |
 | `scripts/check-group-codes.mjs` | 组码注册表自洽性 |
 | `scripts/export-smoke.mjs` | PNG/PDF 导出后校验文件头、页数、尺寸（不渲染校验） |
 

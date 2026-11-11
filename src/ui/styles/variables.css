@@ -104,6 +104,9 @@
   --side-left-w: clamp(250px, 22vw, 320px);
   --side-right-w: clamp(320px, 27vw, 440px);
   --canvas-bg: var(--bg-viewport);
+  /* 极简预览组件（DxfPreview）画布底色：由组件按 theme 属性写入（白底/黑底），
+     此处只提供与默认主题一致的兜底值。 */
+  --dxf-preview-bg: var(--bg-viewport);
 
   /* ── 动效 ── */
   --t-fast: 0.12s ease;

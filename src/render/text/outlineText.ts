@@ -224,7 +224,92 @@ export function hasOutlineFont(): boolean {
   return activeFont !== null;
 }
 
-/** 获取字形网格（带缓存，支持后备字体自动回退） */
+// ─────────────────────────────────────────────────────────────────────────────
+// 合成字形：主/后备字体都缺字时，用已有字形拼装，避免显示 .notdef 方框
+// ─────────────────────────────────────────────────────────────────────────────
+
+const SUB_SCRIPT_BASE: Record<string, string> = {
+  '₀': '0', '₁': '1', '₂': '2', '₃': '3', '₄': '4', '₅': '5', '₆': '6', '₇': '7', '₈': '8', '₉': '9',
+  '₊': '+', '₋': '-', '₌': '=', '₍': '(', '₎': ')',
+  'ₐ': 'a', 'ₑ': 'e', 'ₕ': 'h', 'ᵢ': 'i', 'ⱼ': 'j', 'ₖ': 'k', 'ₗ': 'l', 'ₘ': 'm', 'ₙ': 'n',
+  'ₒ': 'o', 'ₚ': 'p', 'ᵣ': 'r', 'ₛ': 's', 'ₜ': 't', 'ᵤ': 'u', 'ᵥ': 'v', 'ₓ': 'x',
+};
+const SUPER_SCRIPT_BASE: Record<string, string> = {
+  '⁰': '0', '¹': '1', '²': '2', '³': '3', '⁴': '4', '⁵': '5', '⁶': '6', '⁷': '7', '⁸': '8', '⁹': '9',
+  '⁺': '+', '⁻': '-', '⁼': '=', '⁽': '(', '⁾': ')', 'ⁿ': 'n', 'ⁱ': 'i',
+};
+/** 字形无法直接显示时的等价字符（直径符号等）。 */
+const CHAR_ALIASES: Record<string, string> = { '\u2300': '\u00D8', '\u2205': '\u00D8' };
+
+/** 带圈数字的数字内容：⓪=0，⑪~⑳=11~20，⓿ 等不处理。 */
+const circledNumberText = (ch: string): string | null => {
+  const code = ch.codePointAt(0) ?? 0;
+  if (code === 0x24EA) return '0';
+  if (code >= 0x2460 && code <= 0x2473) return String(code - 0x2460 + 1);
+  return null;
+};
+
+/** 把已有网格按比例缩放并平移后追加到输出。 */
+const appendScaled = (out: number[], mesh: GlyphMesh, scale: number, dx: number, dy: number): void => {
+  const v = mesh.vertices;
+  for (let i = 0; i < v.length; i += 2) out.push(v[i] * scale + dx, v[i + 1] * scale + dy);
+};
+
+/** 圆环三角网格（半径、线宽均为字体单位）。 */
+const appendRing = (out: number[], cx: number, cy: number, rOuter: number, rInner: number): void => {
+  const n = 40;
+  for (let i = 0; i < n; i++) {
+    const a0 = (i / n) * Math.PI * 2;
+    const a1 = ((i + 1) / n) * Math.PI * 2;
+    const c0 = Math.cos(a0), s0 = Math.sin(a0), c1 = Math.cos(a1), s1 = Math.sin(a1);
+    const ox0 = cx + c0 * rOuter, oy0 = cy + s0 * rOuter, ox1 = cx + c1 * rOuter, oy1 = cy + s1 * rOuter;
+    const ix0 = cx + c0 * rInner, iy0 = cy + s0 * rInner, ix1 = cx + c1 * rInner, iy1 = cy + s1 * rInner;
+    out.push(ox0, oy0, ox1, oy1, ix1, iy1, ox0, oy0, ix1, iy1, ix0, iy0);
+  }
+};
+
+const hasRealGlyph = (ch: string): boolean =>
+  !!activeFont && (activeFont.charToGlyph(ch).index !== 0 || (!!fallbackFont && fallbackFont.charToGlyph(ch).index !== 0));
+
+const synthesizeGlyph = (char: string): GlyphMesh | null => {
+  const alias = CHAR_ALIASES[char];
+  if (alias && alias !== char && hasRealGlyph(alias)) return getGlyphMesh(alias);
+
+  const sub = SUB_SCRIPT_BASE[char];
+  const sup = SUPER_SCRIPT_BASE[char];
+  const base = sub ?? sup;
+  if (base && hasRealGlyph(base)) {
+    const mesh = getGlyphMesh(base);
+    if (!mesh) return null;
+    const scale = 0.62;
+    const out: number[] = [];
+    // 上标：基线抬到约 0.45 倍大写字高；下标：基线下沉约 0.2 倍字高。
+    appendScaled(out, mesh, scale, 0, sup ? fontCapHeight * 0.45 : -fontUnitsPerEm * 0.2);
+    return { vertices: new Float32Array(out), advance: mesh.advance * scale };
+  }
+
+  const digits = circledNumberText(char);
+  if (digits !== null) {
+    const out: number[] = [];
+    const advance = fontUnitsPerEm * 0.95;
+    const cx = advance / 2;
+    const cy = fontCapHeight / 2;
+    const rOuter = Math.max(fontCapHeight * 0.58, fontUnitsPerEm * 0.4);
+    appendRing(out, cx, cy, rOuter, rOuter - fontUnitsPerEm * 0.045);
+    const scale = digits.length > 1 ? 0.42 : 0.55;
+    const metas = Array.from(digits).map(d => getGlyphMesh(d)).filter((m): m is GlyphMesh => !!m);
+    const total = metas.reduce((s, m) => s + m.advance * scale, 0);
+    let x = cx - total / 2;
+    for (const m of metas) {
+      appendScaled(out, m, scale, x, cy - fontCapHeight * scale / 2);
+      x += m.advance * scale;
+    }
+    return { vertices: new Float32Array(out), advance };
+  }
+  return null;
+};
+
+/** 获取字形网格（带缓存，支持后备字体自动回退 + 缺字合成） */
 export function getGlyphMesh(char: string): GlyphMesh | null {
   if (!activeFont) return null;
   const cached = glyphCache.get(char);
@@ -242,6 +327,16 @@ export function getGlyphMesh(char: string): GlyphMesh | null {
       font = fallbackFont;
       upem = fallbackFont.unitsPerEm || 1000;
     }
+  }
+
+  // 两个字体都没有：合成（上下标/带圈数字/直径符号），仍不行则留空——
+  // 绝不绘制 .notdef 方框。
+  if (!glyph || glyph.index === 0) {
+    glyphCache.set(char, { vertices: new Float32Array(0), advance: fontUnitsPerEm * 0.5 }); // 递归保护
+    const synthetic = synthesizeGlyph(char);
+    const mesh: GlyphMesh = synthetic ?? { vertices: new Float32Array(0), advance: fontUnitsPerEm * 0.5 };
+    glyphCache.set(char, mesh);
+    return mesh;
   }
 
   // 步进宽度归一化到主字体的 unitsPerEm 基准

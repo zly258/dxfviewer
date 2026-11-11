@@ -2,66 +2,249 @@
 
 **Language:** [English](README.md) | [中文](README_zh.md)
 
-Live demo: [https://zly258.github.io/dxfviewer/](https://zly258.github.io/dxfviewer/)
+A browser DXF drawing viewer with **two interactive render engines — WebGL 2D (GPU accelerated) and
+Canvas 2D** — switchable at runtime. Both stay aligned on text layout, layers, highlighting and the
+drawing coordinate system. It focuses on parsing and browsing; CAD editing is not provided.
+
+Three levels of packaging:
+
+| Component | Scope | Use when |
+| --- | --- | --- |
+| `DxfPreview` | One component, one canvas, no chrome | Embedding into another library; preview only |
+| `DxfViewer` | Full viewer (header + toolbar + panels + status bar) | Standalone page; needs layers/properties/search |
+| `DxfWorkspace` | Multi-tab workspace (file tabs, drag to open) | Browsing several drawings at once |
 
 ---
 
-DXF Viewer is a React component for viewing DXF drawings in the browser. It ships **two interactive render engines — WebGL 2D (GPU accelerated) and Canvas 2D** — switchable at runtime from the View menu, and both stay pixel-aligned on text layout, layers, highlighting and the drawing coordinate system.
+## 1. Features
 
-It provides a core viewer (`DxfViewer`), a multi-tab workspace (`DxfWorkspace`), and an example workspace. The focus is parsing, viewing, layer visibility, text search and smooth browsing of **very large drawings**. CAD editing is not provided.
+### Rendering
 
-## Highlights
+- **WebGL 2D GPU rendering** — geometry is baked into spatial chunks uploaded to GPU buffers;
+  pan/zoom only updates the transform matrix, never rebuilds geometry.
+- **Canvas 2D engine** — the same scene through the browser's native 2D pipeline, for comparison and
+  as a fallback when WebGL is unavailable.
+- **Pure geometry text** — TrueType / OpenType glyph outlines (opentype.js) are triangulated into the
+  fill pipeline, so text stays crisp at any zoom with no bitmap blur; an SDF glyph atlas path is also
+  available and configurable.
+- **Pixel-aligned engines** — same scene input, same picking (CPU BVH), same layer/visibility model.
 
-- **WebGL 2D GPU rendering** — geometry is batched into GPU buffers; text is baked from TrueType / OpenType glyph outlines (opentype.js + earcut) into the same fill pipeline, so it stays crisp at any zoom level with no bitmap blur.
-- **Canvas 2D engine** — the same scene through the browser's native 2D pipeline, useful for comparison and as a fallback when WebGL is unavailable.
-- **Built for very large drawings** — scene indexing inside a Web Worker, allocation-free line scanning in the parser, per-layout caching, LOD culling of sub-pixel entities, and snapshot pan/zoom that re-renders precisely once interaction settles.
-- **Model / Layout spaces** — multiple paper spaces with content can be switched like in CAD; empty paper spaces are hidden.
-- **Layer tree, properties panel, context menu** — hide selected, isolate selected, turn a layer off, show all.
-- **Text search** — search and navigate text in the current space, with compact inset highlighting.
+### Drawing capabilities
+
+- **Model space / paper space** — paper spaces with content are switchable, empty ones are hidden;
+  paper-space viewport projection is clipped to the viewport frame.
+- **Layer tree / properties panel / context menu** — hide selected, isolate selected, turn a layer off,
+  show all.
+- **Text search** — search and navigate text in the current space with compact inset highlighting.
 - **View history** — previous view, next view, fit view.
-- **Themes** — system / light / dark UI themes, plus original and monochrome drawing color modes.
-- **Desktop and mobile** — desktop header + toolbar layout, and a compact right-side toolbar on small screens.
+- **Themes and colour modes** — system / light / dark UI themes, original and monochrome drawing colours.
+- **Desktop and mobile** — header + toolbar on desktop, compact right-side toolbar on small screens.
 
-## Supported entities
+### Text and special symbols
 
-Line, ray, xline, point, circle, arc, ellipse, polyline, spline, hatch, solid, 3D face, text, mtext, attribute / attdef, block reference, dimension, leader, multileader, table, image, wipeout, viewport and more.
+- AutoCAD standard escape codes: `%%c` (Ø), `%%d` (°), `%%p` (±), `%%%` (%), `%%u` underline, `\U+XXXX`.
+- TSSD extended codes: `%%130`–`%%138` rebar grades, `%%140/%%141` superscript, `%%142/%%143` subscript,
+  `%%146/%%147` circled numerals, `%%148`–`%%151` axis bubbles, `%%144/%%145` title emphasis.
+- MTEXT: automatic column wrapping (avoiding forbidden line-start punctuation), all nine attachment
+  points, line-spacing factor (group code 44), inline width factor `\W…;`, stacked fractions `\S3/4;`.
+- Single-line text: Fit (`hAlign=5`) stretching and Aligned (`hAlign=3`) uniform scaling;
+  baseline / bottom / middle / top vertical alignment.
+- **Missing-glyph synthesis** — when the font lacks a glyph, superscripts/subscripts and circled
+  numerals (⑪–⑳ etc.) are assembled from existing glyphs, and diameter symbols fall back to `Ø`.
+  A `.notdef` box is never drawn.
 
-### AutoCAD / TSSD escape codes
+### Large drawing performance
 
-- `%%130`–`%%138` rebar grade symbols (`Ø`, `Φ`)
-- `%%140…%%141` superscript and `%%142…%%143` subscript pairs (`kN/m²`, `m³`, `LₐE`)
-- `%%146…%%147` circled numerals (`①`, `②`, `⑩`)
-- `%%148…%%151` structural axis bubbles (`(3C)`)
-- Base control codes `%%c` (Ø), `%%d` (°), `%%p` (±), `%%%` (%)
-- Title emphasis markers such as `%%144` are sanitized so no stray control bytes reach the canvas
+Measured on a synthetic 100 000-entity drawing (same machine, consistent between `npm run bench` and
+browser measurements):
 
-### Text layout
+| Metric | Value |
+| --- | --- |
+| Parse (Worker, 8.6 MB) | ≈ 0.9 s |
+| Scene baking (WebGL chunks) | ≈ 0.55 s |
+| First frame visible (incl. cross-thread + index) | ≈ 2.3 s |
+| Pan interaction | ≈ 16.7 ms/frame |
 
-- MTEXT automatic column wrapping that avoids forbidden line-start punctuation
-- All nine attachment points with native baseline offsets and first-line descent
-- MTEXT line-spacing factor (group code 44) and inline width factor `\W…;`
-- Single-line text Fit (`hAlign=5`) and Aligned (`hAlign=3`)
-- Vertical alignment: baseline, bottom, middle, top
+Key mechanisms: allocation-free line scanning in the parser, BVH scene index built in a Worker,
+chunk-level viewport culling, sub-pixel entity LOD culling, per-instruction text height culling, and
+snapshot-style interaction (one precise redraw once interaction settles).
 
-## Installation
+---
 
-```bash
-npm install @zhangly1403/dxfviewer
+## 2. Supported entities
+
+Line, ray, xline, point, circle, arc, ellipse, polyline, mline, spline, hatch, solid, 3D face, text,
+mtext, attribute / attdef, block reference, dimension, leader, multileader, table, image, wipeout,
+viewport.
+
+Write coverage (`writeDxf`): LINE / CIRCLE / ARC / ELLIPSE / LWPOLYLINE / POLYLINE / SPLINE / TEXT /
+MTEXT / ATTRIB / SOLID / 3DFACE / HATCH / INSERT / DIMENSION / RAY / XLINE / LEADER / SHAPE.
+
+---
+
+## 3. Project structure
+
+```text
+src/
+├── ui/             UI layer (React)
+│   ├── components/
+│   │   ├── preview/    Minimal preview component DxfPreview (single canvas, no chrome)
+│   │   ├── viewer/     Full viewer (header / toolbar / layers / properties / search)
+│   │   ├── workspace/  Multi-tab workspace
+│   │   └── common/     Icons, overlays, status bars, about dialog
+│   ├── hooks/      View history / layer visibility / responsive
+│   ├── i18n.ts     English and Chinese
+│   └── styles/     Design tokens and component styles (single source of truth)
+├── io/             I/O layer
+│   ├── parser/     DXF parsing (ASCII / binary, sections, entities)
+│   ├── writer/     DXF writing (reconstructive + preserveRaw fidelity mode)
+│   ├── dxf/        Group code tables
+│   └── loader/     Parse worker + useDxfLoader + worker factory
+├── render/         Render layer
+│   ├── engine.ts   InteractiveRenderEngine interface (dual-engine contract)
+│   ├── webgl/      WebGL2 engine (chunked GPU scene + shaders)
+│   ├── canvas/     Canvas 2D engine (batching + Path2D cache + LOD)
+│   ├── scene/      Entity → chunked GPU mesh baking
+│   ├── picking/    CPU picking (flat BVH, hit testing, worker)
+│   ├── text/       Outline triangulation / SDF atlas / SHX stroke fonts / layout cache
+│   ├── vector/     Vector scene writer (SVG / PDF export backend)
+│   └── viewportFitting.ts  Fit-to-box math shared by interaction and export
+├── core/           Domain algorithms: geometry, curve sampling, text layout, extents
+├── export/         Export: PNG (WebGL raster), SVG / PDF (vector)
+├── config/         Constants and viewer config (render / text / interaction / zoom / LOD)
+├── types/          Public data model
+└── utils/          Colour, line style, font, search and text helpers
+
+src/index.ts        Main entry (React components + public types)
+src/preview.ts      Minimal preview entry (no full viewer, smallest footprint)
+src/parser.ts       Parser entry (no React, no CSS)
+src/writer.ts       Writer entry (no React, no CSS)
+src/render.ts       Render entry (no React, no CSS)
+src/export.ts       Export entry (no React, no CSS)
+
+scripts/            Self-check scripts (fixtures, parse/render/visibility/round-trip/symbol checks,
+                    benchmark, browser measurements)
+samples/            Self-check output directory (generated at runtime, not committed)
+docs/               Architecture and design documents
+dxfviewer-example/  Example workspace (full viewer page + minimal preview page)
 ```
 
-React and React DOM are peer dependencies and must be installed by the host project:
+---
+
+## 4. Running the project
+
+### Requirements
+
+- Node.js ≥ 20 (developed on 22.9)
+- npm ≥ 10 (uses npm workspaces)
+- A WebGL2-capable browser (recent Chrome / Edge / Firefox / Safari)
+
+### Install dependencies
 
 ```bash
-npm install react react-dom
+npm ci
 ```
 
-## Import styles
+### Development
 
-```ts
+```bash
+npm run dev          # Example dev server (default http://localhost:3001)
+npm run build:lib    # Build the library (with .d.ts and style.css)
+npm run build:all    # Build library + example
+npm run typecheck    # tsc --noEmit
+```
+
+The example project serves two pages:
+
+- `/index.html` — full workspace (`DxfWorkspace`)
+- `/preview.html` — minimal single-file preview (`DxfPreview`, one component and one canvas)
+
+### Self-checks
+
+```bash
+npm run check              # everything below, including the build
+npm run check:fixtures     # Parse generated fixtures (paper space, LEADER/SHAPE, …)
+npm run check:render       # Headless render + PNG/PDF structure checks
+npm run check:accuracy     # Render accuracy (coordinates, alignment, grid)
+npm run check:symbols      # Special-symbol decoding + missing-glyph synthesis
+npm run check:visibility   # Hide/isolate render equivalence + BVH consistency
+npm run check:roundtrip    # parse → writeDxf → parse geometry comparison
+npm run check:ui           # Static UI audit (tokens, contrast, undefined variables)
+```
+
+Browser measurements (start `npm run dev` first):
+
+```bash
+npm run check:ui-style     # Size ladder / three-column shell / themes / mobile
+npm run check:preview      # Minimal preview contract (single canvas, zoom, theme)
+npm run check:large        # 100k-entity first frame, far-view visibility, interaction frames
+```
+
+Benchmarks and batch runs:
+
+```bash
+BENCH_ITER=5 node scripts/bench-parse.mjs 100000   # parse/clone/index/bake/render breakdown
+npm run test:real -- <drawing directory>           # Full pipeline over every drawing (read-only)
+npm run compare:engines -- <drawing directory>     # Pixel-level dual-engine diff
+```
+
+---
+
+## 5. Usage
+
+### 1. Minimal preview: `DxfPreview`
+
+Use it when you only need a canvas and a preview. It fills its parent container and renders no
+toolbar, panel or status bar.
+
+```tsx
+import { DxfPreview } from '@zhangly1403/dxfviewer';
 import '@zhangly1403/dxfviewer/style.css';
+
+export default function Page() {
+  return (
+    <div style={{ width: '100vw', height: '100vh' }}>
+      <DxfPreview src="/files/drawing" />
+    </div>
+  );
+}
 ```
 
-## Use the core viewer
+`src` accepts four source kinds and reloads automatically when it changes:
+
+```tsx
+<DxfPreview src="https://example.com/a" />          {/* URL: fetched, then parsed in a Worker */}
+<DxfPreview src={file} />                            {/* File / Blob from a picker or drag & drop */}
+<DxfPreview src={arrayBuffer} />                     {/* Already-downloaded raw bytes */}
+<DxfPreview src={parsedDxfData} />                   {/* Parsed DxfData: no parsing overhead */}
+```
+
+Props:
+
+| Prop | Type | Description |
+| --- | --- | --- |
+| `src` | `string \| File \| Blob \| ArrayBuffer \| DxfData` | Drawing source |
+| `theme` | `'light' \| 'dark'` | Canvas background (white / black), default `light` |
+| `colorMode` | `'original' \| 'monochrome'` | Drawing colour mode, default original |
+| `engine` | `'webgl' \| 'canvas'` | Render engine; falls back automatically without WebGL2 |
+| `layout` | `string` | Layout to display (defaults to model space) |
+| `fontUrl` / `fallbackFontUrl` | `string` | Outline font and fallback font URLs (optional) |
+| `interactive` | `boolean` | Allow wheel zoom / drag pan, default `true` |
+| `loadingFallback` | `ReactNode` | Loading placeholder (pass `null` to disable) |
+| `renderError` | `(e: Error) => ReactNode` | Custom error rendering |
+| `onLoad` / `onError` | callbacks | Load completion / failure |
+
+Imperative handle (beyond wheel zoom, drag pan and double-click fit):
+
+```tsx
+const ref = useRef<DxfPreviewHandle>(null);
+<DxfPreview ref={ref} src={file} />;
+ref.current?.fit();                  // fit view
+ref.current?.getViewPort();          // { targetX, targetY, zoom }
+ref.current?.setViewPort(vp);        // set the viewport directly
+```
+
+### 2. Full viewer: `DxfViewer`
 
 ```tsx
 import { DxfViewer } from '@zhangly1403/dxfviewer';
@@ -70,13 +253,16 @@ import '@zhangly1403/dxfviewer/style.css';
 export default function Page() {
   return (
     <div style={{ width: '100vw', height: '100vh' }}>
-      <DxfViewer initFile="/demo.dxf" fileName="demo.dxf" />
+      <DxfViewer initFile="/files/drawing" fileName="drawing" />
     </div>
   );
 }
 ```
 
-## Use the multi-tab workspace
+Common props: `initFile`, `fileName`, `active`, `showOpenMenu`, `uiTheme`, `drawingColorMode`,
+`language`, `onLoad`, `onError`, `onOpenFiles`, `onOpenFailed`, `tabStrip`.
+
+### 3. Multi-tab workspace: `DxfWorkspace`
 
 ```tsx
 import { DxfWorkspace } from '@zhangly1403/dxfviewer';
@@ -87,154 +273,120 @@ export default function App() {
 }
 ```
 
-## Main exports
+### 4. React-free subpath entries
 
-| Name | Description |
+| Entry | Contents |
 | --- | --- |
-| `DxfViewer` | Core DXF viewer component. |
-| `DxfWorkspace` | Full workspace with tabs, file opening and viewer toolbar. |
-| `parseDxf` | DXF text parser. |
-| `DxfViewerProps` | Props type for `DxfViewer`. |
-| `DxfWorkspaceProps` | Props type for `DxfWorkspace`. |
-| `DxfTabSource` | Initial file source type for multi-tab usage. |
-
-For parsing without React, viewer UI or CSS, use the lightweight entry:
+| `@zhangly1403/dxfviewer/preview` | Minimal preview component + parsing + font registration |
+| `@zhangly1403/dxfviewer/parser` | DXF parsing, entity enums, group-code helpers, escape decoding |
+| `@zhangly1403/dxfviewer/writer` | DXF writing, document builder |
+| `@zhangly1403/dxfviewer/render` | WebGL engine, scene baking, vector writer, picking, fonts |
+| `@zhangly1403/dxfviewer/export` | PNG / SVG / raster PDF / vector PDF |
 
 ```ts
+// Parse only, no UI: usable on the server or inside a Worker
 import { parseDxf, EntityType } from '@zhangly1403/dxfviewer/parser';
+const data = await parseDxf(text, undefined, { yieldIntervalMs: 0 });
 ```
 
-The existing two-argument `parseDxf` calls keep working; an optional third argument configures cancellation, progress throttling and event-loop yielding.
-
-## Write DXF and export PNG / PDF
-
-Three lightweight subpath entries ship without React or CSS:
-
 ```ts
-// 1) Write DXF: rebuild a spec-compliant file from DxfData (AC1015 default, AC1009/R12 fallback)
-import { writeDxf, writeDxfBlob } from '@zhangly1403/dxfviewer/writer';
-const { content, skipped } = writeDxf(data, { version: 'AC1015' });
-
-// 2) Headless rendering: React-free, usable inside a Web Worker
+// Headless rendering: React-free, works inside a Worker
 import { renderSceneToCanvas } from '@zhangly1403/dxfviewer/render';
 
-// 3) Export: PNG / raster PDF / vector PDF / vector SVG (zero runtime dependencies)
+// Export: PNG / raster PDF / vector PDF / vector SVG (zero runtime dependencies)
 import { exportPng, exportPdf, exportPdfVector, exportSvg } from '@zhangly1403/dxfviewer/export';
 const png = await exportPng(data, { width: 1920, height: 1080, background: 'white' });
-const pdf = await exportPdf(data, { paperSize: 'A3', orientation: 'landscape', marginMm: 10, dpi: 300 });
-const vector = await exportPdfVector(data, { paperSize: 'A3', title: 'Drawing' }); // fully vector geometry
-const svg = exportSvg(data, { width: 800, height: 600 }); // synchronous, plain text, infinitely scalable
+const svg = exportSvg(data, { width: 800, height: 600 });
 ```
 
-`writeDxf` performs **reconstructive writing**: it regenerates the file from `DxfData`, so information the parser does not model (XDATA, unrecognized tables/objects, extension dictionaries) is not preserved. Entities that cannot be written or need degradation are reported through `skipped`. The default output is `AC1015 (AutoCAD 2000)`; pass `version: 'AC1009'` for R12, where LWPOLYLINE→POLYLINE, MTEXT→TEXT, HATCH→boundary outline (common patterns emit definition lines from a built-in `acad.pat` subset), and ELLIPSE/SPLINE→sampled polylines.
-
-For "open → modify → save without losing information", use a faithful round-trip: enable `preserveRaw` while parsing to capture each entity's source group codes, then enable it while writing to replay them verbatim (handles are still reallocated to stay unique; untouched entities remain fully faithful):
+### 5. Writing DXF
 
 ```ts
-import { parseDxf } from '@zhangly1403/dxfviewer/parser';
-import { writeDxf } from '@zhangly1403/dxfviewer/writer';
+import { writeDxf, createDocument } from '@zhangly1403/dxfviewer/writer';
 
-const data = await parseDxf(text, undefined, { preserveRaw: true }); // ~+40% memory
-// ... modify data freely; untouched entities keep their raw snapshots
-const { content } = writeDxf(data, { preserveRaw: true });
-```
+// Reconstructive writing: regenerates a spec-compliant file (AC1015 default, AC1009/R12 fallback)
+const { content, skipped } = writeDxf(data, { version: 'AC1015' });
 
-You can also generate a drawing from scratch with the builder, without reading any file:
+// Faithful round-trip: capture raw group codes while parsing, replay them verbatim while writing
+const data2 = await parseDxf(text, undefined, { preserveRaw: true });
+const out = writeDxf(data2, { preserveRaw: true });
 
-```ts
-import { createDocument } from '@zhangly1403/dxfviewer/writer';
-
-const doc = createDocument({ version: 'AC1015', units: 4 }); // 4 = mm
+// Build a drawing from scratch
+const doc = createDocument({ version: 'AC1015', units: 4 });
 doc.addLayer({ name: 'WALL', color: 1 })
    .addLine({ layer: 'WALL', start: { x: 0, y: 0 }, end: { x: 1000, y: 0 } })
    .addCircle({ center: { x: 500, y: 500 }, radius: 200 })
-   .addText({ position: { x: 0, y: 20 }, height: 50, value: 'Title' })
-   .addBlock({ name: 'BOLT', basePoint: { x: 0, y: 0 }, build: b => {
-     b.addCircle({ center: { x: 0, y: 0 }, radius: 5 });
-   } })
-   .addInsert({ blockName: 'BOLT', position: { x: 100, y: 100 }, rotation: 45 });
-
-const dxf = doc.toDxfString();   // { content, skipped }
-const data = doc.toDxfData();    // feed directly to <DxfViewer> for preview
+   .addText({ position: { x: 0, y: 20 }, height: 50, value: 'Title' });
+const dxf = doc.toDxfString();
 ```
 
-## CLI conversion (Node)
+`writeDxf` is **reconstructive**: information the parser does not model (XDATA, unrecognised
+tables/objects, extension dictionaries) is not preserved, and entities that cannot be written or need
+degradation are reported through `skipped`. Use `preserveRaw` for "open → modify → save without
+losing information".
 
-The library ships a zero-dependency CLI built on the `./parser` `./render` `./export` `./writer` subpath entries (no browser required):
+### 6. CLI conversion
 
 ```bash
-npm run convert -- <input.dxf> <output.(svg|pdf|dxf)> [options]
+npm run convert -- <input> <output.(svg|pdf|dxf)> [options]
 
 # Examples
-npm run convert -- drawing.dxf drawing.svg --width 1920 --height 1080
-npm run convert -- drawing.dxf drawing.pdf --paper A3 --landscape
-npm run convert -- drawing.dxf drawing.dxf --raw        # faithful save
-npm run convert -- ./fixtures ./out --format .svg       # batch-convert a directory
-npm run convert -- drawing.dxf x.svg --list-layouts     # list layouts
+npm run convert -- <input> out.svg --width 1920 --height 1080
+npm run convert -- <input> out.pdf --paper A3 --landscape
+npm run convert -- <input> out.dxf --raw          # faithful save
+npm run convert -- <dir> <outdir> --format .svg   # batch-convert a directory
+npm run convert -- <input> out.svg --list-layouts # list layouts
 ```
 
-Note: Node-side PNG requires a native Canvas implementation (e.g. `skia-canvas`) and is not provided by default — use `exportPng` in the browser, or the CLI's SVG/PDF which cover most cases. In Node the PDF geometry is fully vector; the text layer is omitted automatically (the browser build includes it).
+Node-side PNG needs a native Canvas implementation and is not provided by default — use `exportPng`
+in the browser, or the CLI's SVG / PDF (in Node the PDF geometry is fully vector and the text layer is
+omitted automatically).
 
-## Scripts
+### 7. Fonts
 
-```bash
-npm ci
-npm run typecheck        # tsc --noEmit
-npm run build            # Build the library (with .d.ts)
-npm run check            # Build + fixture parsing + render/export smoke + hide/isolate regression + read/write round-trip + UI audit
-npm run check:fixtures   # Parse runtime-generated fixtures (incl. paper space and LEADER/SHAPE)
-npm run check:render     # Headless render + PNG/PDF structure and size checks
-npm run check:visibility # Hide/isolate render equivalence + flat BVH vs reference consistency
-npm run check:roundtrip  # parse → writeDxf → parse per-entity geometry comparison
-npm run check:ui         # Static UI audit (tokens, raw colors, disabled opacity, contrast, z-index, font sizes, radii)
-npm run check:ui-style   # Browser check of sizes, shell layout, themes and mobile (run npm run dev first)
-npm run test:real        # Full-pipeline batch test of real drawings in a directory (read-only)
-npm run bench-parse      # Synthetic large-drawing parse/index/render benchmark (manual)
-npm run dev              # Start the example workspace
-npm run build:example
-npm run build:all
-```
+- **Outline fonts**: register TTF/OTF via `setOutlineFont(arrayBuffer)` or `loadOutlineFont(url)`;
+  text is then triangulated as pure geometry. `setFallbackOutlineFont` registers a fallback font
+  (e.g. Arial) to cover special symbols.
+- **SHX shape fonts**: `parseShxFont` + `registerParsedShxFont` register real shape files; text is
+  rendered as stroke polylines, matching the single-line look of CAD fonts.
+- Without registered fonts the viewer falls back to the system font atlas, mapping style font names
+  to the closest available local font.
 
-Note: `dxfviewer-example` is a real example workspace and exists in the full repository. The root `package-lock.json` keeps the workspace link entries so `npm ci` works when the example workspace is present.
+---
 
-## Publishing to npm (GitHub Actions)
+## 6. Development and maintenance
 
-Workflow: `.github/workflows/publish-npm.yml`. Two triggers:
+- Repository: <https://github.com/zly258/dxfviewer>
+- Maintained by: DXF Viewer contributors (see the `author` field in `package.json` and the commit log)
+- Issues and suggestions: use the repository issue tracker; please include a minimal reproducible
+  drawing and your browser version
+- Architecture notes: `docs/webgl-architecture.md` (render pipeline and performance mechanisms),
+  `docs/plan-dxf-writer-export.md` (writer and export design)
 
-- **Publishing a GitHub Release** → builds and publishes to npm automatically;
-- **Actions → Publish to npm → Run workflow** → manual, `dry_run` defaults to `true` (build + `npm pack --dry-run` only).
+Contribution conventions:
 
-Bump `package.json` first and keep the tag in sync (e.g. `1.6.0` ↔ `v1.6.0`); the workflow verifies the match and refuses versions that already exist on npm.
+- Source files are UTF-8 with BOM; `package.json` / `package-lock.json` stay standard UTF-8 to avoid
+  tool-chain parsing issues.
+- Styles use design tokens from `src/ui/styles/variables.css` only — no raw colour literals.
+  `npm run check:ui` enforces this.
+- Drawing files are not committed (`*.dxf` is globally ignored); self-check fixtures are generated at
+  runtime.
 
-Authentication, pick one (the workflow selects automatically):
+---
 
-1. **npm Trusted Publishing (recommended, no secret)**: npm package → Settings → Trusted Publisher → GitHub Actions, with the repository, workflow `publish-npm.yml` and environment `npm`. The workflow already declares `id-token: write` and `--provenance`.
-2. **Access token**: create a Granular Access Token on npm (Read and write, this package only) and add it as the `NPM_TOKEN` repository secret.
+## 7. Known limitations
 
-## Project structure
+- Browsing only; no CAD editing.
+- `writeDxf` is reconstructive and does not preserve information the parser does not model
+  (`preserveRaw` replays it faithfully).
+- Paper-space switching and viewport projection are supported, but full `VIEWPORT` model-space
+  clipping remains a future enhancement.
+- SHX is handled as font-name compatibility only; without a registered real shape file, centred text
+  is centred by actual glyph width and may differ from the original CAD font at character level.
+- Text whose projected height is below 1.5 CSS pixels is skipped (it is unreadable at that size).
 
-```text
-src/
-  ui/              UI layer: components (viewer/panels/toolbar), hooks, i18n, styles (web-ui-style design tokens)
-  io/              I/O layer: parser (DXF), writer, dxf (group codes), loader (parse worker)
-  render/          Render layer: engine (dual-engine contract) / webgl / canvas (switchable) / picking / text / vector
-  core/            Domain algorithms: geometry, curve sampling, text layout, extents
-  export/          Export: PNG (WebGL raster), SVG / PDF (vector)
-  config/          Constants and viewer config
-  types/           Public types
-  utils/           Color, linetype, font, search, and entity helpers
-samples/           Output directory for self-check artifacts (gitignored, generated at runtime)
-scripts/           Automated self-check scripts (check:*), fixture generation, benchmarks, real-drawing batch tests
-```
+---
 
-## Limitations
+## 8. License
 
-- Viewing and rendering focus on browsing; CAD editing is not provided. `writeDxf` is reconstructive writing and does not preserve information the parser does not model.
-- Write coverage includes LINE/CIRCLE/ARC/ELLIPSE/LWPOLYLINE/POLYLINE/SPLINE/TEXT/MTEXT/ATTRIB/SOLID/3DFACE/HATCH/INSERT/DIMENSION/RAY/XLINE/LEADER/SHAPE; REGION (ACIS metadata) and some proxy objects cannot be rebuilt and are reported via `skipped` (the `preserveRaw` fidelity mode replays them verbatim).
-- Paper-space switching is supported, but full `VIEWPORT` model-space projection is still a future enhancement.
-- SHX is handled as font-name compatibility only. Real SHX glyph files are not loaded; centered text is centered by actual glyph width, which can differ from the original CAD fonts at character level.
-- Source files use UTF-8 with BOM. npm configuration files such as `package.json` and `package-lock.json` remain standard UTF-8 to avoid npm / Vite parsing issues.
-
-## License
-
-MIT
+MIT License. See [LICENSE](LICENSE) or the `license` field in `package.json`.
