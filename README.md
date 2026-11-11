@@ -196,6 +196,20 @@ npm run build:all
 
 说明：`dxfviewer-example` 是真实示例工作区，完整仓库中会存在该目录。根目录的 `package-lock.json` 已保留 workspace 链接，支持包含示例工程时执行 `npm ci`。
 
+### 发布到 npm（GitHub Actions）
+
+发布工作流：`.github/workflows/publish-npm.yml`，触发方式两种：
+
+- **创建 GitHub Release（发布）** → 自动构建并发布到 npm；
+- **Actions → Publish to npm → Run workflow** → 手动触发，`dry_run` 默认 `true`（只构建 + `npm pack --dry-run`，不发布）。
+
+发布前请在 `package.json` 改好版本号并让 tag 与之一致（例如 `1.6.0` ↔ `v1.6.0`）；工作流会校验版本一致性，并拒绝发布 npm 上已存在的版本。
+
+鉴权二选一（工作流会按是否配置了 Secret 自动选择）：
+
+1. **npm 可信发布（推荐，无需密钥）**：npm 包页面 → Settings → Trusted Publisher → 选 GitHub Actions，填仓库 `zly258/dxfviewer`、工作流文件名 `publish-npm.yml`、环境名 `npm`。工作流已声明 `id-token: write` 与 `--provenance`。
+2. **访问令牌**：npm → Access Tokens 生成 Granular Access Token（勾选 Read and write，包选择 `@zhangly1403/dxfviewer`），在仓库 Settings → Secrets and variables → Actions 新建 `NPM_TOKEN`。
+
 ### 项目结构
 
 ```text
@@ -393,6 +407,20 @@ npm run build:all
 ```
 
 Note: `dxfviewer-example` is a real example workspace and exists in the full repository. The root `package-lock.json` keeps the workspace link entries so `npm ci` works when the example workspace is present.
+
+### Publishing to npm (GitHub Actions)
+
+Workflow: `.github/workflows/publish-npm.yml`. Two triggers:
+
+- **Publishing a GitHub Release** → builds and publishes to npm automatically;
+- **Actions → Publish to npm → Run workflow** → manual, `dry_run` defaults to `true` (build + `npm pack --dry-run` only).
+
+Bump `package.json` first and keep the tag in sync (e.g. `1.6.0` ↔ `v1.6.0`); the workflow verifies the match and refuses versions that already exist on npm.
+
+Authentication, pick one (the workflow selects automatically):
+
+1. **npm Trusted Publishing (recommended, no secret)**: npm package → Settings → Trusted Publisher → GitHub Actions, with repository `zly258/dxfviewer`, workflow `publish-npm.yml`, environment `npm`. The workflow already declares `id-token: write` and `--provenance`.
+2. **Access token**: create a Granular Access Token on npm (Read and write, package `@zhangly1403/dxfviewer`) and add it as the `NPM_TOKEN` repository secret.
 
 ### Project structure
 
