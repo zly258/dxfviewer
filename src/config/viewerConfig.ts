@@ -243,9 +243,15 @@ export const EXTENTS_CONFIG = {
   annotationNearGeometryFactor: 3,
   annotationNearGeometryMinimumPadding: 100,
   outlierFilterMinEntityCount: 6,
-  outlierCenterMadMultiplier: 8,
   outlierSizeMedianMultiplier: 80,
   outlierAspectRatioLimit: 25,
+  // 离群实体只能是极少数：最多剔除该比例（且至少 1 个）。
+  // 图纸内容（图框/标题栏/尺寸）本身分布很广，超预算时宁可不剪。
+  outlierMaxDropRatio: 0.03,
+  // 距离排序尾部出现该倍数的跳变时才截断（正常图纸尾部是平滑分布）。
+  outlierMinimumDistanceGapRatio: 4,
+  // 「超长瘦高包围盒」还必须是离主体这么远（相对中位中心距离）才判为残留引导线。
+  outlierStrayDistanceFactor: 4,
 };
 
 export const LINE_RENDER_CONFIG = {

@@ -127,9 +127,13 @@ export class CanvasRenderEngine implements InteractiveRenderEngine {
       );
       for (const group of cache.groups) {
         ctx.strokeStyle = group.color;
-        // 线宽为屏幕像素语义 → 世界变换下除以 zoom，并保底 1px。
-        ctx.lineWidth = Math.max(group.lineWidthPx / viewPort.zoom, 1 / viewPort.zoom);
-        ctx.setLineDash(group.dashPattern.map(v => v * viewPort.zoom));
+        // 线宽为 CSS 像素语义 → 世界变换下除以 zoom（下限已由 resolveCadStrokeStyle
+        // 钳制到 minimumScreenLineWidth，这里不再额外抬高，否则会与逐实体路径不一致：
+        // 缓存命中/未命中的切换会让线宽跳变）。
+        ctx.lineWidth = group.lineWidthPx / viewPort.zoom;
+        // 虚线节距是世界（模型）单位：CTM 已含 zoom，这里不能再乘 zoom，
+        // 否则屏幕节距变成 zoom²（放大后虚线被拉成超长段 —— 双引擎实测不一致）。
+        ctx.setLineDash(group.dashPattern);
         ctx.stroke(group.path);
         drawCalls++;
       }

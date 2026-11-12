@@ -517,7 +517,9 @@ class SceneBaker {
     });
 
     let dashIdx = 0;
-    const pattern = stroke.dashPattern;
+    // GL 虚线着色器按弧长取模自行判开/关，必须拿到带符号段长（正=实线、负=空白），
+    // 否则每段都被判为实线，所有虚线（DASHED/CENTER/HIDDEN）都渲染成实线。
+    const pattern = stroke.signedDashPattern;
     if (pattern && pattern.length) {
       const key = pattern.join(',');
       const existing = this.dashPatternIndex.get(key);

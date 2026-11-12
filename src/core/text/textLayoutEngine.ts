@@ -283,11 +283,6 @@ export const buildCadTextLayout = ({
   const lineHeight = lineSpacingStyle === 2
     ? baseLineHeight
     : Math.max(baseLineHeight, charExtent);
-  if (typeof console !== 'undefined' && (entity.value || '').includes('名      称')) {
-    console.log('[layout] visualSH=' + visualScreenHeight.toFixed(0) + ' factor=' + lineSpacingFactor + ' style=' + lineSpacingStyle
-      + ' baseLH=' + baseLineHeight.toFixed(0) + ' charExtent=' + charExtent.toFixed(0) + ' LH=' + lineHeight.toFixed(0)
-      + ' ascent=' + verticalMetrics.ascent.toFixed(0) + ' descent=' + verticalMetrics.descent.toFixed(0));
-  }
   const lineWidths = sourceLines.map(line => measureWidth(line));
   const maxLineWidth = Math.max(...lineWidths, 0);
 

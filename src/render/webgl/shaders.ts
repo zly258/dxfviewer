@@ -58,6 +58,9 @@ uniform mat3 u_proj;            // 模型(分块局部) → 裁剪
 uniform vec2 u_viewportSize;    // 设备像素
 uniform float u_pxPerModel;     // 设备像素 / 模型单位
 uniform float u_featherPx;      // 抗锯齿羽化宽度（像素）
+// 设备像素 / CSS 像素：线宽是 CSS 像素语义（与 Canvas 引擎一致），
+// 展开发生在设备像素空间，因此必须乘上该系数，否则 HiDPI 屏上线条只有一半粗细。
+uniform float u_dprScale;
 
 out vec4 v_color;
 out float v_dist;        // 到中心线的有符号距离（像素）
@@ -66,7 +69,7 @@ out float v_arcLenPx;
 out float v_dashIdx;
 
 void main() {
-    float halfWidth = max(a_params.y * 0.5, 0.25);
+    float halfWidth = max(a_params.y * u_dprScale * 0.5, 0.5);
     float expanded = halfWidth + u_featherPx;
     vec2 clipPos = (u_proj * vec3(a_pos, 1.0)).xy;
     // 斜接法线经投影线性部分变换到裁剪空间（自动处理 Y 翻转 / 旋转）。

@@ -385,7 +385,11 @@ export function splitCadFormattedText(rawText: string): CadFormattedTextSegment[
       const hex = decodedText.slice(index + 3, index + 7);
       if (/^[0-9A-Fa-f]{4}$/.test(hex)) {
         buffer += String.fromCharCode(parseInt(hex, 16));
-        index += 7;
+        // 转义序列 `\U+XXXX` 共 7 个字符（\ U + 四位十六进制，下标 index..index+6）。
+        // 这里把 index 停在最后一个已消费字符（+6），再由 for 的 index++ 前进到下一个字符。
+        // 旧值 +7 会跳过一个字符：连续转义（中文文本几乎总是 `\U+6280\U+672F...`）
+        // 会漏掉一半字形并残留字面量 "U+XXXX" 与丢字（实测「160」渲染成「60」）。
+        index += 6;
         continue;
       }
     }

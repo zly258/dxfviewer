@@ -14,7 +14,14 @@ export interface CadStrokeStyleInput {
 
 export interface CadStrokeStyle {
   lineWidth: number;
+  /** 虚线各段长度（无符号；Canvas setLineDash / 矢量导出语义，按顺序实-空交替）。 */
   dashPattern: number[];
+  /**
+   * 带符号的虚线各段长度：正值 = 实线段，负值 = 空白段。
+   * WebGL 虚线着色器要自己判开/关（按弧长取模），只有长度而没有符号
+   * 会让每一段都判为"实线"——整条线永远显示为实线。
+   */
+  signedDashPattern: number[];
 }
 
 /**
@@ -102,6 +109,16 @@ const normalizeDashPattern = (pattern: number[], scale: number): number[] => {
   return result;
 };
 
+/**
+ * 由无符号段长还原「实-空交替」的带符号段长（首段为实线）。
+ *
+ * DXF 线型定义本身就是实/空交替（正数为划线、负数为空白），
+ * normalizeDashPattern 只保留了长度、丢了符号；奇偶交替是唯一可靠的还原方式，
+ * 且 normalizeDashPattern 对奇数段做了整段复制，奇偶性始终正确。
+ */
+const toSignedDashPattern = (dashPattern: number[]): number[] =>
+  dashPattern.map((value, index) => (index % 2 === 0 ? value : -value));
+
 export const resolveCadStrokeStyle = (input: CadStrokeStyleInput): CadStrokeStyle => {
   const lineweight = resolveLineweightCode(input.entity, input.layer, input.parentLineweight);
   const lineWidth = toScreenLineWidth(lineweight, input.isSelected);
@@ -109,7 +126,7 @@ export const resolveCadStrokeStyle = (input: CadStrokeStyleInput): CadStrokeStyl
   const lineTypeName = resolveLineTypeName(input.entity, input.layer, input.parentLineType);
   const lineType = resolveLineType(lineTypeName, input.lineTypes);
   if (!lineType || !lineType.pattern || lineType.pattern.length === 0) {
-    return { lineWidth, dashPattern: [] };
+    return { lineWidth, dashPattern: [], signedDashPattern: [] };
   }
 
   const entityScale = Number.isFinite(input.entity.lineTypeScale || NaN) ? (input.entity.lineTypeScale || 1) : 1;
@@ -117,11 +134,13 @@ export const resolveCadStrokeStyle = (input: CadStrokeStyleInput): CadStrokeStyl
   const totalPatternPixels = (lineType.totalLength || lineType.pattern.reduce((sum, value) => sum + Math.abs(value), 0)) * patternScale;
 
   if (!Number.isFinite(totalPatternPixels) || totalPatternPixels < LINE_RENDER_CONFIG.minimumDashPatternPixels) {
-    return { lineWidth, dashPattern: [] };
+    return { lineWidth, dashPattern: [], signedDashPattern: [] };
   }
 
+  const dashPattern = normalizeDashPattern(lineType.pattern, patternScale);
   return {
     lineWidth,
-    dashPattern: normalizeDashPattern(lineType.pattern, patternScale),
+    dashPattern,
+    signedDashPattern: toSignedDashPattern(dashPattern),
   };
 };

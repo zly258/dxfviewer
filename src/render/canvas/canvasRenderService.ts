@@ -305,9 +305,6 @@ export const createCanvasRenderSession = ({
 
         const color = isSelected ? SELECTION_COLOR : resolveEntityColor(ent, layer, parentColor, drawingColorMode, theme);
 
-        stateTracker.setStrokeStyle(color);
-        stateTracker.setFillStyle(color);
-
         let strokeStyle = resolveCadStrokeStyle({
             entity: ent,
             layer,
@@ -346,7 +343,14 @@ export const createCanvasRenderSession = ({
             appendBatchGeometry(ctx, ent, transform);
             return;
         }
+
+        // 顺序约束（切勿交换）：先用**上一批**的 ctx 状态冲刷待描边几何，再设置
+        // 本实体的颜色/线宽/虚线。旧实现先 setStrokeStyle(color) 再 flushBatch，
+        // 结果是本实体的样式被描到上一批几何上 —— 整张图纸颜色整体错位一个实体
+        // （实测浅色主题下轮廓变红、孔变青、中心线变黑）。
         flushBatch(ctx);
+        stateTracker.setStrokeStyle(color);
+        stateTracker.setFillStyle(color);
         batchState.key = batchKey;
 
         stateTracker.setLineWidth(strokeStyle.lineWidth);

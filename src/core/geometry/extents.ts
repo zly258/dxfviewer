@@ -612,9 +612,22 @@ const getExtentsMetrics = (ext: { min: Point2D; max: Point2D }) => {
 };
 
 /**
- * 过滤离群实体的包围盒：
- * - 距离中位数中心过远的实体
- * - 宽高比异常且尺寸过大的实体（如无限长的引导线）
+ * 过滤离群实体的包围盒（残留引导线 / 跑到图纸外的杂散图元）。
+ *
+ * **必须是「只剪极少数尾巴」的保守过滤**：图纸内容本身（图框、标题栏、
+ * 尺寸标注、明细表）天然分布在很大的范围里，而"离群"与"图纸内容"在
+ * 中心距离上并没有清晰分界。旧实现用「中位距离 + 8×MAD」与
+ * 「中位对角线 × 80」作阈值，在两个真实场景下会误杀整张图纸：
+ *
+ * 1. 图框/标注把中心距离拉开后中位距离本身很大 —— A3 图纸只剩 ISO 视图；
+ * 2. 中位对角线由尺寸箭头等微小实体的包围盒决定（0.7mm 级），
+ *    ×80 仍远小于图纸跨度，于是 388 个实体被裁到 132×88
+ *    （实测「充满视图」只显示轴测图）。
+ *
+ * 因此改为两条同时成立的判据：
+ * - **数量预算**：最多剔除 outlierMaxDropRatio 比例的实体（离群物必然是极少数）；
+ * - **距离断层**：只在距离排序尾部存在明显跳变（≥ outlierMinimumDistanceGapRatio 倍）
+ *   时才在那里截断；平滑分布的距离（正常图纸）一律不剪。
  */
 const filterOutlierExtents = (items: { min: Point2D; max: Point2D }[]): { min: Point2D; max: Point2D }[] => {
     if (items.length < EXTENTS_CONFIG.outlierFilterMinEntityCount) return items;
@@ -622,22 +635,53 @@ const filterOutlierExtents = (items: { min: Point2D; max: Point2D }[]): { min: P
     const medianX = getMedian(metrics.map(item => item.center.x));
     const medianY = getMedian(metrics.map(item => item.center.y));
     const distances = metrics.map(item => Math.hypot(item.center.x - medianX, item.center.y - medianY));
-    const medianDistance = getMedian(distances);
-    const distanceMad = getMedian(distances.map(distance => Math.abs(distance - medianDistance)));
     const medianDiagonal = Math.max(getMedian(metrics.map(item => item.diagonal)), EXTENTS_CONFIG.minDrawableEntityExtent);
-    const distanceLimit = Math.max(
-        medianDistance + distanceMad * EXTENTS_CONFIG.outlierCenterMadMultiplier,
-        medianDiagonal * EXTENTS_CONFIG.outlierSizeMedianMultiplier,
-    );
 
-    const filtered = items.filter((_item, index) => {
-        const metric = metrics[index];
-        const distance = distances[index];
-        const isFarAway = distance > distanceLimit;
-        const isHugeSkinnyBox = metric.aspectRatio > EXTENTS_CONFIG.outlierAspectRatioLimit
-            && metric.diagonal > medianDiagonal * EXTENTS_CONFIG.outlierSizeMedianMultiplier;
-        return !isFarAway && !isHugeSkinnyBox;
-    });
+    const maxDropCount = Math.min(
+        items.length - 1,
+        Math.max(1, Math.floor(items.length * EXTENTS_CONFIG.outlierMaxDropRatio)),
+    );
+    const dropped = new Set<number>();
+
+    // ① 超长瘦高包围盒（残留引导线/无限长引线）：在预算内按对角线从大到小剔除。
+    //    必须同时「离主体足够远」——否则会误删图纸里正常的长线（如地形/管线的长直段）。
+    const hugeSizeLimit = medianDiagonal * EXTENTS_CONFIG.outlierSizeMedianMultiplier;
+    const strayDistanceLimit = getMedian(distances) * EXTENTS_CONFIG.outlierStrayDistanceFactor;
+    metrics
+        .map((metric, index) => ({ metric, index }))
+        .filter(({ metric, index }) => metric.aspectRatio > EXTENTS_CONFIG.outlierAspectRatioLimit
+            && metric.diagonal > hugeSizeLimit
+            && distances[index] > strayDistanceLimit)
+        .sort((a, b) => b.metric.diagonal - a.metric.diagonal)
+        .slice(0, maxDropCount)
+        .forEach(({ index }) => dropped.add(index));
+
+    // ② 远离主体且与主体之间存在明显距离断层的实体（预算内的尾部截断）。
+    if (dropped.size < maxDropCount) {
+        const order = distances
+            .map((distance, index) => ({ distance, index }))
+            .filter(({ index }) => !dropped.has(index))
+            .sort((a, b) => a.distance - b.distance);
+        const budget = Math.min(maxDropCount - dropped.size, order.length - 1);
+        let cutAt = -1;
+        let bestRatio = 1;
+        for (let offset = 1; offset <= budget; offset++) {
+            const cut = order.length - offset;
+            const previous = order[cut - 1].distance;
+            const next = order[cut].distance;
+            const ratio = previous > 1e-9 ? next / previous : Number.POSITIVE_INFINITY;
+            if (ratio > bestRatio) {
+                bestRatio = ratio;
+                cutAt = cut;
+            }
+        }
+        if (cutAt > 0 && bestRatio >= EXTENTS_CONFIG.outlierMinimumDistanceGapRatio) {
+            for (let i = cutAt; i < order.length; i++) dropped.add(order[i].index);
+        }
+    }
+
+    if (dropped.size === 0) return items;
+    const filtered = items.filter((_item, index) => !dropped.has(index));
     return filtered.length > 0 ? filtered : items;
 };
 

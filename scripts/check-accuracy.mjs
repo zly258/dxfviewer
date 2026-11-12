@@ -278,14 +278,69 @@ try {
   });
 
   const drawn = ops.filter(op => op.type === 'text').map(op => op.text).join('\n');
-  const expectIncludes = ['Ø', '°', '±', 'ABC', '∅', '3/4', '下划线', '恢复', '第二行'];
+  const expectIncludes = ['Ø', '°', '±', 'ABC', '∅', '3/4', '下划线', '恢复', '第二行', '钢板'];
   for (const token of expectIncludes) {
     check(`特殊格式：绘制内容包含 "${token}"`, drawn.includes(token), `实际绘制文本：${drawn.slice(0, 120)}`);
   }
+  // 连续 \U+XXXX 转义（中文图纸最常见的写法）：相邻转义不能被跳过，
+  // 否则会漏掉一半字形并把 "U+XXXX" 字面量画出来（旧实现的字形分段器有此缺陷）。
+  check('特殊格式：连续 \\U+XXXX 转义全部解码', drawn.includes('温度°∅钢板'), `实际绘制文本：${drawn.slice(0, 120)}`);
   check('特殊格式：无残留未转换的 %%', !drawn.includes('%%'), drawn.includes('%%') ? `残留：${drawn.match(/.{0,10}%%.{0,10}/g)?.join(' | ')}` : '');
   check('特殊格式：无残留未转换的 \\U+', !drawn.includes('U+') && !drawn.includes('\\U'), '');
 } finally {
   await fixtures.cleanup();
+}
+
+// ── 图纸范围（充满视图）：不得被离群过滤裁成局部 ────────────────────
+// 真实 A3 图纸（图框 + 标题栏 + 尺寸 + 密集的尺寸箭头）里，"微小实体"会把
+// 中位对角线拉到 1mm 以下，"图框/标题栏"又会被判成远离中心的离群物——
+// 旧实现因此把 840×594 的整张图纸裁成 132×88（充满视图只剩轴测图）。
+const buildExtentsFixture = (withStray) => {
+  const g = [];
+  const put = (code, value) => { g.push(String(code), String(value)); };
+  const line = (x1, y1, x2, y2) => {
+    put(0, 'LINE'); put(8, '0');
+    put(10, x1.toFixed(3)); put(20, y1.toFixed(3)); put(30, '0.0');
+    put(11, x2.toFixed(3)); put(21, y2.toFixed(3)); put(31, '0.0');
+  };
+  put(0, 'SECTION'); put(2, 'ENTITIES');
+  // 840×594 图框（真实图纸的图框/标题栏：远离图心、只有寥寥几条线）
+  line(-420, -297, 420, -297); line(420, -297, 420, 297);
+  line(420, 297, -420, 297); line(-420, 297, -420, -297);
+  // 120 个微小的尺寸箭头（实心三角形）密集聚在图心附近：
+  // 它们决定了「中位对角线」与「中位中心距离」——旧实现据此判定离群，
+  // 会把整圈图框当成离群物剔除（充满视图只剩图心那一小块）。
+  for (let i = 0; i < 120; i++) {
+    const x = -36 + (i % 12) * 6.5;
+    const y = -30 + Math.floor(i / 12) * 6;
+    put(0, 'SOLID'); put(8, '0');
+    put(10, x); put(20, y); put(30, '0.0');
+    put(11, (x + 1.2).toFixed(3)); put(21, y); put(31, '0.0');
+    put(12, x); put(22, (y + 0.7).toFixed(3)); put(32, '0.0');
+    put(13, (x + 1.2).toFixed(3)); put(23, (y + 0.7).toFixed(3)); put(33, '0.0');
+  }
+  // 一处远离图纸的残留实体（真正应该被剔除的离群物）
+  if (withStray) line(-50000, -50000, -50000, -49900);
+  put(0, 'ENDSEC'); put(0, 'EOF');
+  return g.join('\n') + '\n';
+};
+
+try {
+  const ext = (await parseDxf(buildExtentsFixture(false), undefined, { yieldIntervalMs: 0 })).extents;
+  check(
+    '图纸范围：图框不被离群过滤裁掉（充满视图完整）',
+    Math.abs(ext.width - 840) < 1 && Math.abs(ext.height - 594) < 1,
+    `实际 ${ext.width.toFixed(1)}×${ext.height.toFixed(1)}`,
+  );
+
+  const strayExt = (await parseDxf(buildExtentsFixture(true), undefined, { yieldIntervalMs: 0 })).extents;
+  check(
+    '图纸范围：图框保留且远端残留实体被剔除',
+    Math.abs(strayExt.width - 840) < 1 && Math.abs(strayExt.height - 594) < 1,
+    `实际 ${strayExt.width.toFixed(1)}×${strayExt.height.toFixed(1)}`,
+  );
+} catch (error) {
+  check('图纸范围：图框不被离群过滤裁掉（充满视图完整）', false, String(error));
 }
 
 console.log(failed === 0 ? '\n渲染准确性校验全部通过。' : `\n渲染准确性校验失败 ${failed} 项。`);

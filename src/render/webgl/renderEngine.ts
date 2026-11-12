@@ -32,6 +32,16 @@ export interface Viewport {
 
 const SELECTION_COLOR = '#00A8FF';
 
+/**
+ * 线宽抗锯齿羽化半径（设备像素）。
+ *
+ * 片元覆盖率 = clamp(halfWidth + feather − d, 0, 1)，墨水总宽 ≈ 线宽 + feather。
+ * 取 0.5 时覆盖率正好是「1px 盒式滤波」的结果：标称 1px 的线恰好铺满 1 个像素，
+ * 边缘 1px 内线性过渡。旧值 0.8 让每条线多出 0.6px 墨水（约 1.8×），
+ * 同一张图在 Canvas 引擎（浏览器原生 AA，墨水 ≈ 1px）里明显更细更淡。
+ */
+const LINE_AA_FEATHER_PX = 0.5;
+
 export interface RenderParams {
   viewPort: Viewport;
   /** CSS 像素尺寸 */
@@ -62,6 +72,8 @@ export class RenderEngine implements InteractiveRenderEngine {
 
   private theme: CanvasTheme = 'black';
   private themeBackground = CANVAS_THEME_COLORS.black;
+  /** 最近一帧的设备像素比（选中叠加重绘时复用同一线宽语义）。 */
+  private lastDpr = 1;
 
   private selection: {
     ids: string[];
@@ -121,6 +133,7 @@ export class RenderEngine implements InteractiveRenderEngine {
     const { viewPort, cssWidth, cssHeight, dpr } = params;
     const pixelWidth = Math.max(1, Math.round(cssWidth * dpr));
     const pixelHeight = Math.max(1, Math.round(cssHeight * dpr));
+    this.lastDpr = dpr;
     this.device.resize(pixelWidth, pixelHeight);
 
     const gl = this.device.gl;
@@ -211,7 +224,9 @@ export class RenderEngine implements InteractiveRenderEngine {
     lineProgram.use();
     gl.uniform2f(lineProgram.locateUniform('u_viewportSize'), pixelWidth, pixelHeight);
     gl.uniform1f(lineProgram.locateUniform('u_pxPerModel'), pxPerModel);
-    gl.uniform1f(lineProgram.locateUniform('u_featherPx'), 0.8);
+    gl.uniform1f(lineProgram.locateUniform('u_featherPx'), LINE_AA_FEATHER_PX);
+    // 线宽为 CSS 像素语义；设备像素展开系数（HiDPI 屏保持与 Canvas 引擎一致）。
+    gl.uniform1f(lineProgram.locateUniform('u_dprScale'), dpr);
     gl.uniform4f(lineProgram.locateUniform('u_overrideColor'), 0, 0, 0, 0);
     const fillProgram = this.programs.fill;
     fillProgram.use();
@@ -393,7 +408,8 @@ export class RenderEngine implements InteractiveRenderEngine {
       const program = this.programs.line;
       program.use();
       gl.uniform2f(program.locateUniform('u_viewportSize'), pixelWidth, pixelHeight);
-      gl.uniform1f(program.locateUniform('u_featherPx'), 0.8);
+      gl.uniform1f(program.locateUniform('u_featherPx'), LINE_AA_FEATHER_PX);
+      gl.uniform1f(program.locateUniform('u_dprScale'), this.lastDpr);
       this.setDashUniforms(program, null, pxPerModel);
       gl.uniform4f(program.locateUniform('u_overrideColor'), sel[0], sel[1], sel[2], 0.95);
 
