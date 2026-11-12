@@ -12,6 +12,7 @@ import type { CanvasTheme, DrawingColorMode, DxfData, ViewPort } from '@/types';
 import { RenderEngine } from '@/render/webgl/renderEngine';
 import { CanvasRenderEngine } from '@/render/canvas/CanvasRenderEngine';
 import { TEXT_RENDER_MODE } from '@/config/viewerConfig';
+import { hasOutlineFontCjkCoverage } from '@/render/text/outlineText';
 import { resolveSceneView } from './sceneView';
 import type { HeadlessCanvas } from './canvasUtils';
 
@@ -79,6 +80,10 @@ export const renderSceneToRasterCanvas = (
   const pixelWidth = Math.round(width * dpr);
   const pixelHeight = Math.round(height * dpr);
 
+  // 与交互查看器同一判定：轮廓字体不可用时，GPU 文字只能退化为字形图集/描边
+  // 字体（字号不一、标点走形），必须改由 Canvas 2D 文字层绘制后叠加。
+  const textOverlayActive = TEXT_RENDER_MODE === 'overlay' || !hasOutlineFontCjkCoverage();
+
   const glCanvas = createCanvasElement(pixelWidth, pixelHeight);
   const engine = new RenderEngine(glCanvas as HTMLCanvasElement);
   try {
@@ -99,7 +104,7 @@ export const renderSceneToRasterCanvas = (
       // 导出补偿：以 1280 物理像素为基准放大线宽（与旧导出管线语义一致）。
       lineWidthScale: Math.max(1, pixelWidth / 1280),
       // overlay 模式下文字由 Canvas 层合成；sdf 模式下文字已在 GPU 网格里。
-      skipText: TEXT_RENDER_MODE === 'overlay',
+      skipText: textOverlayActive,
     });
     engine.render({
       viewPort: scene.viewPort,
@@ -132,7 +137,7 @@ export const renderSceneToRasterCanvas = (
     ctx.putImageData(imageData, 0, 0);
 
     // 文字覆盖层再叠到输出画布上。
-    if (textCtx && TEXT_RENDER_MODE === 'overlay') {
+    if (textCtx && textOverlayActive) {
       try {
         const textEngine = new CanvasRenderEngine(textCanvas as HTMLCanvasElement, { textOnly: true });
         try {

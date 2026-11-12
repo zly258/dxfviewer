@@ -6,7 +6,7 @@ import { fitExtentsToBox } from '@/render/viewportFitting';
 import { RenderEngine } from '@/render/webgl/renderEngine';
 import { CanvasRenderEngine } from '@/render/canvas/CanvasRenderEngine';
 import type { EngineKind, InteractiveRenderEngine } from '@/render/engine';
-import { hasOutlineFont, loadOutlineFont } from '@/render/text/outlineText';
+import { hasOutlineFont, hasOutlineFontCjkCoverage, loadOutlineFont } from '@/render/text/outlineText';
 import { clearAllRenderCaches } from '@/render/text/renderCache';
 import { createDxfLoaderWorker } from '@/io/loader/workerFactory';
 import type { ParseWorkerResponse } from '@/io/loader/dxfLoader.worker';
@@ -132,7 +132,17 @@ const DxfPreview = React.forwardRef<DxfPreviewHandle, DxfPreviewProps>(function 
   const [panning, setPanning] = useState(false);
 
   const canvasTheme: CanvasTheme = theme === 'dark' ? 'black' : 'white';
-  const effectiveEngine: EngineKind = engineFallback ? 'canvas' : engineKind;
+  /**
+   * 引擎选择：极简预览只有一个画布，没有文字覆盖层可挂。
+   * WebGL 的 GPU 文字依赖宿主提供轮廓字体（public/fonts/simfang.ttf）；
+   * 字体不可用时 GPU 兜底（字形图集/描边字体）字号与标点都会走形，
+   * 此时直接改用 Canvas 引擎——文字由浏览器原生文本引擎绘制，与主查看器
+   * 的覆盖层文字同源，观感一致。
+   */
+  const effectiveEngine: EngineKind = engineFallback
+    || (engineKind === 'webgl' && !hasOutlineFontCjkCoverage())
+    ? 'canvas'
+    : engineKind;
 
   // ── 当前布局的实体与范围 ──
   const view = useMemo(() => {

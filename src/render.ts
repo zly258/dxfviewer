@@ -23,7 +23,7 @@ export { hitTest, hitTestBox } from '@/render/picking/hitTest';
 export { parseShxFont } from '@/render/text/shx/shxParser';
 export type { StrokeFontData, StrokeGlyph } from '@/render/text/shx/shxParser';
 export { registerParsedShxFont, resolveStrokeFont } from '@/render/text/shx/strokeFontRegistry';
-export { setOutlineFont, setFallbackOutlineFont, loadOutlineFont, hasOutlineFont, getGlyphMesh, measureOutlineTextWidth } from '@/render/text/outlineText';
+export { setOutlineFont, setFallbackOutlineFont, loadOutlineFont, hasOutlineFont, hasOutlineFontCjkCoverage, getGlyphMesh, measureOutlineTextWidth } from '@/render/text/outlineText';
 export type { GlyphMesh } from '@/render/text/outlineText';
 
 export { extentsFromBounds, fitExtentsToBox, fitPaperLayoutToBox } from '@/render/viewportFitting';

@@ -13,4 +13,4 @@ export type { DxfPreviewProps, DxfPreviewHandle, DxfPreviewSource } from '@/ui/c
 
 export { parseDxf } from '@/io/parser';
 export type { DxfData, ViewPort } from '@/types';
-export { setOutlineFont, loadOutlineFont, hasOutlineFont } from '@/render/text/outlineText';
+export { setOutlineFont, loadOutlineFont, hasOutlineFont, hasOutlineFontCjkCoverage } from '@/render/text/outlineText';

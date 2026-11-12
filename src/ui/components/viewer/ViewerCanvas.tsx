@@ -5,7 +5,7 @@ import { RenderEngine } from '@/render/webgl/renderEngine';
 import { CanvasRenderEngine } from '@/render/canvas/CanvasRenderEngine';
 import type { EngineKind, InteractiveRenderEngine } from '@/render/engine';
 import { TEXT_RENDER_MODE } from '@/config/viewerConfig';
-import { hasOutlineFont, loadOutlineFont } from '@/render/text/outlineText';
+import { hasOutlineFont, hasOutlineFontCjkCoverage, loadOutlineFont } from '@/render/text/outlineText';
 import { Language, t } from '@/ui/i18n';
 import { CANVAS_THEME_COLORS, SELECTION_CONFIG, SHORTCUT_CONFIG, VIEWER_DEFAULTS, ZOOM_CONFIG, BREAKPOINTS, INTERACTION_CONFIG, CONTEXT_MENU_CONFIG } from '@/config/viewerConfig';
 import { boxQueryBounds, createSceneIndex, pointQueryBounds, SceneBounds, SceneIndex } from '@/render/picking/sceneIndex';
@@ -120,6 +120,20 @@ const ViewerCanvas: React.FC<ViewerCanvasProps> = ({
   const [canvasSizeVersion, setCanvasSizeVersion] = useState(0);
   const [outlineFontVersion, setOutlineFontVersion] = useState(0);
 
+  /**
+   * WebGL 的文字有两种来源：
+   * - GPU 几何（`TEXT_RENDER_MODE === 'sdf'`）：轮廓字体三角化，字形最准，
+   *   但需要宿主在 `public/fonts/` 放 simfang.ttf（约 10MB，库不内置）；
+   * - Canvas 2D 覆盖层（overlay）：几何走 GPU、文字由浏览器原生文本引擎绘制，
+   *   与 Canvas 引擎完全同源（CJK/字距/行距/对齐/字号天然一致）。
+   *
+   * 轮廓字体不可用时**必须**退回覆盖层：GPU 兜底路径（字形图集 + 描边字体）
+   * 会把字号、标点与笔画都画坏 —— 实测标题栏同一张图里字号大小不一、
+   * 句号变成空心圆、笔画断裂，而同一张图的 Canvas 引擎完全正常。
+   */
+  const textOverlayActive = engineKind === 'webgl'
+    && (TEXT_RENDER_MODE === 'overlay' || !hasOutlineFontCjkCoverage());
+
   // 尝试自动异步预载轮廓字体（工程仿宋为主字体，Arial 为西文/特殊符号后备字体）
   useEffect(() => {
     let cancelled = false;
@@ -198,7 +212,7 @@ const ViewerCanvas: React.FC<ViewerCanvasProps> = ({
     // 与 Canvas 引擎完全同源（CJK/字距/行距/对齐天然一致），
     // 几何仍由 GPU 渲染。GL 场景因此可跳过全部文字烘焙。
     let textEngine: CanvasRenderEngine | null = null;
-    if (engineKind === 'webgl' && TEXT_RENDER_MODE === 'overlay' && textCanvasRef.current) {
+    if (engineKind === 'webgl' && textOverlayActive && textCanvasRef.current) {
       try {
         textEngine = new CanvasRenderEngine(textCanvasRef.current, { textOnly: true });
         textEngineRef.current = textEngine;
@@ -277,8 +291,9 @@ const ViewerCanvas: React.FC<ViewerCanvasProps> = ({
       if (engineRef.current === engine) engineRef.current = null;
     };
     // onRenderError 允许变化但不重建引擎（经 ref 语义使用）。
+    // textOverlayActive 变化（轮廓字体加载完成 / 失败）需要重建引擎与文字层。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, engineKind]);
+  }, [active, engineKind, textOverlayActive]);
 
   // ── 场景重建（低频）：实体/样式/可见性/主题变化 ──
   useEffect(() => {
@@ -875,7 +890,7 @@ const ViewerCanvas: React.FC<ViewerCanvasProps> = ({
       style={{ cursor: isPanning ? 'grabbing' : 'default', '--canvas-bg': canvasBgColor } as React.CSSProperties}
     >
       <canvas key={engineKind} ref={canvasRef} />
-      {engineKind === 'webgl' && TEXT_RENDER_MODE === 'overlay' && (
+      {engineKind === 'webgl' && textOverlayActive && (
         <canvas key={`text-${engineKind}`} ref={textCanvasRef} className="viewer-text-layer" />
       )}
 

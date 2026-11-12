@@ -109,6 +109,13 @@ render(viewPort)              ← 每帧：平移缩放零几何重建
 
 文字 LOD：逐绘制指令按自身字高判定（`ChunkDrawOp.textHeight`），屏幕高度 < 3px 跳过——避免「一行极小字把整块文字拖成不显示」。
 
+**文字来源的自动降级（重要）**：GPU 几何文字依赖宿主提供轮廓字体
+（`public/fonts/simfang.ttf`，约 10MB，库不内置）。当 `hasOutlineCjkCoverage()`
+为假（字体没放、URL 不对，或只放了西文字体）时，查看器/预览/PNG 导出会自动改用
+**Canvas 2D 文字覆盖层**（几何仍走 GPU）：文字与 Canvas 引擎完全同源，字号、
+字距、行距、对齐与标点都正常。反之，硬用 GPU 兜底（字形图集 + 描边字体）会把
+同一张图里的字号画得大小不一、句号变成空心圆、笔画断裂。
+
 ## 3. 填充渲染
 
 - **实心（HATCH solid / SOLID / 3DFACE / WIPEOUT）**：

@@ -29,6 +29,8 @@ let fallbackFont: opentype.Font | null = null;
 let fontUnitsPerEm = 1000;
 let fontCapHeight = 700;
 let fontCjkHeight = 880;
+/** 当前主字体是否收录中文（宿主的"轮廓字体"可能只是西文字体）。 */
+let fontHasCjkGlyphs = false;
 
 /** 字形三角化几何缓存：key = char */
 const glyphCache = new Map<string, GlyphMesh>();
@@ -189,7 +191,9 @@ export function setOutlineFont(fontData: ArrayBuffer | opentype.Font): void {
 
   const cjkG = activeFont.charToGlyph('国');
   const cjkBox = cjkG.getBoundingBox();
-  fontCjkHeight = (cjkBox.y2 - cjkBox.y1) > 0 ? (cjkBox.y2 - cjkBox.y1) : Math.round(fontUnitsPerEm * 0.88);
+  // 缺字时 opentype.js 返回 .notdef（空/方框字形）：据此判断主字体能否画中文。
+  fontHasCjkGlyphs = (cjkBox.y2 - cjkBox.y1) > 0 && (cjkBox.x2 - cjkBox.x1) > 0;
+  fontCjkHeight = fontHasCjkGlyphs ? (cjkBox.y2 - cjkBox.y1) : Math.round(fontUnitsPerEm * 0.88);
 }
 
 /** 注册后备字体（用于当主字体缺少特殊符号例如 Ø, ², ³, ₐ 等时自动回落） */
@@ -222,6 +226,17 @@ export async function loadOutlineFont(url: string, isFallback = false): Promise<
 /** 是否已有可用的轮廓字体 */
 export function hasOutlineFont(): boolean {
   return activeFont !== null;
+}
+
+/**
+ * 当前轮廓字体能否承担中文图纸的文字渲染。
+ *
+ * 宿主的"轮廓字体"可能只是西文字体（如只放 arial.ttf，或者字体 URL 指错文件）：
+ * 中文会走"合成字形"兜底，笔画断裂、句号变空心圆、字号也不一致。
+ * 这种情形下应改用 Canvas 2D 文字层（浏览器原生文本引擎），而不是硬用 GPU。
+ */
+export function hasOutlineFontCjkCoverage(): boolean {
+  return activeFont !== null && fontHasCjkGlyphs;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
