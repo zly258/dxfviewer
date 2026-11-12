@@ -18,7 +18,7 @@ import { CANVAS_THEME_COLORS } from '@/config/viewerConfig';
 import { createSceneIndex, type SceneIndex } from '@/render/picking/sceneIndex';
 import { SCENE_INDEX_ASYNC_THRESHOLD } from '@/render/picking/sceneIndexBuilder';
 import { buildPathCache, PATH_CACHE_MIN_COVERAGE, type PathCache } from './pathCache';
-import { renderEntitiesToCanvas } from './canvasRenderService';
+import { renderEntitiesToCanvas, TEXT_ENTITY_TYPES } from './canvasRenderService';
 import type {
   EngineRenderParams,
   EngineSceneOptions,
@@ -34,6 +34,14 @@ export class CanvasRenderEngine implements InteractiveRenderEngine {
   private pathCache: PathCache | null = null;
   private pathCacheSource: AnyEntity[] | null = null;
   private pathCacheKey = '';
+  /**
+   * 文字覆盖层专用：只保留文字类实体。
+   *
+   * textOnly 模式每帧遍历实体，若仍遍历整张图（十万级）会拖垮平移帧率
+   * （实测 10 万实体 84ms/帧）。这里在 setScene 时一次性筛出文字实体，
+   * 每帧只遍历它们，并把每帧的 BVH 查询/排序一并省掉。
+   */
+  private textEntities: AnyEntity[] | null = null;
   private theme: CanvasTheme = 'black';
   private themeBackground = CANVAS_THEME_COLORS.black;
   private lastDrawCalls = 0;
@@ -51,6 +59,10 @@ export class CanvasRenderEngine implements InteractiveRenderEngine {
 
   setScene(options: EngineSceneOptions): void {
     this.sceneOptions = options;
+    // 文字覆盖层：只留文字实体（每帧只遍历它们，见 textEntities 注释）。
+    this.textEntities = this.textOnly
+      ? options.entities.filter(entity => TEXT_ENTITY_TYPES.has(entity.type))
+      : null;
     // 场景索引：拾取/剔除共用。优先级：
     // 1. 宿主随场景传入的现成索引（ViewerCanvas 小图纸同步建好后直接给）；
     // 2. 大图纸（≥ 异步阈值）不在主线程建树——宿主正在 Worker 里建，
@@ -144,7 +156,8 @@ export class CanvasRenderEngine implements InteractiveRenderEngine {
 
     renderEntitiesToCanvas({
       ctx: ctx as unknown as CanvasRenderingContext2D,
-      entities: options.entities,
+      // 文字覆盖层只画文字实体（避免十万级实体每帧全量遍历 + BVH 查询）。
+      entities: this.textOnly ? (this.textEntities ?? options.entities) : options.entities,
       modelEntities: options.modelEntities && options.modelEntities !== options.entities
         ? options.modelEntities
         : undefined,
@@ -162,7 +175,8 @@ export class CanvasRenderEngine implements InteractiveRenderEngine {
       hiddenEntityIds: options.hiddenEntityIds,
       isolatedEntityIds: options.isolatedEntityIds,
       selectedIds: params.selectedIds ? new Set(params.selectedIds) : new Set<string>(),
-      sceneIndex,
+      // 文字层无需空间索引：实体已预先筛为文字，顺序遍历即可。
+      sceneIndex: this.textOnly ? undefined : sceneIndex,
       background: null,
       lodCulling: true,
       pathCacheCovered: useCache && cache ? cache.coveredIds : undefined,

@@ -104,15 +104,23 @@ const drawFormattedTextLine = (
     );
 };
 
+/**
+ * 单行文字的基线偏移（相对对齐点，屏幕坐标 y 向下）。
+ *
+ * 垂直居中（vAlign=2 或 72=4 Middle）必须按**字高（cap height）**的一半下移，
+ * 不能用字体的行框 ascent/descent：字体行框比字高大 ~40%，按行框居中会把
+ * 文字整体压下去半个字高，标注文字正好压在尺寸线上（实测 90/180 等尺寸文字
+ * 下缘贴住尺寸线）。AutoCAD / ezdxf 也是按字形框居中。
+ */
 const getCadSingleLineBaselineY = (
     ent: DxfText,
     hAlign: number,
-    ascent: number,
+    capHeightPx: number,
     descent: number,
 ): number => {
     const vAlign = ent.vAlign || 0;
-    if (vAlign === 3) return ascent;
-    if (vAlign === 2 || hAlign === 4) return (ascent - descent) / 2;
+    if (vAlign === 3) return capHeightPx;
+    if (vAlign === 2 || hAlign === 4) return capHeightPx / 2;
     if (vAlign === 1) return -descent;
     return 0;
 };
@@ -175,7 +183,7 @@ const drawTextLayout = (
         }
         ctx.textAlign = 'left';
         ctx.textBaseline = 'alphabetic';
-        const baselineY = getCadSingleLineBaselineY(ent, hAlign, layout.ascent * k, layout.descent * k);
+        const baselineY = getCadSingleLineBaselineY(ent, hAlign, layout.screenHeight * k, layout.descent * k);
         drawFormattedTextLine(ctx, ent.value || layout.plainText, layout.plainText, 0, baselineY, 'left', ctx.textBaseline, layout.visualScreenHeight * k);
     } else {
         let align = layout.align;
@@ -186,7 +194,7 @@ const drawTextLayout = (
         ctx.scale(layout.horizontalScale * layout.generationScale.x, layout.generationScale.y);
         ctx.textAlign = align;
         ctx.textBaseline = 'alphabetic';
-        const baselineY = getCadSingleLineBaselineY(ent, hAlign, layout.ascent * k, layout.descent * k);
+        const baselineY = getCadSingleLineBaselineY(ent, hAlign, layout.screenHeight * k, layout.descent * k);
         drawFormattedTextLine(ctx, ent.value || layout.plainText, layout.plainText, 0, baselineY, align, ctx.textBaseline, layout.visualScreenHeight * k);
     }
 };
@@ -283,6 +291,7 @@ export const drawTextEntity = (
 
     ctx.restore();
 };
+
 
 
 

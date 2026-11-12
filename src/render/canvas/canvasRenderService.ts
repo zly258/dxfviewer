@@ -197,6 +197,8 @@ export const createCanvasRenderSession = ({
     const vMaxX = viewPort.targetX + width / 2 / safeZoom;
     const vMinY = viewPort.targetY - height / 2 / safeZoom;
     const vMaxY = viewPort.targetY + height / 2 / safeZoom;
+    /** 实体级 LOD 仅对超大图纸启用（常规图纸不丢任何几何）。 */
+    const lodActive = entities.length >= LOD_RENDER_CONFIG.minimumEntityCountForLod;
 
     const transform: RenderTransform = {
         project: (p: Point2D) => ({
@@ -289,11 +291,14 @@ export const createCanvasRenderSession = ({
         }
 
         const isSelected = selectedIds.has(ent.id) || parentSelected;
-        if (lodCulling && depth === 0 && ent.extents && !isSelected) {
+        // 实体级 LOD：只对超大图纸生效（见 LOD_RENDER_CONFIG 说明）。
+        // 常规图纸一律完整绘制——轮廓常由大量短线段拼成，逐段按"不足 1 像素"
+        // 剔除会让整条轮廓在远景下消失。
+        const lodThresholdPx = LOD_RENDER_CONFIG.minimumEntityScreenSizePixels;
+        if (lodCulling && lodActive && lodThresholdPx > 0 && depth === 0 && ent.extents && !isSelected) {
             const sx = (ent.extents.max.x - ent.extents.min.x) * viewPort.zoom;
             const sy = (ent.extents.max.y - ent.extents.min.y) * viewPort.zoom;
-            if (sx < LOD_RENDER_CONFIG.minimumEntityScreenSizePixels &&
-                sy < LOD_RENDER_CONFIG.minimumEntityScreenSizePixels) {
+            if (sx < lodThresholdPx && sy < lodThresholdPx) {
                 return;
             }
         }

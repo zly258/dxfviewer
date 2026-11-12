@@ -655,7 +655,9 @@ export function layoutOutlineTextEntity(
     const ascent = effectiveH * (fontCapHeight / fontCjkHeight);
     const descent = effectiveH * 0.18;
     if (vAlign === 1) lineY = descent;
-    else if (vAlign === 2 || hAlign === 4) lineY = -(ascent - descent) / 2;
+    // 居中按**字高**的一半（不能按字体行框 ascent/descent，否则文字整体下移半个字高，
+    // 标注文字会压在尺寸线上）。
+    else if (vAlign === 2 || hAlign === 4) lineY = -effectiveH / 2;
     else if (vAlign === 3) lineY = -ascent;
   }
 

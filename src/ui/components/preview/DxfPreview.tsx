@@ -114,6 +114,9 @@ const DxfPreview = React.forwardRef<DxfPreviewHandle, DxfPreviewProps>(function 
 }, ref) {
   const hostRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  /** WebGL 文字覆盖层画布与引擎（轮廓字体不可用时启用）。 */
+  const textCanvasRef = useRef<HTMLCanvasElement>(null);
+  const textEngineRef = useRef<CanvasRenderEngine | null>(null);
   const engineRef = useRef<InteractiveRenderEngine | null>(null);
   const viewPortRef = useRef<ViewPort>({ targetX: 0, targetY: 0, zoom: 1 });
   const sizeRef = useRef({ width: 0, height: 0, dpr: 1 });
@@ -133,16 +136,15 @@ const DxfPreview = React.forwardRef<DxfPreviewHandle, DxfPreviewProps>(function 
 
   const canvasTheme: CanvasTheme = theme === 'dark' ? 'black' : 'white';
   /**
-   * 引擎选择：极简预览只有一个画布，没有文字覆盖层可挂。
-   * WebGL 的 GPU 文字依赖宿主提供轮廓字体（public/fonts/simfang.ttf）；
-   * 字体不可用时 GPU 兜底（字形图集/描边字体）字号与标点都会走形，
-   * 此时直接改用 Canvas 引擎——文字由浏览器原生文本引擎绘制，与主查看器
-   * 的覆盖层文字同源，观感一致。
+   * 引擎选择：WebGL2 不可用时回退 Canvas。
+   *
+   * 文字：WebGL 的 GPU 文字依赖宿主提供轮廓字体（public/fonts/simfang.ttf）。
+   * 字体不可用（没放 / 不含中文）时**不要把整个引擎降级为 Canvas**（大图会掉帧），
+   * 而是给 WebGL 叠一层 Canvas 2D 文字覆盖层 —— 几何仍在 GPU，文字与 Canvas
+   * 引擎同源（见 useTextOverlay）。
    */
-  const effectiveEngine: EngineKind = engineFallback
-    || (engineKind === 'webgl' && !hasOutlineFontCjkCoverage())
-    ? 'canvas'
-    : engineKind;
+  const effectiveEngine: EngineKind = engineFallback ? 'canvas' : engineKind;
+  const useTextOverlay = effectiveEngine === 'webgl' && !hasOutlineFontCjkCoverage();
 
   // ── 当前布局的实体与范围 ──
   const view = useMemo(() => {
@@ -270,13 +272,27 @@ const DxfPreview = React.forwardRef<DxfPreviewHandle, DxfPreviewProps>(function 
       return;
     }
     engineRef.current = engine;
+    // WebGL + 轮廓字体不可用（宿主没放字体 / 字体不含中文）时，文字改由
+    // Canvas 2D 覆盖层绘制：几何仍在 GPU（大图性能不受影响），文字与 Canvas
+    // 引擎同源，不会出现字号不一、标点走形。
+    let textEngine: CanvasRenderEngine | null = null;
+    if (effectiveEngine === 'webgl' && useTextOverlay && textCanvasRef.current) {
+      try {
+        textEngine = new CanvasRenderEngine(textCanvasRef.current, { textOnly: true });
+        textEngineRef.current = textEngine;
+      } catch {
+        textEngine = null;
+      }
+    }
     let raf = 0;
     const loop = () => {
       if (dirtyRef.current) {
         const { width, height, dpr } = sizeRef.current;
         if (width > 0 && height > 0) {
           try {
-            engine.render({ viewPort: viewPortRef.current, cssWidth: width, cssHeight: height, dpr });
+            const params = { viewPort: viewPortRef.current, cssWidth: width, cssHeight: height, dpr };
+            engine.render(params);
+            textEngine?.render(params);
           } catch (err) {
             setError(err instanceof Error ? err : new Error(String(err)));
           }
@@ -290,27 +306,36 @@ const DxfPreview = React.forwardRef<DxfPreviewHandle, DxfPreviewProps>(function 
     return () => {
       cancelAnimationFrame(raf);
       engine.dispose();
+      textEngine?.dispose();
+      if (textEngineRef.current === textEngine) textEngineRef.current = null;
       if (engineRef.current === engine) engineRef.current = null;
     };
-  }, [effectiveEngine, requestFrame]);
+  }, [effectiveEngine, useTextOverlay, requestFrame]);
 
   // ── 场景更新（图纸 / 主题 / 颜色模式 / 字体变化） ──
   useEffect(() => {
     const engine = engineRef.current;
     if (!engine || !data || !view) return;
     engine.setTheme(canvasTheme, CANVAS_THEME_COLORS[canvasTheme]);
+    const sceneOptions = {
+      entities: view.entities,
+      modelEntities: view.modelEntities && view.modelEntities !== view.entities ? view.modelEntities : undefined,
+      layers: data.layers,
+      blocks: data.blocks,
+      styles: data.styles,
+      lineTypes: data.lineTypes,
+      ltScale: data.header?.ltScale ?? 1,
+      theme: canvasTheme,
+      drawingColorMode: colorMode,
+    };
     try {
-      engine.setScene({
-        entities: view.entities,
-        modelEntities: view.modelEntities && view.modelEntities !== view.entities ? view.modelEntities : undefined,
-        layers: data.layers,
-        blocks: data.blocks,
-        styles: data.styles,
-        lineTypes: data.lineTypes,
-        ltScale: data.header?.ltScale ?? 1,
-        theme: canvasTheme,
-        drawingColorMode: colorMode,
-      });
+      // 有文字覆盖层时，GL 场景跳过文字烘焙，文字由 textEngine 单独绘制。
+      engine.setScene(textEngineRef.current ? { ...sceneOptions, skipText: true } as never : sceneOptions);
+      const textEngine = textEngineRef.current;
+      if (textEngine) {
+        textEngine.setTheme(canvasTheme, CANVAS_THEME_COLORS[canvasTheme]);
+        textEngine.setScene(sceneOptions);
+      }
     } catch (err) {
       setError(err instanceof Error ? err : new Error(String(err)));
     }
@@ -415,6 +440,9 @@ const DxfPreview = React.forwardRef<DxfPreviewHandle, DxfPreviewProps>(function 
     >
       {/* key 随引擎变化：同一 canvas 元素不能同时持有 WebGL 与 2D 上下文 */}
       <canvas key={effectiveEngine} ref={canvasRef} />
+      {useTextOverlay && (
+        <canvas key={`text-${effectiveEngine}`} ref={textCanvasRef} className="dxf-preview-text-layer" />
+      )}
       {loadingNode}
       {errorNode}
     </div>

@@ -696,7 +696,8 @@ export function getCadTextLocalCorners(ent: DxfText, layout: TextLayoutEstimate)
     else if (hAlign === 2) ox = -width;
 
     if (vAlign === 1) oy = 0;
-    else if (vAlign === 2 || hAlign === 4) oy = height / 2;
+    // 居中的垂直偏移按「字高」的一半（与绘制端 getCadSingleLineBaselineY 一致）。
+    else if (vAlign === 2 || hAlign === 4) oy = layout.textHeight / 2;
     else if (vAlign === 3) oy = height;
     else oy = layout.textHeight * TEXT_RENDER_CONFIG.alphabeticBaselineOffsetFactor;
   }

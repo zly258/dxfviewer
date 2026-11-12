@@ -34,6 +34,16 @@
   padding: 0;
 }
 
+/*
+ * WebGL 文字覆盖层：几何在主画布（GPU），文字单独一层由浏览器原生文本引擎绘制。
+ * 必须绝对定位盖在主画布之上，且不拦截指针事件（拖动/缩放仍作用于宿主）。
+ */
+.dxf-preview > canvas.dxf-preview-text-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
 .dxf-preview-message {
   position: absolute;
   inset: 0;
