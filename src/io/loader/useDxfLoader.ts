@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { Language, t } from '@/ui/i18n';
 import { DxfLoadResult } from '@/types';
 import { createAbortError, isAbortError } from '@/utils/abortError';
+import { createDxfLoaderWorker } from './workerFactory';
 import type { ParseWorkerResponse } from './dxfLoader.worker';
 
 interface ActiveLoadJob {
@@ -62,7 +63,6 @@ export const useDxfLoader = (lang: Language, onError?: (err: Error) => void) => 
   }, []);
 
   const parseBuffer = useCallback(async (buffer: ArrayBuffer, job: ActiveLoadJob): Promise<DxfLoadResult> => {
-    const { createDxfLoaderWorker } = await import('./workerFactory');
     if (!isCurrentJob(job)) throw createAbortError();
 
     return new Promise((resolve, reject) => {
