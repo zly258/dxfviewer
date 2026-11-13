@@ -34,6 +34,32 @@ export interface Viewport {
 const SELECTION_COLOR = '#00A8FF';
 
 /**
+ * 把环写入裁剪顶点缓冲。点数超过 maxPoints 时均匀抽点，首尾都保留。
+ * @returns 实际写入的点数
+ */
+const copyDecimatedRing = (
+  src: Float64Array,
+  dst: Float32Array,
+  dstPairStart: number,
+  maxPoints: number,
+): number => {
+  const count = Math.floor(src.length / 2);
+  const kept = Math.max(0, Math.min(count, maxPoints));
+  if (kept < 3) return 0;
+  if (kept === count) {
+    for (let i = 0; i < count * 2; i++) dst[dstPairStart * 2 + i] = src[i];
+    return count;
+  }
+  const last = count - 1;
+  for (let i = 0; i < kept; i++) {
+    const srcIndex = Math.round((i * last) / (kept - 1));
+    dst[(dstPairStart + i) * 2] = src[srcIndex * 2];
+    dst[(dstPairStart + i) * 2 + 1] = src[srcIndex * 2 + 1];
+  }
+  return kept;
+};
+
+/**
  * 线宽抗锯齿羽化半径（设备像素）。
  *
  * 片元覆盖率 = clamp(halfWidth + feather − d, 0, 1)，墨水总宽 ≈ 线宽 + feather。
@@ -340,8 +366,8 @@ export class RenderEngine implements InteractiveRenderEngine {
    * - u_clipPoly[0] = 外环点数，其后依次是各孔洞的点数与顶点起始下标；
    * - u_clipVerts 存放所有顶点对（世界坐标）。
    *
-   * 顶点总量超出 uniform 容量时退化为「只裁外环」（跳过孔洞），
-   * 宁可少挖孔也不画错位置。
+   * 顶点超出 uniform 容量时均匀抽点，仍然裁剪。
+   * 不能关掉裁剪，否则剖面线会铺满整个包围盒。
    */
   private setClipPolygonUniforms(program: GlProgram, region: HatchRegion): void {
     const gl = this.device.gl;
@@ -358,26 +384,26 @@ export class RenderEngine implements InteractiveRenderEngine {
     const verts = this.clipVertsBuffer;
     poly.fill(0);
     verts.fill(0);
-    if (outerCount > 512) {
-      // 外环顶点超出 uniform 容量：无法裁剪，退化为不裁剪（整块包围盒）。
-      gl.uniform4f(program.locateUniformArray('u_clipPoly'), 0, 0, 0, 0);
-      return;
-    }
-    for (let i = 0; i < outerCount * 2; i++) verts[i] = outer[i];
+    // 外环最多占 400 个点，剩下的容量留给孔洞。超出就均匀抽点，
+    // 不能直接关掉裁剪——否则剖面线会铺满整个包围盒。
+    const outerKept = copyDecimatedRing(outer, verts, 0, Math.min(outerCount, 400));
 
     // u_clipPoly: (点数, 顶点起始下标, 0, 0)
-    poly[0] = outerCount;
+    poly[0] = outerKept;
     poly[1] = 0;
-    let vertexCursor = outerCount;
+    let vertexCursor = outerKept;
     let ringIndex = 1;
     for (const hole of island.holes) {
       const holeCount = Math.floor(hole.length / 2);
       if (holeCount < 3) continue;
-      if (ringIndex >= 64 || vertexCursor + holeCount > 512) break;
-      poly[ringIndex * 4] = holeCount;
+      if (ringIndex >= 64) break;
+      const room = 512 - vertexCursor;
+      if (room < 3) break;
+      const kept = copyDecimatedRing(hole, verts, vertexCursor, Math.min(holeCount, room));
+      if (kept < 3) break;
+      poly[ringIndex * 4] = kept;
       poly[ringIndex * 4 + 1] = vertexCursor;
-      for (let i = 0; i < holeCount * 2; i++) verts[vertexCursor * 2 + i] = hole[i];
-      vertexCursor += holeCount;
+      vertexCursor += kept;
       ringIndex++;
     }
     // 未使用的环项点数置 0，着色器据此停止遍历。
