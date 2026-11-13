@@ -36,7 +36,25 @@ jobs:
       - name: 检出代码
         uses: actions/checkout@v5
 
+      # 补发历史版本 Release 时**不能**再发布到 npm：旧版本会覆盖 dist-tag
+      # `latest`（用户装到的会变成老版本）。只有仓库里最新的 semver tag 才发布。
+      - name: 判断是否为最新版本
+        id: latest_guard
+        if: github.event_name == 'release'
+        env:
+          REF_NAME: ${{ github.event.release.tag_name }}
+        run: |
+          LATEST_TAG="$(git ls-remote --tags --refs origin 'v*' | sed 's#.*refs/tags/##' | sort -V | tail -n1)"
+          echo "本次 tag = ${REF_NAME} / 仓库最新 tag = ${LATEST_TAG}"
+          if [ "${REF_NAME}" != "${LATEST_TAG}" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::${REF_NAME} 不是最新版本，跳过 npm 发布（仅补发 Release 说明）"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: 安装 Node.js
+        if: steps.latest_guard.outputs.skip != 'true'
         uses: actions/setup-node@v5
         with:
           # Node 24 自带 npm 11.x：Trusted Publishing 需要 npm >= 11.5.1
@@ -44,16 +62,19 @@ jobs:
           cache: npm
 
       - name: 安装依赖
+        if: steps.latest_guard.outputs.skip != 'true'
         run: npm ci
 
       - name: 类型检查
+        if: steps.latest_guard.outputs.skip != 'true'
         run: npm run typecheck
 
       - name: 构建库
+        if: steps.latest_guard.outputs.skip != 'true'
         run: npm run build:lib
 
       - name: 校验版本与 tag 一致
-        if: github.event_name == 'release'
+        if: github.event_name == 'release' && steps.latest_guard.outputs.skip != 'true'
         env:
           REF_NAME: ${{ github.event.release.tag_name }}
         run: |
@@ -70,6 +91,7 @@ jobs:
           fi
 
       - name: 打包预检
+        if: steps.latest_guard.outputs.skip != 'true'
         run: npm pack --dry-run
 
       - name: 发布（dry run）
@@ -77,11 +99,11 @@ jobs:
         run: echo "dry_run=true，跳过实际发布"
 
       - name: 发布到 npm
-        if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run)
+        if: (github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run)) && steps.latest_guard.outputs.skip != 'true'
         run: npm publish --provenance --access public
 
       - name: 发布结果
-        if: github.event_name == 'release'
+        if: github.event_name == 'release' && steps.latest_guard.outputs.skip != 'true'
         run: |
           echo "已发布 @zhangly1403/dxfviewer@$(node -p "require('./package.json').version")"
           echo "https://www.npmjs.com/package/@zhangly1403/dxfviewer"
