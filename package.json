@@ -77,13 +77,14 @@
     "check:large": "node scripts/check-large.mjs",
     "check:ui": "node scripts/ui-audit.mjs --strict",
     "check:ui-style": "node scripts/ui-style-check.mjs",
-    "check": "npm run build:lib && npm run check:fixtures && npm run check:render && npm run check:accuracy && npm run check:symbols && npm run check:visibility && npm run check:roundtrip && npm run check:ui",
+    "check": "npm run build:lib && npm run check:fixtures && npm run check:render && npm run check:accuracy && npm run check:text-scale && npm run check:symbols && npm run check:visibility && npm run check:roundtrip && npm run check:ui",
     "convert": "node scripts/dxfviewer-cli.mjs",
     "test:real": "node scripts/real-dxf-test.mjs",
     "build:example": "npm run build:lib && npm --workspace dxfviewer-example run build",
     "build:all": "npm run build:lib && npm --workspace dxfviewer-example run build",
     "preview:example": "npm --workspace dxfviewer-example run preview",
-    "check:accuracy": "node scripts/check-accuracy.mjs"
+    "check:accuracy": "node scripts/check-accuracy.mjs",
+    "check:text-scale": "node scripts/check-text-scale.mjs"
   },
   "devDependencies": {
     "@types/earcut": "^3.0.0",

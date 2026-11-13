@@ -384,6 +384,38 @@ export interface OutlineTextLayoutRun {
 }
 
 /**
+ * 判断一个字符是否按「全角字身」度量。
+ *
+ * CAD 里文字高度是「大写字高」（西文）/「字身高」（中文）。系统字体里
+ * 中文字形墨迹高约占 em 的 87%，西文大写字母约占 67% —— 两者不等，
+ * 因此同一行里中英文必须**分别**缩放，否则英文会偏大（实测 1.31×），
+ * 整行看起来字号忽大忽小、非常刺眼。
+ */
+const isFullWidthChar = (ch: string): boolean => {
+  const code = ch.codePointAt(0) ?? 0;
+  // CJK 统一表意文字（含扩展 A）、假名、韩文、全角标点。
+  return (
+    (code >= 0x2e80 && code <= 0x9fff) ||
+    (code >= 0xac00 && code <= 0xd7af) ||
+    (code >= 0xf900 && code <= 0xfaff) ||
+    (code >= 0xff00 && code <= 0xff60) ||
+    (code >= 0xffe0 && code <= 0xffe6)
+  );
+};
+
+/**
+ * 单个字符的缩放系数。
+ *
+ * @param height CAD 文字高度（世界单位）
+ * @returns { scaleY, scaleX } 字符自身的纵/横缩放
+ */
+const charScale = (ch: string, height: number, widthFactor: number) => {
+  const denominator = isFullWidthChar(ch) ? fontCjkHeight : fontCapHeight;
+  const scaleY = height / Math.max(1, denominator);
+  return { scaleY, scaleX: scaleY * (widthFactor > 0 ? widthFactor : 1) };
+};
+
+/**
  * 将一行文字排版为几何三角形顶点数组
  * @param text 文本字符串
  * @param height CAD 文字高度（世界单位）
@@ -396,23 +428,21 @@ export function layoutOutlineToTriangles(
 ): OutlineTextLayoutRun | null {
   if (!activeFont || !text) return null;
 
-  const hasCjk = /[\u2e80-\u9fff\uf900-\ufaff]/.test(text);
-  const baseDenominator = hasCjk ? fontCjkHeight : fontCapHeight;
-  const scaleY = height / Math.max(1, baseDenominator);
-  const scaleX = scaleY * (widthFactor > 0 ? widthFactor : 1);
-
   const chars = Array.from(text);
-  const runs: Array<{ mesh: GlyphMesh; x: number }> = [];
+  const runs: Array<{ mesh: GlyphMesh; x: number; scaleY: number; scaleX: number }> = [];
   let curX = 0;
 
   for (const ch of chars) {
     if (ch === ' ') {
-      curX += (fontUnitsPerEm * 0.35) * scaleX;
+      curX += (fontUnitsPerEm * 0.35) * charScale(' ', height, widthFactor).scaleX;
       continue;
     }
     const mesh = getGlyphMesh(ch);
+    // 逐字符缩放：中英文在同一行里各自按自己的字身度量，
+    // 避免英文被中文的 em 盒放大（实测 1.31×，整行字号忽大忽小）。
+    const { scaleY, scaleX } = charScale(ch, height, widthFactor);
     if (mesh) {
-      runs.push({ mesh, x: curX });
+      runs.push({ mesh, x: curX, scaleY, scaleX });
       curX += mesh.advance * scaleX;
     } else {
       curX += (fontUnitsPerEm * 0.5) * scaleX;
@@ -434,8 +464,8 @@ export function layoutOutlineToTriangles(
     const v = r.mesh.vertices;
     const gx = r.x;
     for (let i = 0; i < v.length; i += 2) {
-      out[offset + i] = gx + v[i] * scaleX;
-      out[offset + i + 1] = v[i + 1] * scaleY;
+      out[offset + i] = gx + v[i] * r.scaleX;
+      out[offset + i + 1] = v[i + 1] * r.scaleY;
     }
     offset += v.length;
   }
@@ -453,13 +483,11 @@ export function measureOutlineTextWidth(
   widthFactor: number,
 ): number {
   if (!activeFont || !text) return 0;
-  const hasCjk = /[\u2e80-\u9fff\uf900-\ufaff]/.test(text);
-  const baseDenominator = hasCjk ? fontCjkHeight : fontCapHeight;
-  const scaleY = height / Math.max(1, baseDenominator);
-  const scaleX = scaleY * (widthFactor > 0 ? widthFactor : 1);
 
   let curX = 0;
   for (const ch of Array.from(text)) {
+    // 与 layoutOutlineToTriangles 保持一致：逐字符缩放。
+    const { scaleX } = charScale(ch, height, widthFactor);
     if (ch === ' ') {
       curX += (fontUnitsPerEm * 0.35) * scaleX;
       continue;
