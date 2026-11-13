@@ -599,6 +599,77 @@
   background-color: var(--bg-app);
 }
 
+/* 关闭确认：默认焦点在「取消」，避免误触直接关掉 */
+.close-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10050;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px;
+  background-color: var(--scrim);
+}
+
+.close-confirm {
+  width: min(360px, calc(100vw - 32px));
+  padding: 14px 14px 12px;
+  border: 1px solid var(--border-main);
+  border-radius: var(--radius-lg);
+  background-color: var(--bg-panel);
+  color: var(--text-main);
+  box-shadow: var(--shadow-overlay);
+  box-sizing: border-box;
+}
+
+.close-confirm-title {
+  font-size: var(--fs-body);
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.close-confirm-message {
+  margin: 8px 0 14px;
+  font-size: var(--fs-body);
+  line-height: 1.5;
+  color: var(--text-sec);
+  word-break: break-all;
+}
+
+.close-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.close-confirm-actions button {
+  height: var(--control-h);
+  padding: 0 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-main);
+  background-color: var(--bg-chrome);
+  color: var(--text-main);
+  font-size: var(--fs-body);
+  cursor: pointer;
+}
+
+.close-confirm-actions button:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-main);
+}
+
+.close-confirm-actions .close-confirm-ok {
+  background-color: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+
+.close-confirm-actions .close-confirm-ok:hover {
+  background-color: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+
 /* 兼容旧类名：应用级 Toast 容器固定在顶部居中 */
 .app-toast-container {
   position: fixed;

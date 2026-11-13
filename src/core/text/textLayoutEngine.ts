@@ -1,6 +1,8 @@
 import type { VectorContext } from '@/render/vector/context';
 import { DxfStyle, DxfText, EntityType } from '@/types';
 import { TEXT_RENDER_CONFIG } from '@/config/viewerConfig';
+import { getFontMetrics } from '@/render/text/fontMetrics';
+import { measureCadTextRun, measureCadTextVertical } from '@/render/text/canvasTextRun';
 import {
   cleanCadText,
   cleanMText,
@@ -67,6 +69,8 @@ const CJK_CHAR_PATTERN = /[\u2e80-\u9fff\uf900-\ufaff]/;
  * （实测"有的偏小"）。
  */
 const getTextHeightCorrectionFactor = (entity: DxfText, _styles?: Record<string, DxfStyle>): number => {
+  // 轮廓字体下字形已按 CAD 字高缩放，视觉高度就是字高本身。
+  if (getFontMetrics().fromOutlineFont) return 1;
   if (CJK_CHAR_PATTERN.test(entity.value || '')) {
     return TEXT_RENDER_CONFIG.cjkFontHeightFactor;
   }
@@ -164,18 +168,17 @@ export const wrapTextByMeasuredWidth = (measureWidth: (value: string) => number,
   return result;
 };
 
-const measureCanvasText = (context: VectorContext, value: string): number => {
-  if (!value) return 0;
-  const metrics = context.measureText(value);
-  const actual = Math.abs((metrics.actualBoundingBoxRight || 0) - (metrics.actualBoundingBoxLeft || 0));
-  return Math.max(metrics.width || 0, actual || 0);
-};
+const measureCanvasText = (context: VectorContext, value: string): number =>
+  measureCadTextRun(context, value);
 
 const measureCanvasTextVerticalMetrics = (
   context: VectorContext,
   sampleText: string,
   fallbackHeight: number,
 ): { ascent: number; descent: number } => {
+  const outline = measureCadTextVertical(context, sampleText || 'Mg');
+  if (outline) return outline;
+
   const metrics = context.measureText(sampleText || 'Mg');
   const measuredAscent = metrics.actualBoundingBoxAscent || metrics.fontBoundingBoxAscent || 0;
   const measuredDescent = metrics.actualBoundingBoxDescent || metrics.fontBoundingBoxDescent || 0;

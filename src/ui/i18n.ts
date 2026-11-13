@@ -127,15 +127,12 @@ export const UI_TRANSLATIONS: Record<Language, Record<string, string>> = {
     isolateSelected: 'Isolate Selected',
     hideSelectedLayer: 'Turn Layer Off',
 
-    // 标签页右键菜单
-    closeTab: 'Close',
-    closeOtherTabs: 'Close Others',
-    closeTabsToLeft: 'Close to Left',
-    closeTabsToRight: 'Close to Right',
-    closeAllTabs: 'Close All',
-    scrollTabsLeft: 'Scroll tabs left',
-    scrollTabsRight: 'Scroll tabs right',
-    closeTabAriaLabel: 'Close tab',
+    // 关闭图纸
+    confirmCloseTitle: 'Close Drawing',
+    confirmCloseMessage: 'Close "{name}"? This only clears the view.',
+    confirmCloseOk: 'Close',
+    confirmCloseCancel: 'Cancel',
+    closeDrawingAria: 'Close drawing',
 
     // 加载 & 反馈
     loading: 'Loading',
@@ -302,15 +299,12 @@ export const UI_TRANSLATIONS: Record<Language, Record<string, string>> = {
     isolateSelected: '隔离选中',
     hideSelectedLayer: '关闭图层',
 
-    // 标签页右键菜单
-    closeTab: '关闭当前',
-    closeOtherTabs: '关闭其他',
-    closeTabsToLeft: '关闭左边',
-    closeTabsToRight: '关闭右边',
-    closeAllTabs: '全部关闭',
-    scrollTabsLeft: '向左滚动标签',
-    scrollTabsRight: '向右滚动标签',
-    closeTabAriaLabel: '关闭标签',
+    // 关闭图纸
+    confirmCloseTitle: '关闭图纸',
+    confirmCloseMessage: '确定关闭「{name}」？这只会清掉当前查看，不会改文件。',
+    confirmCloseOk: '关闭',
+    confirmCloseCancel: '取消',
+    closeDrawingAria: '关闭图纸',
 
     // 加载 & 反馈
     loading: '正在加载',

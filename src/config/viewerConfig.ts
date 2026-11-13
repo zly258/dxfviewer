@@ -341,12 +341,6 @@ export const CONTEXT_MENU_CONFIG = {
   mobilePadding: 10,
 };
 
-export const TABS_CONFIG = {
-  denseThreshold: 18,
-  compactThreshold: 10,
-  scrollStep: 240,
-};
-
 export const BREAKPOINTS = {
   mobile: 768,
 };

@@ -222,8 +222,7 @@ const ViewerCanvas: React.FC<ViewerCanvasProps> = ({
     }
     // 调试句柄：控制台可用 __dxfEngine.stats 查看引擎状态。
     (window as unknown as { __dxfEngine?: InteractiveRenderEngine }).__dxfEngine = engine;
-    // 调试句柄：设置/读取视口，便于双引擎在**完全相同**的视口下逐像素对比
-    // （scripts/compare-text-*.mjs 等实测脚本依赖它做双引擎对齐）。
+    // 调试句柄：设置/读取视口，便于双引擎在完全相同的视口下对比。
     (window as unknown as { __dxfViewport?: {
       get: () => ViewPort;
       set: (vp: ViewPort) => void;

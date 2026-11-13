@@ -159,13 +159,13 @@ await page.waitForTimeout(2200);
 const tree = await measure(page, {
   treeRow: '.layer-row',
   entityRow: '.entity-row',
-  tab: '.tab-item',
+  title: '.app-header-title',
   fontTree: '.tree-row',
 });
 if (tree.treeRow) {
   check('树行 = 26', tree.treeRow?.h, 26);
   check('构件行 = 26', tree.entityRow?.h, 26);
-  check('文件页签 = 26', tree.tab?.h, 26);
+  check('顶栏标题可见', tree.title?.h, (v) => typeof v === 'number' && v > 0);
   check('树行字号 12px', tree.fontTree?.fontSize, '12px');
 } else {
   console.log('· 未找到 sample DXF（*.dxf 不入库），跳过分区树/页签实测');
@@ -176,52 +176,34 @@ if (UPDATE_SHOTS) {
   await page.screenshot({ path: path.join(SHOT_DIR, 'desktop.png') });
 }
 
-/* ── 1.5 回归：切换 / 右键文件标签不得重复解析（不刷新重载） ── */
-const readsBeforeSwitch = await page.evaluate(() => window.__fileReads || 0);
-const tabCount = await page.evaluate(() => Array.from(document.querySelectorAll('.tab-item')).length);
+/* ── 1.5 单图纸：再打开会替换；关闭必须确认，取消不卸载 ── */
+const readsBeforeReplace = await page.evaluate(() => window.__fileReads || 0);
 const secondSample = fixtures.files['text-mtext.dxf'];
-if (tabCount === 1 && fs.existsSync(secondSample)) {
-  // 打开第二个文件形成多标签页
+if (fs.existsSync(secondSample)) {
   await page.setInputFiles('.toolbar .hidden-file-input', secondSample).catch(() => {});
   await page.waitForTimeout(4000);
 }
-const readsAfterOpen = await page.evaluate(() => window.__fileReads || 0);
+const readsAfterReplace = await page.evaluate(() => window.__fileReads || 0);
+const openCount = await page.evaluate(() => document.querySelectorAll('.drawing-close').length);
+check('打开新文件触发一次解析', readsAfterReplace > readsBeforeReplace, true);
+check('同时只保留一个图纸', openCount, 1);
 
-// 切换标签：连续点两个标签
-await page.evaluate(() => {
-  const tabs = Array.from(document.querySelectorAll('.tab-item')).filter(t => t.getBoundingClientRect().width > 0);
-  tabs[0]?.click();
-});
-await page.waitForTimeout(500);
-await page.evaluate(() => {
-  const tabs = Array.from(document.querySelectorAll('.tab-item')).filter(t => t.getBoundingClientRect().width > 0);
-  tabs[tabs.length - 1]?.click();
-});
-await page.waitForTimeout(500);
-
-// 右键当前标签（应只弹菜单，不重载）
-await page.evaluate(() => {
-  const tabs = Array.from(document.querySelectorAll('.tab-item')).filter(t => t.getBoundingClientRect().width > 0);
-  const target = tabs[tabs.length - 1];
-  if (!target) return;
-  const rect = target.getBoundingClientRect();
-  target.dispatchEvent(new MouseEvent('contextmenu', {
-    bubbles: true,
-    cancelable: true,
-    clientX: Math.round(rect.left + rect.width / 2),
-    clientY: Math.round(rect.top + rect.height / 2),
-  }));
-});
-await page.waitForTimeout(600);
-const contextMenuOpen = await page.evaluate(() => !!document.querySelector('.tab-context-menu'));
-await page.evaluate(() => document.body.click());
-await page.waitForTimeout(300);
-
-const readsAfterSwitch = await page.evaluate(() => window.__fileReads || 0);
-check('打开新文件触发一次解析', readsAfterOpen > readsBeforeSwitch, true);
-check('切换文件标签不重复解析（不刷新重载）', readsAfterSwitch, readsAfterOpen);
-check('右键文件标签弹出菜单', contextMenuOpen, true);
-check('右键文件标签不重复解析（不刷新重载）', await page.evaluate(() => window.__fileReads || 0), readsAfterOpen);
+await page.click('.drawing-close');
+await page.waitForTimeout(200);
+const dialogOpen = await page.evaluate(() => !!document.querySelector('.close-confirm'));
+check('关闭图纸先弹出确认', dialogOpen, true);
+check('未确认时图纸仍在', await page.evaluate(() => document.querySelectorAll('.drawing-close').length), 1);
+await page.click('.close-confirm-cancel');
+await page.waitForTimeout(200);
+check('取消关闭后图纸仍在', await page.evaluate(() => document.querySelectorAll('.drawing-close').length), 1);
+check('确认框不触发重新解析', await page.evaluate(() => window.__fileReads || 0), readsAfterReplace);
+await page.click('.drawing-close');
+await page.click('.close-confirm-ok');
+await page.waitForTimeout(400);
+check('确认后图纸已关闭', await page.evaluate(() => document.querySelectorAll('.drawing-close').length), 0);
+// 后续主题 / 移动端 / 图层检查仍需要一份打开的图纸。
+await page.setInputFiles('.toolbar .hidden-file-input', SAMPLE).catch(() => {});
+await page.waitForTimeout(2200);
 
 /* ── 2. 深色主题令牌生效 ── */
 await page.evaluate(() => {
@@ -311,21 +293,20 @@ const mobile = await page.evaluate(() => {
   const btn = document.querySelector('.mobile-tool-button');
   const chip = document.querySelector('.mobile-coord-chip');
   const canvas = document.querySelector('.canvas-container');
-  const visibleTabs = Array.from(document.querySelectorAll('.tab-item'))
-    .filter(t => t.getBoundingClientRect().width > 0).length;
+  const title = document.querySelector('.app-header-title');
   return {
     isMobile: container?.classList.contains('is-mobile') ?? false,
     toolBtn: btn ? Math.round(btn.getBoundingClientRect().height) : null,
     chipVisible: chip ? getComputedStyle(chip).display !== 'none' : false,
     canvasWidth: canvas ? Math.round(canvas.getBoundingClientRect().width) : null,
-    visibleTabs,
+    titleVisible: title ? title.getBoundingClientRect().width > 0 : false,
   };
 });
 check('移动端类生效', mobile.isMobile, true);
 check('移动端工具按钮 = 32', mobile.toolBtn, 32);
 check('坐标浮层显示', mobile.chipVisible, true);
 check('视口未被撑破', mobile.canvasWidth, (v) => v !== null && v > 0 && v <= 700);
-check('移动端保留文件标签条', mobile.visibleTabs, (v) => v >= 1);
+check('移动端顶栏仍显示图纸名', mobile.titleVisible, true);
 
 if (UPDATE_SHOTS) {
   await page.screenshot({ path: path.join(SHOT_DIR, 'mobile.png') });
@@ -336,19 +317,11 @@ if (UPDATE_SHOTS) {
 await page.setViewportSize({ width: 1600, height: 900 });
 await page.waitForTimeout(700);
 
-/**
- * 多标签时每个标签各有一套侧栏，必须只取「可见的那个 viewer」的手柄
- * （隐藏标签用 visibility:hidden，布局仍在，不能用 getBoundingClientRect 判断）。
- */
+/** 只取当前可见查看器的拖拽手柄（没有隐藏的第二套查看器）。 */
 const findVisibleHandle = () => page.evaluate(() => {
-  const handles = Array.from(document.querySelectorAll('.panel-resize-handle-right'));
-  const handle = handles.find((el) => {
-    const host = el.closest('.tab-viewer-host');
-    return !host || getComputedStyle(host).visibility !== 'hidden';
-  });
+  const handle = document.querySelector('.panel-resize-handle-right');
   if (!handle) return null;
-  const host = handle.closest('.tab-viewer-host') || document;
-  const frame = host.querySelector('.side-panel-frame');
+  const frame = document.querySelector('.side-panel-frame');
   const rect = handle.getBoundingClientRect();
   return {
     x: Math.round(rect.x + rect.width / 2),
@@ -373,9 +346,7 @@ if (resizeHandle && resizeHandle.width !== null) {
 }
 
 const layerToggle = await page.evaluate(() => {
-  const hosts = Array.from(document.querySelectorAll('.tab-viewer-host'));
-  const scope = hosts.find(h => getComputedStyle(h).visibility !== 'hidden') || document;
-  const toggle = scope.querySelector('.layer-visibility-toggle');
+  const toggle = document.querySelector('.layer-visibility-toggle');
   if (!toggle) return null;
   toggle.dispatchEvent(new MouseEvent('click', { bubbles: true }));
   return true;
@@ -383,9 +354,7 @@ const layerToggle = await page.evaluate(() => {
 if (layerToggle) {
   await page.waitForTimeout(250);
   const hidden = await page.evaluate(() => {
-    const hosts = Array.from(document.querySelectorAll('.tab-viewer-host'));
-    const scope = hosts.find(h => getComputedStyle(h).visibility !== 'hidden') || document;
-    return !!scope.querySelector('.layer-row.layer-hidden');
+    return !!document.querySelector('.layer-row.layer-hidden');
   });
   check('图层显隐切换生效', hidden, true);
 } else {
@@ -393,9 +362,7 @@ if (layerToggle) {
 }
 
 const contextMenu = await page.evaluate(() => {
-  const hosts = Array.from(document.querySelectorAll('.tab-viewer-host'));
-  const scope = hosts.find(h => getComputedStyle(h).visibility !== 'hidden') || document;
-  const canvas = scope.querySelector('.canvas-container');
+  const canvas = document.querySelector('.canvas-container');
   if (!canvas) return null;
   const rect = canvas.getBoundingClientRect();
   canvas.dispatchEvent(new MouseEvent('contextmenu', {

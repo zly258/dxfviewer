@@ -41,7 +41,8 @@ export interface DxfViewerProps {
   initFile?: string | File;
   fileName?: string;
   showOpenMenu?: boolean;
-  tabStrip?: React.ReactNode;
+  /** 关闭当前图纸。由工作区接管时弹出确认。 */
+  onClose?: () => void;
   onError?: (err: Error) => void; // 错误回调
   onLoad?: (data: DxfLoadedData) => void; // 加载完成回调
   onOpenFiles?: (files: File[]) => void; // 由外层容器接管文件打开时使用
@@ -61,7 +62,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
   initFile,
   fileName, 
   showOpenMenu = true,
-  tabStrip,
+  onClose,
   onError, 
   onLoad,
   onOpenFiles,
@@ -769,7 +770,6 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
         ref={mobileFileInputRef}
         type="file"
         accept=".dxf"
-        multiple
         onChange={handleMobileFileChange}
         className="hidden-file-input"
       />
@@ -784,12 +784,12 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
         onExport={handleExport}
         canExport={entities.length > 0}
         onShowAbout={() => setShowAbout(true)}
+        onClose={onClose}
       />
 
-      {/* 工具条行 32px：视口工具 + 文件标签条（移动端仅渲染标签条） */}
-      {(!isMobile || tabStrip) && (
+      {/* 工具条行 32px：视口工具。移动端改用底部浮层，不占这一行。 */}
+      {!isMobile && (
         <div className="ui-toolbar-row">
-          {!isMobile && (
             <ViewerToolbar
               onImport={handleImport}
               onFitView={handleFitView}
@@ -813,8 +813,6 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
               showProperties={showProperties}
               onToggleProperties={() => setShowProperties(v => !v)}
             />
-          )}
-          {tabStrip && <div className="menu-tab-strip">{tabStrip}</div>}
         </div>
       )}
 

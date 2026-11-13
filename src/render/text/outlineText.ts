@@ -16,6 +16,7 @@ import earcut from 'earcut';
 import { DxfText, DxfStyle, EntityType, Point2D } from '@/types';
 import { cleanMText, cleanCadText, getEffectiveTextHeight, getStyleForText } from '@/utils/textUtils';
 import { wrapTextByMeasuredWidth } from '@/core/text/textLayoutEngine';
+import { setFontMetrics, OUTLINE_FONT_FAMILY } from './fontMetrics';
 
 export interface GlyphMesh {
   /** 三角形顶点数组 [x0, y0, x1, y1, ...]，以 em 尺寸为基准，原点在字符基线(0, 0) */
@@ -194,6 +195,14 @@ export function setOutlineFont(fontData: ArrayBuffer | opentype.Font): void {
   // 缺字时 opentype.js 返回 .notdef（空/方框字形）：据此判断主字体能否画中文。
   fontHasCjkGlyphs = (cjkBox.y2 - cjkBox.y1) > 0 && (cjkBox.x2 - cjkBox.x1) > 0;
   fontCjkHeight = fontHasCjkGlyphs ? (cjkBox.y2 - cjkBox.y1) : Math.round(fontUnitsPerEm * 0.88);
+
+  // 把真实度量同步给共享模块：Canvas 引擎据此换算 font-size，
+  // 从而与 WebGL 轮廓排版得到**完全相同**的字高/字宽/基线。
+  setFontMetrics({
+    capHeightRatio: fontCapHeight / fontUnitsPerEm,
+    cjkHeightRatio: fontCjkHeight / fontUnitsPerEm,
+    fromOutlineFont: true,
+  });
 }
 
 /** 注册后备字体（用于当主字体缺少特殊符号例如 Ø, ², ³, ₐ 等时自动回落） */
@@ -206,6 +215,29 @@ export function setFallbackOutlineFont(fontData: ArrayBuffer | opentype.Font): v
   glyphCache.clear();
 }
 
+/**
+ * 把轮廓字体注册到浏览器，使 Canvas 引擎能用**同一个字体文件**渲染。
+ *
+ * 这是双引擎「大小/宽度/高度/对齐对不上」的根因修复：
+ * - WebGL 用 opentype.js 解析轮廓 → 精确字形与真实度量；
+ * - Canvas 此前用**系统字体**（FangSong/Arial…）+ 固定 em 系数换算。
+ *   两者字形来源不同，同一字高下字高差 7%、字宽/基线也不同。
+ *
+ * 注册后 Canvas 直接用同一份字体文件，度量完全一致。
+ */
+async function registerOutlineFontFace(buffer: ArrayBuffer): Promise<boolean> {
+  if (typeof document === 'undefined' || typeof FontFace === 'undefined' || !document.fonts) return false;
+  try {
+    // 用 ArrayBuffer 构造 FontFace（避免二次网络请求，且与 opentype 解析的是同一份字节）。
+    const face = new FontFace(OUTLINE_FONT_FAMILY, buffer);
+    await face.load();
+    document.fonts.add(face);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** 异步通过 URL 加载字体 */
 export async function loadOutlineFont(url: string, isFallback = false): Promise<boolean> {
   try {
@@ -216,6 +248,8 @@ export async function loadOutlineFont(url: string, isFallback = false): Promise<
       setFallbackOutlineFont(buf);
     } else {
       setOutlineFont(buf);
+      // 注册到浏览器：Canvas 引擎随后用同一字体渲染，两引擎完全一致。
+      await registerOutlineFontFace(buf);
     }
     return true;
   } catch {
@@ -498,6 +532,18 @@ export function measureOutlineTextWidth(
   return curX;
 }
 
+/** 字形在基线以下的深度（世界单位）。底部对齐用它把最低点抬到对齐点。 */
+const outlineInkDescent = (text: string, height: number, widthFactor: number): number => {
+  const run = layoutOutlineToTriangles(text, height, widthFactor);
+  if (!run) return height * 0.18;
+  let minY = 0;
+  const vertices = run.vertices;
+  for (let i = 1; i < vertices.length; i += 2) {
+    if (vertices[i] < minY) minY = vertices[i];
+  }
+  return -minY;
+};
+
 export interface PositionedOutlineLine {
   text: string;
   vertices: Float32Array;
@@ -680,13 +726,13 @@ export function layoutOutlineTextEntity(
     if (hAlign === 1 || hAlign === 4) lineX = -lineWidth / 2;
     else if (hAlign === 2) lineX = -lineWidth;
 
-    const ascent = effectiveH * (fontCapHeight / fontCjkHeight);
-    const descent = effectiveH * 0.18;
-    if (vAlign === 1) lineY = descent;
-    // 居中按**字高**的一半（不能按字体行框 ascent/descent，否则文字整体下移半个字高，
-    // 标注文字会压在尺寸线上）。
+    // 底部对齐：把本行字形的最低点抬到对齐点上（与 Canvas 的实际下行量一致）。
+    const inkDescent = outlineInkDescent(clean, effectiveH, effectiveWFactor);
+    if (vAlign === 1) lineY = inkDescent;
+    // 居中 / 顶部都按 CAD 字高（每个字符的墨迹高已缩放到字高），
+    // 不能用「大写字高 / 中文字身」的比例：那会让顶部对齐整体上移约 1/4 字高。
     else if (vAlign === 2 || hAlign === 4) lineY = -effectiveH / 2;
-    else if (vAlign === 3) lineY = -ascent;
+    else if (vAlign === 3) lineY = -effectiveH;
   }
 
   const run = layoutOutlineToTriangles(clean, effectiveH, effectiveWFactor);

@@ -24,6 +24,7 @@ import {
 } from '@/core/text/textLayoutEngine';
 import { getEffectiveTextHeight } from '@/utils/textUtils';
 import { getCanvasFont } from '@/utils/fontResolver';
+import { measureCadTextRun } from '@/render/text/canvasTextRun';
 
 /** 缓存上限：超出后整体清空。按图纸切换时由调用方显式清空，平时很难触顶。 */
 const MAX_MEASURE_CACHE_ENTRIES = 200_000;
@@ -56,10 +57,8 @@ export const getMeasuredTextWidthCached = (
     const cached = bucket.get(value);
     if (cached !== undefined) return cached;
 
-    // 未命中：与 textRenderer.getMeasuredTextWidth 保持完全一致的测量口径。
-    const metrics = ctx.measureText(value);
-    const bboxWidth = Math.abs((metrics.actualBoundingBoxRight || 0) - (metrics.actualBoundingBoxLeft || 0));
-    const width = Math.max(metrics.width || 0, bboxWidth || 0);
+    // 未命中：与布局测量同一口径（轮廓字体逐字符、系统字体原生测量）。
+    const width = measureCadTextRun(ctx, value);
 
     // 简单防膨胀：超限整体清空。真实图纸的测量组合远低于该上限。
     if (bucket.size >= MAX_MEASURE_CACHE_ENTRIES) {

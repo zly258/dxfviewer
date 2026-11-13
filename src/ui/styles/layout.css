@@ -2,7 +2,7 @@
  * 页面骨架（web-ui-style R9）。
  *
  * ┌ app-header 42px ── 品牌 | 文件标题 [类型] | 视图 导出 关于 ┐
- * ├ ui-toolbar-row 32px ── 打开 导航 充满 搜索 | 标签条 ──────────┤
+ * ├ ui-toolbar-row 32px ── 打开 导航 充满 搜索 ─────────────────┤
  * ├────────────┬──────────────────────────────┬────────────────┤
  * │ 左栏        │ 视口（flex:1 min-width:0）    │ 右栏            │
  * │ clamp(250,  │ canvas 100%×100%              │ clamp(320,     │
@@ -89,21 +89,10 @@
   user-select: none;
 }
 
-/* 工具条与标签条之间的分隔（.menu-tab-strip 承载文件标签） */
-.menu-tab-strip {
+.app-main-container > .app-container {
   flex: 1 1 auto;
-  min-width: 0;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  overflow: hidden;
-}
-
-/* 工具条行内的标签条：与工具按钮之间加 1px 分隔与内边距 */
-.ui-toolbar-row > .menu-tab-strip {
-  margin-left: 2px;
-  padding-left: 8px;
-  border-left: 1px solid var(--border-sub);
+  height: auto;
+  min-height: 0;
 }
 
 /* ── 三栏主体 ── */

@@ -16,7 +16,7 @@ export { default as DxfViewerApp } from '@/ui/components/workspace/DxfWorkspace'
 export type { DxfViewerProps } from '@/ui/components/viewer/DxfViewer';
 export type { DxfWorkspaceProps } from '@/ui/components/workspace/DxfWorkspace';
 export type { DxfPreviewProps, DxfPreviewHandle, DxfPreviewSource } from '@/ui/components/preview/DxfPreview';
-export type { DxfTabSource } from '@/ui/components/workspace/DxfTabs';
+export type { DxfOpenSource, DxfTabSource } from '@/ui/components/workspace/drawingDocument';
 export type AppShellProps = DxfWorkspaceProps;
 
 export { parseDxf } from '@/io/parser';

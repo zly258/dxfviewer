@@ -12,7 +12,7 @@ Three levels of packaging:
 | --- | --- | --- |
 | `DxfPreview` | One component, one canvas, no chrome | Embedding into another library; preview only |
 | `DxfViewer` | Full viewer (header + toolbar + panels + status bar) | Standalone page; needs layers/properties/search |
-| `DxfWorkspace` | Multi-tab workspace (file tabs, drag to open) | Browsing several drawings at once |
+| `DxfWorkspace` | Single-drawing workspace (filename, drag to open, confirm before close) | A standalone site that shows one drawing at a time |
 
 ---
 
@@ -90,7 +90,7 @@ src/
 │   ├── components/
 │   │   ├── preview/    Minimal preview component DxfPreview (single canvas, no chrome)
 │   │   ├── viewer/     Full viewer (header / toolbar / layers / properties / search)
-│   │   ├── workspace/  Multi-tab workspace
+│   │   ├── workspace/  Single-drawing workspace
 │   │   └── common/     Icons, overlays, status bars, about dialog
 │   ├── hooks/      View history / layer visibility / responsive
 │   ├── i18n.ts     English and Chinese
@@ -260,9 +260,11 @@ export default function Page() {
 ```
 
 Common props: `initFile`, `fileName`, `active`, `showOpenMenu`, `uiTheme`, `drawingColorMode`,
-`language`, `onLoad`, `onError`, `onOpenFiles`, `onOpenFailed`, `tabStrip`.
+`language`, `onLoad`, `onError`, `onOpenFiles`, `onOpenFailed`, `onClose`.
 
-### 3. Multi-tab workspace: `DxfWorkspace`
+### 3. Single-drawing workspace: `DxfWorkspace`
+
+Only one viewer is mounted. Opening another file replaces the current drawing. Close asks for confirmation so a mis-click does not wipe the view.
 
 ```tsx
 import { DxfWorkspace } from '@zhangly1403/dxfviewer';

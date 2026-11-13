@@ -85,7 +85,7 @@ const switchEngine = async (label) => {
 /** 等画布出现内容（不依赖具体实体数文案）。 */
 const waitForInk = async (timeout = 120_000) => {
   await p.waitForFunction(() => {
-    const src = document.querySelector('.tab-viewer-host[style*="visible"] canvas');
+    const src = document.querySelector('.app-container canvas');
     if (!src || !src.width || !src.height) return false;
     const c = document.createElement('canvas');
     c.width = src.width; c.height = src.height;
@@ -115,7 +115,7 @@ for (const sc of scenarios) {
   await p.getByRole('button', { name: '充满视图' }).click();
   await p.waitForTimeout(700);
 
-  const box = await p.locator('.tab-viewer-host[style*="visible"] .canvas-container').first().boundingBox();
+  const box = await p.locator('.app-container .canvas-container').first().boundingBox();
   const cx = box.x + box.width / 2, cy = box.y + box.height / 2;
   if (sc.pan[0] || sc.pan[1]) {
     await p.mouse.move(cx, cy);

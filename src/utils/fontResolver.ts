@@ -2,6 +2,7 @@ import { AnyEntity, DxfText, DxfStyle, EntityType } from '@/types';
 import { CAD_DEFAULT_TEXT_STYLE, CAD_DEFAULT_TEXT_HEIGHT } from '@/config/cadConstants';
 import { TEXT_RENDER_CONFIG } from '@/config/viewerConfig';
 import { getStyleFontFamily, FONT_STACKS, mapCadFontToWebFont } from '@/render/text/fontService';
+import { canvasFontScaleFactor, isOutlineFontAvailable, OUTLINE_FONT_FAMILY } from '@/render/text/fontMetrics';
 
 /**
  * 获取用于画布绘制的字体样式字符串。
@@ -30,7 +31,12 @@ export const getCanvasFont = (
     let fontFamily = getStyleFontFamily(styleName, styles);
     let fontWeight = 'normal';
     let fontStyle = 'normal';
-    
+
+    // 轮廓字体已注册到浏览器时，Canvas 引擎改用**同一字体文件**渲染：
+    // 字形、字宽、基线与 WebGL 轮廓排版完全一致（这是双引擎细节对不上的根因）。
+    if (isOutlineFontAvailable()) {
+      fontFamily = `"${OUTLINE_FONT_FAMILY}", ${fontFamily}`;
+    }
 
     // 检查多行文字内联高度覆盖 \H...;。
     if (ent.type === EntityType.MTEXT && !options?.ignoreInlineHeight) {
@@ -95,16 +101,16 @@ export const getCanvasFont = (
         }
     }
 
-    // CAD 文字高度是「大写字高」语义，画布 font-size 是 em 尺寸，需要换算：
-    // - 含中文：中文墨迹约 0.88em → 1.14；
-    // - 纯西文：capHeight ≈ 0.72em → 1.39。
-    // Canvas 始终使用系统字体（SHX 也映射为系统字体），不再按 SHX 的 1.0
-    // 处理，否则 SHX 样式文字只有 0.7 倍字高（实测"有的偏小"）。
-    const hasCjk = /[\u2e80-\u9fff\uf900-\ufaff]/.test(textEnt?.value || '');
-    const scaleFactor = hasCjk
-        ? TEXT_RENDER_CONFIG.cjkFontHeightFactor
-        : TEXT_RENDER_CONFIG.trueTypeFontHeightFactor;
-    const correctedHeight = Math.max(TEXT_RENDER_CONFIG.minimumCanvasFontPixelHeight, height * scaleFactor);
+    // 轮廓字体已注册：font-size 直接写 CAD 字高（像素）。
+    // 真正的 em 在绘制/测量时按字符换算（见 canvasTextRun），
+    // 这样中英混排与 WebGL 轮廓排版的字高、字宽一致。
+    // 系统字体回退：整段按估算系数把字高换成 em（离线仍可读）。
+    const correctedHeight = isOutlineFontAvailable()
+        ? Math.max(TEXT_RENDER_CONFIG.minimumCanvasFontPixelHeight, height)
+        : Math.max(
+            TEXT_RENDER_CONFIG.minimumCanvasFontPixelHeight,
+            height * canvasFontScaleFactor(textEnt?.value || ''),
+        );
 
     return `${fontStyle} ${fontWeight} ${correctedHeight}px ${fontFamily}`;
 };

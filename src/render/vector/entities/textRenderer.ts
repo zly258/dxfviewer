@@ -10,6 +10,7 @@ import {
 import { getCanvasFont } from '@/utils/fontResolver';
 import { getAutoCadColor } from '@/utils/colorUtils';
 import { getMeasuredTextWidthCached, getTextLayoutCached } from '@/render/text/renderCache';
+import { fillCadTextRun } from '@/render/text/canvasTextRun';
 import { buildCadTextLayout, CadTextLayoutResult } from '@/core/text/textLayoutEngine';
 
 export interface RenderTransform {
@@ -66,7 +67,7 @@ const drawFormattedSegmentsLine = (
         if (segment.italic && !ctx.font.startsWith('italic ')) ctx.font = `italic ${ctx.font}`;
         if (segment.color !== undefined) ctx.fillStyle = getAutoCadColor(segment.color);
 
-        ctx.fillText(segment.text, x, y);
+        fillCadTextRun(ctx, segment.text, x, y);
 
         if (segment.underline) {
             ctx.beginPath();

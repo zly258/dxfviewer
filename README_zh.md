@@ -11,7 +11,7 @@
 | --- | --- | --- |
 | `DxfPreview` | 一个组件、一块画布，无任何工具栏 | 第三方库嵌入、只要预览 |
 | `DxfViewer` | 完整查看器（顶栏 + 工具条 + 面板 + 状态栏） | 独立页面、需要图层/属性/搜索 |
-| `DxfWorkspace` | 多标签工作区（文件标签 + 拖拽打开） | 需要同时浏览多张图纸 |
+| `DxfWorkspace` | 单图纸工作区（文件名 + 拖拽打开，关闭前确认） | 独立站点，一次看一张图 |
 
 ---
 
@@ -79,7 +79,7 @@ src/
 │   ├── components/
 │   │   ├── preview/    极简预览组件 DxfPreview（单画布，无工具栏）
 │   │   ├── viewer/     完整查看器（顶栏/工具条/图层/属性/搜索）
-│   │   ├── workspace/  多标签工作区
+│   │   ├── workspace/  单图纸工作区
 │   │   └── common/     通用图标、浮层、状态条、关于弹窗
 │   ├── hooks/      视口历史 / 图层可见性 / 响应式
 │   ├── i18n.ts     中英双语
@@ -247,9 +247,11 @@ export default function Page() {
 ```
 
 常用属性：`initFile`、`fileName`、`active`、`showOpenMenu`、`uiTheme`、`drawingColorMode`、
-`language`、`onLoad`、`onError`、`onOpenFiles`、`onOpenFailed`、`tabStrip`。
+`language`、`onLoad`、`onError`、`onOpenFiles`、`onOpenFailed`、`onClose`。
 
-### 3. 多标签工作区：`DxfWorkspace`
+### 3. 单图纸工作区：`DxfWorkspace`
+
+一次只挂一套查看器。再打开文件会替换当前图纸；点关闭会先确认，避免误触清掉画面。
 
 ```tsx
 import { DxfWorkspace } from '@zhangly1403/dxfviewer';

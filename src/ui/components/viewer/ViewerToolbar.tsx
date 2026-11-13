@@ -132,7 +132,6 @@ const ViewerToolbar: React.FC<ViewerToolbarProps> = ({
         ref={fileInputRef}
         type="file"
         accept=".dxf"
-        multiple
         onChange={handleFileChange}
         className="hidden-file-input"
       />

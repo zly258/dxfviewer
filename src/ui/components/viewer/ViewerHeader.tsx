@@ -12,6 +12,8 @@ interface ViewerHeaderProps {
   onExport?: (kind: ExportKind) => void;
   canExport?: boolean;
   onShowAbout?: () => void;
+  /** 关闭当前图纸。未打开文件时不显示。 */
+  onClose?: () => void;
   /** 额外操作（由工作台注入）。 */
   extra?: React.ReactNode;
 }
@@ -38,6 +40,7 @@ const ViewerHeader: React.FC<ViewerHeaderProps> = ({
   onExport,
   canExport = false,
   onShowAbout,
+  onClose,
   extra,
 }) => {
   const [exportOpen, setExportOpen] = useState(false);
@@ -68,6 +71,17 @@ const ViewerHeader: React.FC<ViewerHeaderProps> = ({
 
       <div className="app-header-actions">
         {extra}
+        {onClose && fileName && (
+          <button
+            type="button"
+            className="tb-icon-btn drawing-close"
+            onClick={onClose}
+            title={t(lang, 'closeDrawingAria')}
+            aria-label={t(lang, 'closeDrawingAria')}
+          >
+            <ViewerIcon name="close" />
+          </button>
+        )}
         {onExport && (
           <div className="toolbar-menu" ref={menuRef}>
             <button
