@@ -75,40 +75,13 @@ export const isOutlineFontAvailable = (): boolean => {
 };
 
 /**
- * 某字符的字高度量分母（em 比例）。
- *
- * 全角字符按中文字身度量，其余按西文大写字高度量 —— 与 WebGL 轮廓排版
- * 规则一致（见 outlineText.ts 的 isFullWidthChar/charScale）。
+ * TrueType 的 em 换算：字高 = 大写字高，整段同一个比例。
+ * 汉字不再单独拉到字高，否则和 AutoCAD 的 TTF 排版不一致。
  */
-export const charHeightRatio = (char: string): number => {
-  const code = char.codePointAt(0) ?? 0;
-  const isFullWidth =
-    (code >= 0x2e80 && code <= 0x9fff) ||
-    (code >= 0xac00 && code <= 0xd7af) ||
-    (code >= 0xf900 && code <= 0xfaff) ||
-    (code >= 0xff00 && code <= 0xff60) ||
-    (code >= 0xffe0 && code <= 0xffe6);
-  const metrics = currentMetrics;
-  return isFullWidth ? metrics.cjkHeightRatio : metrics.capHeightRatio;
-};
+export const charHeightRatio = (): number => currentMetrics.capHeightRatio;
 
-/**
- * 一段文字的 Canvas font-size（CSS px）换算系数：em = 字高 / 度量高度。
- *
- * 与轮廓排版保持同一规则：**逐字符**取值 —— 中英混排时英文不会被
- * 中文的 em 盒放大（这是此前 WebGL 与 Canvas 最大的观感差异来源）。
- */
-export const canvasFontScaleFactor = (text: string): number => {
-  const chars = Array.from(text);
-  if (chars.length === 0) return 1 / currentMetrics.capHeightRatio;
-  // 整段同族（全是中文或全是西文）→ 用该族的度量比例；
-  // 混排 → 逐字符换算，等价于「每个字符按自己的度量对齐到同一字高」。
-  let sum = 0;
-  for (const ch of chars) sum += 1 / charHeightRatio(ch);
-  return sum / chars.length;
-};
+/** Canvas font-size 系数：em = 字高 / 大写字高。 */
+export const canvasFontScaleFactor = (): number => 1 / currentMetrics.capHeightRatio;
 
-/**
- * 单个字符的 Canvas font-size 比例（em = 字高 / 该字符的度量高度）。
- */
-export const canvasCharFontScaleFactor = (char: string): number => 1 / charHeightRatio(char);
+/** 与整段相同。TrueType 不再按字符分开换算。 */
+export const canvasCharFontScaleFactor = (): number => 1 / currentMetrics.capHeightRatio;

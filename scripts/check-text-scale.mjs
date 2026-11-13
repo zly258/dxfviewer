@@ -1,10 +1,9 @@
 /**
  * 文字缩放回归校验（`npm run check:text-scale`）。
  *
- * 断言「中英混排时西文字符不因中文的 em 盒被放大」：
- * 系统字体里中文字形墨迹高约占 em 的 87%，西文大写约占 67%，
- * 若整行统一按中文分母缩放，英文会偏大 1.31× —— 表现为同一行里
- * 字号忽大忽小（实测：图纸说明段落里的 "C15" 明显比周围中文大）。
+ * AutoCAD 的 TrueType 字高是大写字母高度，整段共用一个 em。
+ * 汉字墨迹本来就比大写字母高，不能再逐字拉成一样高。
+ * 混排里的英文必须和纯英文一样高，不能被中文的字身放大。
  */
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -59,10 +58,11 @@ const latinOnly = inkHeights('AB');
 check('纯西文字高 ≈ 标称', latinOnly && Math.abs(latinOnly[0] - HEIGHT) < HEIGHT * 0.06,
   latinOnly ? `实测 ${latinOnly[0].toFixed(1)}，期望 ${HEIGHT}` : '无输出');
 
-// 2) 纯中文：字高应 ≈ 标称高度（中文按字身度量）
+// 2) 纯中文：AutoCAD 的 TTF 与西文共用一个 em，汉字墨迹高于大写字母
 const cjkOnly = inkHeights('设计');
-check('纯中文字高 ≈ 标称', cjkOnly && Math.abs(cjkOnly[0] - HEIGHT) < HEIGHT * 0.06,
-  cjkOnly ? `实测 ${cjkOnly[0].toFixed(1)}，期望 ${HEIGHT}` : '无输出');
+check('纯中文高于西文大写（TTF 同一 em）',
+  cjkOnly && latinOnly && cjkOnly[0] > latinOnly[0] * 1.15 && cjkOnly[0] < latinOnly[0] * 1.5,
+  cjkOnly && latinOnly ? `中文 ${cjkOnly[0].toFixed(1)}，西文 ${latinOnly[0].toFixed(1)}` : '无输出');
 
 // 3) 混排：英文的高度必须与纯英文时一致（不能被中文 em 盒放大）
 const mixed = inkHeights('设A计');

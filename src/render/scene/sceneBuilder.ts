@@ -36,7 +36,8 @@ import { resolveEntityColor } from '@/utils/entityColor';
 import { resolveCadStrokeStyle } from '@/utils/lineStyle';
 import { sampleSplinePoints, sampleHatchLoop } from '@/core/geometry/curveSampling';
 import { isDimensionBlockLocal } from '@/core/geometry/transform';
-import { getEffectiveTextHeight, getCadTextAnchorPosition, cleanMText, cleanCadText } from '@/utils/textUtils';
+import { getEffectiveTextHeight, getEffectiveTextWidthFactor, getCadTextAnchorPosition, cleanMText, cleanCadText } from '@/utils/textUtils';
+import { isShxTextStyle } from '../text/textStyleKind';
 import { LineMeshBuilder, LineStyle, LinePolylineOp } from '../webgl/mesh/lineMeshBuilder';
 import { FillMeshBuilder } from '../webgl/mesh/fillMeshBuilder';
 import { GlyphMeshBuilder, PointMeshBuilder, TextStyle } from '../webgl/mesh/glyphPointMeshBuilders';
@@ -1227,7 +1228,9 @@ class SceneBaker {
     this.inTextBake = true;
     this.curTextHeight = effectiveHeight;
 
-    if (hasOutlineFont()) {
+    // 只有 TrueType 样式才走轮廓填充。SHX / 大字体必须走单线字，
+    // 否则 tssdeng+hztxt 会被画成仿宋，字宽比 AutoCAD 大约 15%。
+    if (hasOutlineFont() && !isShxTextStyle(style)) {
       const outlineLayout = layoutOutlineTextEntity(ent, styles);
       if (outlineLayout && outlineLayout.lines.length > 0) {
         this.writeOutlineTextEntity(outlineLayout, color);
@@ -1243,7 +1246,7 @@ class SceneBaker {
     const position = getCadTextAnchorPosition(ent);
     const rotation = ((ent.rotation || 0) * Math.PI) / 180;
     const cos = Math.cos(rotation), sin = Math.sin(rotation);
-    const widthFactor = style?.widthFactor && style.widthFactor > 0 ? style.widthFactor : 1;
+    const widthFactor = Math.abs(getEffectiveTextWidthFactor(ent, styles)) || 1;
     const lineStep = effectiveHeight * (isMText ? TEXT_RENDER_CONFIG.mtextDefaultLineSpacingFactor : 1);
 
     const hAlign = ent.hAlign || 0;
@@ -1279,7 +1282,8 @@ class SceneBaker {
       const originX = position.x - sin * localY;
       const originY = position.y + cos * localY;
 
-      const resolution = resolveStrokeFont(style?.fontFileName, style?.bigFontFileName);
+      const resolution = resolveStrokeFont(style?.fontFileName, style?.bigFontFileName, true)
+        || resolveStrokeFont('txt', style?.bigFontFileName, true);
       const oblique = resolution?.obliqueAngle ?? 0;
 
       if (resolution) {

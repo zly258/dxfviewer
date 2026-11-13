@@ -72,7 +72,8 @@ export const shapeStrokeText = (
 
     if (isCjkChar(ch)) {
       flushPending();
-      const w = estimateCjkAdvance(height);
+      // 大字体汉字占一个方格：边长 = 字高，宽度再乘宽度因子（只压 X）。
+      const w = estimateCjkAdvance(height) * Math.abs(scaleX);
       items.push({ kind: 'cjk', char: ch, x, advance: w, height });
       x += w;
       hasCjk = true;

@@ -42,7 +42,7 @@ const splitScaledRuns = (value: string, cadPx: number): Array<{ text: string; px
   let px = 0;
   let key = 0;
   for (const ch of Array.from(value)) {
-    const nextPx = Math.max(0.1, cadPx * canvasCharFontScaleFactor(ch));
+    const nextPx = Math.max(0.1, cadPx * canvasCharFontScaleFactor());
     const nextKey = Math.round(nextPx * 100);
     if (!text || nextKey !== key) {
       if (text) runs.push({ text, px });

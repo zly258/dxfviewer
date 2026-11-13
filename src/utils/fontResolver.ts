@@ -109,7 +109,7 @@ export const getCanvasFont = (
         ? Math.max(TEXT_RENDER_CONFIG.minimumCanvasFontPixelHeight, height)
         : Math.max(
             TEXT_RENDER_CONFIG.minimumCanvasFontPixelHeight,
-            height * canvasFontScaleFactor(textEnt?.value || ''),
+            height * canvasFontScaleFactor(),
         );
 
     return `${fontStyle} ${fontWeight} ${correctedHeight}px ${fontFamily}`;
