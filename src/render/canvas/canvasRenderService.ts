@@ -155,6 +155,20 @@ export const TEXT_ENTITY_TYPES: ReadonlySet<EntityType> = new Set([
 ]);
 
 /**
+ * 文字「容器」实体：本身不是文字，但其内部（块定义 / 视口模型空间）可能含有
+ * 文字。文字覆盖层模式下必须允许这些实体进入遍历，否则块内的文字
+ * （尺寸标注的 *D 块、图框标题栏、符号属性）会被整体漏掉 —— 表现为
+ * 「WebGL 文字丢失」。容器自身只递归子实体，不重复绘制几何。
+ */
+export const TEXT_CONTAINER_TYPES: ReadonlySet<EntityType> = new Set([
+    EntityType.INSERT,
+    EntityType.ACAD_TABLE,
+    EntityType.DIMENSION,
+    EntityType.MLEADER,
+    EntityType.VIEWPORT,
+]);
+
+/**
  * 创建可分块续绘的渲染会话。
  */
 export const createCanvasRenderSession = ({
@@ -271,7 +285,7 @@ export const createCanvasRenderSession = ({
         depth: number = 0,
         noMTextWrap: boolean = false
     ) => {
-        if (textOnly && !TEXT_ENTITY_TYPES.has(ent.type)) return;
+        if (textOnly && !TEXT_ENTITY_TYPES.has(ent.type) && !TEXT_CONTAINER_TYPES.has(ent.type)) return;
 
         const isTopLevelHidden = depth === 0 && (hiddenEntityIds.has(ent.id) || (isolatedEntityIds && !isolatedEntityIds.has(ent.id)));
         if (ent.visible === false || isTopLevelHidden || depth > SELECTION_CONFIG.maxNestedEntityDepth) return;
@@ -438,10 +452,11 @@ export const createCanvasRenderSession = ({
                 break;
             case EntityType.INSERT:
             case EntityType.ACAD_TABLE:
-                drawInsertOrTable(ctx, ent, transform, blocks, color, isSelected, layerName, depth, noMTextWrap, drawEntity);
+                // textOnly（文字覆盖层）：容器只递归子实体，块几何由 GPU 负责。
+                drawInsertOrTable(ctx, ent, transform, blocks, color, isSelected, layerName, depth, noMTextWrap, drawEntity, textOnly);
                 break;
             case EntityType.DIMENSION:
-                drawDimension(ctx, ent, transform, blocks, color, isSelected, layerName, depth, noMTextWrap, drawEntity);
+                drawDimension(ctx, ent, transform, blocks, color, isSelected, layerName, depth, noMTextWrap, drawEntity, textOnly);
                 break;
             case EntityType.HATCH:
                 drawHatch(ctx, ent, transform, color);
@@ -456,7 +471,7 @@ export const createCanvasRenderSession = ({
             case EntityType.MLEADER:
                 drawMLeader(ctx, ent, transform, color, layerName, isSelected, depth, (textEntity, trans, _layerName, col, _sel) => {
                     drawTextEntity(ctx, textEntity, trans, styles, theme, col, true);
-                });
+                }, textOnly);
                 break;
             case EntityType.IMAGE:
                 drawImage(ctx, ent, transform);

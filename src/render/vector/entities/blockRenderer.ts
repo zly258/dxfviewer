@@ -28,6 +28,9 @@ export interface RenderTransform {
 
 /**
  * 绘制块插入或表格实体。
+ *
+ * `textOnly`（文字覆盖层模式）：只递归块内文字，不重复绘制块几何与表格框线
+ * —— 几何由 WebGL 负责，覆盖层只补文字。
  */
 export const drawInsertOrTable = (
     ctx: VectorContext,
@@ -47,7 +50,8 @@ export const drawInsertOrTable = (
         isSelected: boolean,
         depth: number,
         noWrap: boolean
-    ) => void
+    ) => void,
+    textOnly: boolean = false
 ) => {
     const block = blocks[ent.blockName];
     
@@ -108,19 +112,20 @@ export const drawInsertOrTable = (
                 return;
             }
 
-            // 绘制横线
-            for (let i = 0; i <= rowCount; i++) {
-                const y = rowY[i] * sScale;
-                ctx.moveTo(0, y);
-                ctx.lineTo(totalWidth * sScale, y);
+            // 绘制横线 / 竖线（文字覆盖层模式跳过：框线已由 GPU 绘制）
+            if (!textOnly) {
+                for (let i = 0; i <= rowCount; i++) {
+                    const y = rowY[i] * sScale;
+                    ctx.moveTo(0, y);
+                    ctx.lineTo(totalWidth * sScale, y);
+                }
+                for (let j = 0; j <= colCount; j++) {
+                    const x = colX[j] * sScale;
+                    ctx.moveTo(x, 0);
+                    ctx.lineTo(x, rowY[rowCount] * sScale);
+                }
+                ctx.stroke();
             }
-            // 绘制竖线
-            for (let j = 0; j <= colCount; j++) {
-                const x = colX[j] * sScale;
-                ctx.moveTo(x, 0);
-                ctx.lineTo(x, rowY[rowCount] * sScale);
-            }
-            ctx.stroke();
 
             // 绘制单元格文本
             if (table.cells && table.cells.length > 0) {
@@ -191,6 +196,9 @@ export const drawInsertOrTable = (
 
 /**
  * 绘制尺寸标注 (DIMENSION)
+ *
+ * `textOnly`（文字覆盖层模式）：无标注块时的后备画线跳过，只画数值文字；
+ * 有标注块时正常递归（子级非文字会被 drawEntity 过滤掉）。
  */
 export const drawDimension = (
     ctx: VectorContext,
@@ -210,7 +218,8 @@ export const drawDimension = (
         isSelected: boolean,
         depth: number,
         noWrap: boolean
-    ) => void
+    ) => void,
+    textOnly: boolean = false
 ) => {
     const block = blocks[ent.blockName];
     const layerName = (ent.layer === '0' && parentLayerName) ? parentLayerName : ent.layer;
@@ -219,7 +228,7 @@ export const drawDimension = (
     if (!block || !block.entities || block.entities.length === 0) {
         const p1 = ent.linearP1 || ent.arcP1;
         const p2 = ent.linearP2 || ent.arcP2;
-        if (p1 && p2) {
+        if (!textOnly && p1 && p2) {
             const sp1 = transform.project(p1);
             const sp2 = transform.project(p2);
             ctx.beginPath();

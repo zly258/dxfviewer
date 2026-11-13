@@ -5,8 +5,16 @@ import { getStyleFontFamily, FONT_STACKS, mapCadFontToWebFont } from '@/render/t
 
 /**
  * 获取用于画布绘制的字体样式字符串。
+ *
+ * `options.ignoreInlineHeight`：调用方已经用 `getEffectiveTextHeight` 解析过
+ * 内联字高（`\H`）时置 true —— 否则 `\H` 会被再乘一次（"双重应用"），
+ * 含 `{\H0.7x;...}` 的注释/标注会小 30% 且整体下沉，与 WebGL 轮廓文字不一致。
  */
-export const getCanvasFont = (ent: AnyEntity, styles: Record<string, DxfStyle> | undefined): string => {
+export const getCanvasFont = (
+    ent: AnyEntity,
+    styles: Record<string, DxfStyle> | undefined,
+    options?: { ignoreInlineHeight?: boolean },
+): string => {
     const textEnt = (ent.type === EntityType.TEXT || ent.type === EntityType.MTEXT || ent.type === EntityType.ATTRIB || ent.type === EntityType.ATTDEF) ? (ent as DxfText) : null;
     
     // 高度优先级：1. 多行文字内联覆盖，2. 实体高度，3. 样式高度，4. 默认值 2.5。
@@ -25,7 +33,7 @@ export const getCanvasFont = (ent: AnyEntity, styles: Record<string, DxfStyle> |
     
 
     // 检查多行文字内联高度覆盖 \H...;。
-    if (ent.type === EntityType.MTEXT) {
+    if (ent.type === EntityType.MTEXT && !options?.ignoreInlineHeight) {
         const hMatch = ent.value.match(/\\H([^;]+);/);
         if (hMatch && hMatch[1]) {
             const hVal = parseFloat(hMatch[1]);

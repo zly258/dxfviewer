@@ -160,8 +160,14 @@ const drawTextLayout = (
             ctx.restore();
         }
 
+        // MTEXT 行基线：该行顶边（boxTop + i·lineHeight）下移「一个字高」即为基线。
+        // 不能用字体行框 ascent（比字高大 30%~40%）：行框 ascent 会让整块文字
+        // 再下移半个字高，尺寸标注文字正好压在尺寸线上（且放大时压线越来越深）。
+        // 这里与 WebGL 轮廓文字 layoutOutlineTextEntity（firstLineBaseline = top - 字高）
+        // 保持完全一致。
+        const lineBoxHeight = layout.screenHeight * k;
         layout.lines.forEach(line => {
-            const baselineY = line.y * k + layout.ascent * k;
+            const baselineY = line.y * k + lineBoxHeight;
             if (line.formatted) {
                 drawFormattedSegmentsLine(ctx, line.formatted.segments, line.formatted.plainText, line.x * k, baselineY, line.align, 'alphabetic', layout.visualScreenHeight * k);
             } else {
@@ -218,7 +224,9 @@ const drawTextEntityDirect = (
     // 二次叠加 \H 与缩放会使字号/行距失真），因此用局部副本设置字体：
     // getCanvasFont 只读 ent.height 与 style，传副本即可。
     const fontProbe: DxfText = { ...ent, height: screenTextHeight };
-    ctx.font = getCanvasFont(fontProbe, styles);
+    // 字高已由 getEffectiveTextHeight 解析（含 MTEXT 内联 \H），这里不能再让
+    // getCanvasFont 重复应用一次 \H（否则 {\H0.7x;...} 会小 30% 并整体下沉）。
+    ctx.font = getCanvasFont(fontProbe, styles, { ignoreInlineHeight: true });
 
     const layout = buildCadTextLayout({
         entity: ent,
@@ -281,7 +289,7 @@ export const drawTextEntity = (
         // 布局缓存内部使用的参考字体已通过 save/restore 隔离，不会泄漏到这里。
         const originalHeight = ent.height;
         ent.height = screenTextHeight;
-        ctx.font = getCanvasFont(ent, styles);
+        ctx.font = getCanvasFont(ent, styles, { ignoreInlineHeight: true });
         ent.height = originalHeight;
 
         drawTextLayout(ctx, ent, theme, layout, scaleFactor, screenScale, hAlign);

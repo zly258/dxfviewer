@@ -1235,12 +1235,35 @@ class SceneBaker {
     const hAlign = ent.hAlign || 0;
     const attachment = ent.attachmentPoint || 0;
 
+    /*
+     * 垂直对齐（局部 +y 为文字上方，世界坐标 y 向上）。
+     *
+     * 兜底路径此前把基线直接放在锚点上，完全忽略 vAlign / MTEXT 附着点：
+     * 标注数值（MTEXT 附着点 5，居中）因此整体浮在锚点上方半个字高、
+     * 与尺寸线的间距失真。这里与轮廓文字路径 layoutOutlineTextEntity 使用
+     * 同一套规则：行堆叠的墨迹顶边 = 锚点 + blockHeight。
+     */
+    const blockHeight = (lines.length - 1) * lineStep + effectiveHeight;
+    const vAlign = ent.vAlign || 0;
+    let verticalShift = 0;
+    if (isMText) {
+      // 附着点：1-3 顶部、4-6 中部、7-9 底部（0 = 未设置，按顶部处理）。
+      const isMiddleRow = attachment >= 4 && attachment <= 6;
+      const isBottomRow = attachment >= 7;
+      verticalShift = isBottomRow ? 0 : isMiddleRow ? -blockHeight / 2 : -blockHeight;
+    } else if (vAlign === 2 || hAlign === 4) {
+      verticalShift = -effectiveHeight / 2;
+    } else if (vAlign === 3) {
+      verticalShift = -effectiveHeight;
+    }
+
     lines.forEach((lineText, lineIdx) => {
       if (!lineText.trim()) return;
       // 多行行堆叠沿文字局部「上」方向（旋转后仍垂直于基线）。
       const lineOffset = isMText ? (lines.length - 1 - lineIdx) * lineStep : 0;
-      const originX = position.x - sin * lineOffset;
-      const originY = position.y + cos * lineOffset;
+      const localY = lineOffset + verticalShift;
+      const originX = position.x - sin * localY;
+      const originY = position.y + cos * localY;
 
       const resolution = resolveStrokeFont(style?.fontFileName, style?.bigFontFileName);
       const oblique = resolution?.obliqueAngle ?? 0;

@@ -55,35 +55,52 @@ const structure = await page.evaluate(() => ({
   canvases: document.querySelectorAll('.dxf-preview canvas').length,
   chrome: document.querySelectorAll('[role="toolbar"], .ui-toolbar-row, .side-panel-frame, .status-bar').length,
 }));
-check('挂载单块画布', structure.canvases === 1, `canvas=${structure.canvases}`);
+check('挂载画布（几何画布 + 可选文字覆盖层）', structure.canvases >= 1 && structure.canvases <= 2, `canvas=${structure.canvases}`);
 check('无工具栏 / 侧栏 / 状态栏', structure.chrome === 0, `匹配=${structure.chrome}`);
 
-/** 画布统计：以左上角像素为背景色，统计"墨迹"（明显区别于背景）占比。 */
-const inkStats = () => page.evaluate(() => {
-  const src = document.querySelector('.dxf-preview canvas');
-  if (!src) return null;
-  const c = document.createElement('canvas');
-  c.width = src.width;
-  c.height = src.height;
-  const ctx = c.getContext('2d');
-  ctx.drawImage(src, 0, 0);
-  const { data } = ctx.getImageData(0, 0, c.width, c.height);
-  const bg = [data[0], data[1], data[2]];
-  let ink = 0;
-  let sampled = 0;
-  for (let i = 0; i < data.length; i += 4 * 7) { // 稀疏采样，够用且快
-    sampled++;
-    const dr = Math.abs(data[i] - bg[0]);
-    const dg = Math.abs(data[i + 1] - bg[1]);
-    const db = Math.abs(data[i + 2] - bg[2]);
-    if (dr + dg + db > 60) ink++;
-  }
-  return {
-    bg,
-    inkRatio: ink / Math.max(1, sampled),
-    corner: [data[0], data[1], data[2]],
-  };
-});
+/**
+ * 画布统计：用页面截图的合成结果统计「墨迹」占比。
+ *
+ * 不能用 `drawImage(webglCanvas)`：WebGL 画布未开 preserveDrawingBuffer，
+ * 合成后读回是空白；而且文字覆盖层模式下画布有两块（GPU 几何 + Canvas 文字），
+ * 只有截屏能拿到最终显示效果。
+ */
+const inkStats = async () => {
+  const box = await page.locator('.dxf-preview').boundingBox();
+  if (!box || box.width < 2 || box.height < 2) return null;
+  const shot = await page.screenshot({
+    clip: { x: Math.round(box.x), y: Math.round(box.y), width: Math.round(box.width), height: Math.round(box.height) },
+  });
+  return page.evaluate(async (src) => {
+    const img = await new Promise((resolve, reject) => {
+      const im = new Image();
+      im.onload = () => resolve(im);
+      im.onerror = reject;
+      im.src = src;
+    });
+    const c = document.createElement('canvas');
+    c.width = img.width;
+    c.height = img.height;
+    const ctx = c.getContext('2d');
+    ctx.drawImage(img, 0, 0);
+    const { data } = ctx.getImageData(0, 0, c.width, c.height);
+    const bg = [data[0], data[1], data[2]];
+    let ink = 0;
+    let sampled = 0;
+    for (let i = 0; i < data.length; i += 4 * 7) { // 稀疏采样，够用且快
+      sampled++;
+      const dr = Math.abs(data[i] - bg[0]);
+      const dg = Math.abs(data[i + 1] - bg[1]);
+      const db = Math.abs(data[i + 2] - bg[2]);
+      if (dr + dg + db > 60) ink++;
+    }
+    return {
+      bg,
+      inkRatio: ink / Math.max(1, sampled),
+      corner: [data[0], data[1], data[2]],
+    };
+  }, `data:image/png;base64,${shot.toString('base64')}`);
+};
 
 await page.locator('input[type="file"]').setInputFiles(sample);
 await page.waitForTimeout(2600);

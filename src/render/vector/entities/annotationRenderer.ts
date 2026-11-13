@@ -216,6 +216,8 @@ export const drawLeader = (
 
 /**
  * 绘制多重引线 (MLEADER)
+ *
+ * `textOnly`（文字覆盖层模式）：引线/箭头由 GPU 绘制，这里只补文字。
  */
 export const drawMLeader = (
     ctx: VectorContext,
@@ -232,28 +234,31 @@ export const drawMLeader = (
         color: string,
         isSelected: boolean,
         depth: number
-    ) => void
+    ) => void,
+    textOnly: boolean = false
 ) => {
     const leaderLines = (ent.leaderLines || []).filter((line: Point2D[]) => line.length > 1);
     if (leaderLines.length === 0 && !ent.text) return;
 
-    leaderLines.forEach((line: Point2D[]) => {
-        ctx.beginPath();
-        line.forEach((point, index) => {
-            const screenPoint = transform.project(point);
-            if (index === 0) ctx.moveTo(screenPoint.x, screenPoint.y);
-            else ctx.lineTo(screenPoint.x, screenPoint.y);
-        });
-        if (ent.enableDogleg !== false) {
-            const terminal = getMLeaderTerminalPoint(ent);
-            if (terminal) {
-                const screenPoint = transform.project(terminal);
-                ctx.lineTo(screenPoint.x, screenPoint.y);
+    if (!textOnly) {
+        leaderLines.forEach((line: Point2D[]) => {
+            ctx.beginPath();
+            line.forEach((point, index) => {
+                const screenPoint = transform.project(point);
+                if (index === 0) ctx.moveTo(screenPoint.x, screenPoint.y);
+                else ctx.lineTo(screenPoint.x, screenPoint.y);
+            });
+            if (ent.enableDogleg !== false) {
+                const terminal = getMLeaderTerminalPoint(ent);
+                if (terminal) {
+                    const screenPoint = transform.project(terminal);
+                    ctx.lineTo(screenPoint.x, screenPoint.y);
+                }
             }
-        }
-        ctx.stroke();
-        drawArrowHead(ctx, line[0], line[1], transform, ent.arrowSize);
-    });
+            ctx.stroke();
+            drawArrowHead(ctx, line[0], line[1], transform, ent.arrowSize);
+        });
+    }
 
     const textPosition = getMLeaderTextPosition(ent);
     if (ent.text && textPosition) {

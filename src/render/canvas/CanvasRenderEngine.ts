@@ -13,12 +13,13 @@
  * LOD/剔除而非 GPU 批处理。
  */
 
-import type { AnyEntity, CanvasTheme } from '@/types';
+import type { AnyEntity, CanvasTheme, DxfBlock } from '@/types';
+import { EntityType } from '@/types';
 import { CANVAS_THEME_COLORS } from '@/config/viewerConfig';
 import { createSceneIndex, type SceneIndex } from '@/render/picking/sceneIndex';
 import { SCENE_INDEX_ASYNC_THRESHOLD } from '@/render/picking/sceneIndexBuilder';
 import { buildPathCache, PATH_CACHE_MIN_COVERAGE, type PathCache } from './pathCache';
-import { renderEntitiesToCanvas, TEXT_ENTITY_TYPES } from './canvasRenderService';
+import { renderEntitiesToCanvas, TEXT_CONTAINER_TYPES, TEXT_ENTITY_TYPES } from './canvasRenderService';
 import type {
   EngineRenderParams,
   EngineSceneOptions,
@@ -61,7 +62,7 @@ export class CanvasRenderEngine implements InteractiveRenderEngine {
     this.sceneOptions = options;
     // 文字覆盖层：只留文字实体（每帧只遍历它们，见 textEntities 注释）。
     this.textEntities = this.textOnly
-      ? options.entities.filter(entity => TEXT_ENTITY_TYPES.has(entity.type))
+      ? this.collectTextEntities(options.entities, options.blocks)
       : null;
     // 场景索引：拾取/剔除共用。优先级：
     // 1. 宿主随场景传入的现成索引（ViewerCanvas 小图纸同步建好后直接给）；
@@ -84,6 +85,52 @@ export class CanvasRenderEngine implements InteractiveRenderEngine {
   setSceneIndex(index: SceneIndex | null): void {
     if (this.sceneIndex === index) return;
     this.sceneIndex = index;
+  }
+
+  /**
+   * 文字覆盖层的实体筛选：文字实体 + 可能含文字的容器。
+   *
+   * 真实图纸里尺寸标注的数值在匿名 *D 块内、标题栏/符号文字在 INSERT 块内，
+   * 只筛顶层文字会让这些文字在 WebGL 覆盖层模式下整体消失。这里按块定义
+   * 递归判定「该块内是否含文字」，只把确实含文字的容器放进遍历列表，
+   * 十万级图纸的遍历开销仍然只与文字数量相关。
+   */
+  private collectTextEntities(entities: AnyEntity[], blocks: Record<string, DxfBlock>): AnyEntity[] {
+    const memo = new Map<string, boolean>();
+    const visiting = new Set<string>();
+    const blockHasText = (name: string, depth = 0): boolean => {
+      const cached = memo.get(name);
+      if (cached !== undefined) return cached;
+      if (depth > 16 || visiting.has(name)) return false;
+      const block = blocks?.[name];
+      if (!block || !block.entities || block.entities.length === 0) {
+        memo.set(name, false);
+        return false;
+      }
+      visiting.add(name);
+      let found = false;
+      for (const child of block.entities) {
+        if (TEXT_ENTITY_TYPES.has(child.type)) { found = true; break; }
+        const childBlock = (child as { blockName?: string }).blockName;
+        if (childBlock && TEXT_CONTAINER_TYPES.has(child.type) && blockHasText(childBlock, depth + 1)) {
+          found = true;
+          break;
+        }
+      }
+      visiting.delete(name);
+      memo.set(name, found);
+      return found;
+    };
+
+    return entities.filter(entity => {
+      if (TEXT_ENTITY_TYPES.has(entity.type)) return true;
+      if (!TEXT_CONTAINER_TYPES.has(entity.type)) return false;
+      if (entity.type === EntityType.MLEADER) return !!(entity as { text?: string }).text;
+      // 视口：其模型空间实体（含文字）在绘制时按视口变换后递归。
+      if (entity.type === EntityType.VIEWPORT) return true;
+      const blockName = (entity as { blockName?: string }).blockName;
+      return !!blockName && blockHasText(blockName);
+    });
   }
 
   setTheme(theme: CanvasTheme, background: string): void {
