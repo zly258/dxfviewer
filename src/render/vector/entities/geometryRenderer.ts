@@ -267,6 +267,8 @@ export const drawHelix = (ctx: VectorContext, ent: DxfHelix, transform: RenderTr
 export interface ViewportDrawContext {
     /** 模型空间实体（当前布局为纸张空间时提供）。 */
     modelEntities?: AnyEntity[];
+    /** 是否绘制视口边框（图纸视口 / 不打印图层为 false）。 */
+    drawBorder?: boolean;
     /** 实体绘制回调（复用主渲染调度器，保证实体渲染一致）。 */
     drawEntity: (
         ent: AnyEntity,
@@ -285,8 +287,11 @@ export interface ViewportDrawContext {
  * 模型 → 纸张 的映射：paper = center + (model - viewCenter) × scale，
  * 其中 scale = height(纸张) / viewHeight(模型)。
  *
- * 不绘制视口边框：AutoCAD 打印时「视口边界」默认不出图，且巨大的边框
- * 矩形在布局中容易被误认为偏离主区域的杂散元素。
+ * 视口边框（与 WebGL bakeViewport 同一判据）：
+ * - 纸张空间自带的「图纸视口」（viewportId / status = 1）AutoCAD 不显示边框，
+ *   它常常覆盖整张纸，画出来是一条横贯全图的巨大矩形 → 一律不画；
+ * - 其余真实视口的边框按图层「可打印」标志决定：Defpoints / `*-NPLT`
+ *   这类不打印图层不画，与打印结果、与 WebGL 引擎保持一致。
  */
 export const drawViewport = (
     ctx: VectorContext,
@@ -298,9 +303,27 @@ export const drawViewport = (
     const halfHeight = Math.abs(ent.height || 0) / 2;
     if (halfWidth <= 0 || halfHeight <= 0) return;
 
+    if (context.drawBorder) {
+        ctx.save();
+        ctx.beginPath();
+        [
+            { x: ent.center.x - halfWidth, y: ent.center.y - halfHeight },
+            { x: ent.center.x + halfWidth, y: ent.center.y - halfHeight },
+            { x: ent.center.x + halfWidth, y: ent.center.y + halfHeight },
+            { x: ent.center.x - halfWidth, y: ent.center.y + halfHeight },
+        ].forEach((corner, index) => {
+            const point = transform.project(corner);
+            if (index === 0) ctx.moveTo(point.x, point.y);
+            else ctx.lineTo(point.x, point.y);
+        });
+        ctx.closePath();
+        ctx.stroke();
+        ctx.restore();
+    }
+
     const modelEntities = context.modelEntities;
     if (!modelEntities || modelEntities.length === 0 || !ent.viewCenter || !ent.viewHeight || ent.viewHeight <= 0) {
-        // 无模型内容可投影：不绘制任何内容
+        // 无模型内容可投影：上面可能已经画过边框
         return;
     }
 

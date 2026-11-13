@@ -44,6 +44,7 @@ import { Chunk, WorldRect, ChunkDrawOp, HatchRegion, EntityGeometryRanges } from
 import { resolveStrokeFont } from '../text/shx/strokeFontRegistry';
 import { shapeStrokeText, strokeShapingBounds } from '../text/strokeTextShaper';
 import { hasOutlineFont, layoutOutlineTextEntity } from '../text/outlineText';
+import { shouldDrawViewportBorder } from '../viewportBorder';
 import { GlyphAtlas, GlyphStyleKey, RASTER_PX } from '../text/glyphAtlas';
 import { getStyleFontFamily } from '../text/fontService';
 
@@ -1150,14 +1151,16 @@ class SceneBaker {
     const hh = Math.abs(ent.height || 0) / 2;
     if (hw <= 0 || hh <= 0) return;
 
-    // 边界框（细线）。
-    const style = lineStyleOf(color, 0, 1);
-    this.writePolyline([
-      ent.center.x - hw, ent.center.y - hh, ent.center.x + hw, ent.center.y - hh,
-      ent.center.x + hw, ent.center.y - hh, ent.center.x + hw, ent.center.y + hh,
-      ent.center.x + hw, ent.center.y + hh, ent.center.x - hw, ent.center.y + hh,
-      ent.center.x - hw, ent.center.y + hh, ent.center.x - hw, ent.center.y - hh,
-    ], style, false);
+    // 边框（与 Canvas drawViewport 同一判据：图纸视口 / 不打印图层不画）。
+    if (this.options.layers && shouldDrawViewportBorder(ent, this.options.layers[layerName])) {
+      const style = lineStyleOf(color, 0, 1);
+      this.writePolyline([
+        ent.center.x - hw, ent.center.y - hh, ent.center.x + hw, ent.center.y - hh,
+        ent.center.x + hw, ent.center.y - hh, ent.center.x + hw, ent.center.y + hh,
+        ent.center.x + hw, ent.center.y + hh, ent.center.x - hw, ent.center.y + hh,
+        ent.center.x - hw, ent.center.y + hh, ent.center.x - hw, ent.center.y - hh,
+      ], style, false);
+    }
 
     const modelEntities = this.options.modelEntities;
     if (!modelEntities || modelEntities.length === 0 || !ent.viewCenter || !ent.viewHeight || ent.viewHeight <= 0) return;

@@ -7,7 +7,7 @@ import { parseEntityDispatcher } from './entityParser';
  * 解析图层 (LAYER) 属性
  */
 export const parseLayer = (state: DxfParserState): DxfLayer => {
-    const layer: DxfLayer = { name: '', color: 7, isVisible: true, lineType: 'Continuous' };
+    const layer: DxfLayer = { name: '', color: 7, isVisible: true, isPlottable: true, lineType: 'Continuous' };
     while(state.hasNext) {
         const p = state.peek();
         if (!p || p.code === 0) break;
@@ -20,6 +20,8 @@ export const parseLayer = (state: DxfParserState): DxfLayer => {
                     layer.trueColor = parseInt(val.startsWith('0x') ? val : val, val.startsWith('0x') ? 16 : 10); 
                     break;
             case 6: layer.lineType = g.value; break;
+            // 290 = Plottable（0 = 不打印）。Defpoints / *-NPLT 等图层为 0。
+            case 290: layer.isPlottable = String(g.value).trim() !== '0'; break;
             case 370: layer.lineweight = parseInt(g.value, 10); break;
             case 440: layer.transparency = parseInt(g.value, 10); break;
             case 70: layer.isVisible = (parseInt(g.value) & 1) !== 1; break; 

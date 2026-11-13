@@ -30,6 +30,7 @@ import {
 } from '@/config/viewerConfig';
 import { resolveEntityColor } from '@/utils/entityColor';
 import { resolveCadStrokeStyle } from '@/utils/lineStyle';
+import { shouldDrawViewportBorder } from '@/render/viewportBorder';
 
 import {
   RenderTransform,
@@ -439,7 +440,11 @@ export const createCanvasRenderSession = ({
                 drawHelix(ctx, ent, transform);
                 break;
             case EntityType.VIEWPORT:
-                drawViewport(ctx, ent, transform, { modelEntities: viewportModelEntities, drawEntity });
+                drawViewport(ctx, ent, transform, {
+                    modelEntities: viewportModelEntities,
+                    drawBorder: shouldDrawViewportBorder(ent, layer),
+                    drawEntity,
+                });
                 break;
             case EntityType.SHAPE:
                 drawShape(ctx, ent, transform);

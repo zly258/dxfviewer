@@ -20,6 +20,14 @@ export interface DxfLayer {
   lineweight?: number;
   transparency?: number;
   isVisible?: boolean;
+  /**
+   * 是否可打印（DXF 组码 290，0 = 不打印）。缺省视为可打印。
+   *
+   * AutoCAD 里 Defpoints、`*-NPLT` 这类图层专门用来放构造线/视口边框，
+   * 屏幕上看得到但不出图。查看器只在「视口边框」这一处遵循该标志：
+   * 不打印图层的视口边框不画（否则纸张空间会出现一条横贯整张纸的巨大矩形）。
+   */
+  isPlottable?: boolean;
 }
 
 export interface DxfStyle {

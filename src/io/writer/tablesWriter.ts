@@ -132,7 +132,10 @@ const writeLayerTable = (state: WriterState, data: DxfData, ctx: WriterContext):
       if (layer.transparency !== undefined) {
         state.writeGroup(440, layer.transparency);
       }
-      state.writeGroup(290, visible ? 1 : 0); // 是否打印
+      // 290 = Plottable（0 = 不打印）。必须与「可见性」分开：Defpoints /
+      // `*-NPLT` 这类图层是「可见但不打印」，此前按可见性写会让另存后的图纸
+      // 丢失不打印标志（视口边框等随之变成可见内容）。
+      state.writeGroup(290, layer.isPlottable === false ? 0 : 1);
     }
   }
   state.writeGroup(0, 'ENDTAB');
