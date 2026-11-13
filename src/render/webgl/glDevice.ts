@@ -44,6 +44,17 @@ export class GlProgram {
     return loc;
   }
 
+  /**
+   * 数组 uniform 的定位。
+   *
+   * GLSL ES 3.00 里 `uniform vec4 u_clipPoly[64];` 的 location 只能通过
+   * `u_clipPoly[0]` 取到；用基名 `u_clipPoly` 查询会返回 null，
+   * 导致整块数组静默不上传（图案填充失去裁剪、溢出到边界外）。
+   */
+  locateUniformArray(name: string): WebGLUniformLocation | null {
+    return this.locateUniform(`${name}[0]`);
+  }
+
   locateAttrib(name: string): number {
     let loc = this.attribLocations.get(name);
     if (loc === undefined) {

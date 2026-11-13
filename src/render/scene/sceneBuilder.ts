@@ -914,32 +914,43 @@ class SceneBaker {
         }
         return;
       }
-      // 图案填充：包围盒两三角形 + 片元解析着色（区域记录供 draw 设置 uniform）。
-      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      // 图案填充：**逐岛**生成区域记录 + 包围盒三角形，片元着色器按多边形裁剪。
+      //
+      // 旧实现把一个 HATCH 的所有岛合并成一个大包围盒：多岛之间、岛与孔洞之间
+      // 都会互相溢出剖面线（实测：带内孔的截面填充，剖面线铺满整个包围盒，
+      // 内孔消失、外轮廓外侧也出现斜线）。这里按岛分别生成区域，
+      // 并把岛的多边形边界交给着色器做精确裁剪。
       for (const island of islands) {
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
         for (const p of island.outer) {
           if (p.x < minX) minX = p.x;
           if (p.x > maxX) maxX = p.x;
           if (p.y < minY) minY = p.y;
           if (p.y > maxY) maxY = p.y;
         }
+        if (!Number.isFinite(minX) || !Number.isFinite(maxX)) continue;
+
+        const baker = this.routeTo((minX + maxX) / 2, (minY + maxY) / 2);
+        const vertexStart = baker.fill.vertexCount;
+        const c = hexToRgba(color);
+        const fillStyle = { color: c };
+        // 覆盖整个包围盒的两个三角形（6 顶点），绘制时以区域 uniform 画剖面线。
+        baker.fill.addTriangle(minX, minY, maxX, minY, maxX, maxY, fillStyle);
+        baker.fill.addTriangle(minX, minY, maxX, maxY, minX, maxY, fillStyle);
+        const regionId = baker.hatchRegions.length;
+        baker.hatchRegions.push({
+          x: minX, y: minY, w: maxX - minX, h: maxY - minY,
+          mode: pattern.mode, dir: pattern.dir, spacing: pattern.spacing,
+          vertexStart, vertexCount: 6,
+          islands: [{
+            outer: Float64Array.from(island.outer.flatMap(p => [p.x, p.y])),
+            holes: island.holes.map(h => Float64Array.from(h.flatMap(p => [p.x, p.y]))),
+          }],
+        });
+        this.pushDrawOp('fill', vertexStart, 6, 0, regionId);
+        this.stats.fillVertices += 6;
+        baker.updateBounds(minX, minY, maxX, maxY);
       }
-      const baker = this.routeTo((minX + maxX) / 2, (minY + maxY) / 2);
-      const vertexStart = baker.fill.vertexCount;
-      const c = hexToRgba(color);
-      const fillStyle = { color: c };
-      // 覆盖整个包围盒的两个三角形（6 顶点），绘制时以区域 uniform 画剖面线。
-      baker.fill.addTriangle(minX, minY, maxX, minY, maxX, maxY, fillStyle);
-      baker.fill.addTriangle(minX, minY, maxX, maxY, minX, maxY, fillStyle);
-      const regionId = baker.hatchRegions.length;
-      baker.hatchRegions.push({
-        x: minX, y: minY, w: maxX - minX, h: maxY - minY,
-        mode: pattern.mode, dir: pattern.dir, spacing: pattern.spacing,
-        vertexStart, vertexCount: 6,
-      });
-      this.pushDrawOp('fill', vertexStart, 6, 0, regionId);
-      this.stats.fillVertices += 6;
-      baker.updateBounds(minX, minY, maxX, maxY);
     }
   }
 

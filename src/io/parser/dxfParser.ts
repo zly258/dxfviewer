@@ -104,6 +104,38 @@ export const ensureDxfStructure = (dxfString: string) => {
 };
 
 /**
+ * 检测 DXF 文件是否疑似被截断（未正常写完）。
+ *
+ * 实测：部分工程图纸在导出/拷贝过程中被截断，文件尾部停在某个实体的
+ * 组码中间，既没有 `EOF` 也没有收尾的 `ENDSEC`。这类文件若照常解析，
+ * 解析器会「安静地」只得到极少实体（如 1 个），用户在画布上看到的是一张
+ * **纯白无内容**的图 —— 完全看不出是文件有问题还是渲染坏了。
+ *
+ * 这里只做「疑似」判定（缺少 EOF 标记），最终是否拒绝打开由调用方结合
+ * 解析结果决定：个别导出器会省略 EOF，只要还能解析出足量实体就不算问题。
+ *
+ * @returns 疑似截断的原因描述；文件看起来完整时返回 null。
+ */
+export const detectTruncatedDxf = (dxfString: string): string | null => {
+  const text = dxfString.replace(/^\uFEFF/, '').trimEnd();
+  if (!text) return '文件内容为空';
+
+  // 完整文件必须以「0 / EOF」组码对结束。
+  const hasEof = /(?:^|\r?\n)\s*0\s*\r?\n\s*EOF\s*$/i.test(text);
+  if (hasEof) return null;
+
+  // 末尾停在某个实体的类型行上、后面没有任何组码 → 实体被拦腰截断。
+  const lastZero = text.lastIndexOf('\n0\n');
+  const tail = lastZero >= 0 ? text.slice(lastZero + 3) : '';
+  const incompleteTail = /(?:^|\r?\n)\s*[A-Za-z_][A-Za-z0-9_]*\s*$/.test(tail)
+    && !/(?:^|\r?\n)\s*\d+\s*(?:\r?\n|$)/.test(tail);
+
+  return incompleteTail
+    ? '文件在导出/拷贝过程中被截断（末尾实体不完整，缺少 EOF 标记）'
+    : '文件不完整（缺少 EOF 标记，可能已被截断）';
+};
+
+/**
  * 判断布局名称是否表示模型空间。
  */
 const isModelLayoutName = (name?: string): boolean => {
@@ -327,6 +359,9 @@ export const parseDxf = async (
   options: ParseDxfOptions = {},
 ): Promise<DxfData> => {
   ensureDxfStructure(dxfString);
+  // 疑似截断检测：文件末尾缺 EOF 时先记下，解析完再结合实体数判断。
+  // （个别导出器会省略 EOF，但内容完整 —— 不能因此拒绝打开。）
+  const truncatedHint = detectTruncatedDxf(dxfString);
   const state = new DxfParserState(dxfString);
   const allEntities: AnyEntity[] = [];
   const layers: Record<string, DxfLayer> = {};
@@ -457,6 +492,13 @@ export const parseDxf = async (
   });
 
   precomputeBlockExtents(blocks, styles);
+
+  // 疑似截断的文件：若解析出的实体极少（相对文件体量不成比例），说明内容
+  // 真的缺失了。此时明确报错，避免用户在画布上只看到一张白图。
+  // 判据：文件很大（> 256 KB）却只解析出寥寥数个实体 —— 只可能是被截断。
+  if (truncatedHint && dxfString.length > 256 * 1024 && allEntities.length < 32) {
+    throw new Error(`DXF 文件不完整：${truncatedHint}。请重新导出或拷贝该图纸后再打开。`);
+  }
 
   const layouts = buildLayouts(allEntities, layoutRecords, blocks, styles, blockHandleMap);
   const modelLayout = layouts.find(layout => layout.isModel) || layouts[0] || createLayout(MODEL_LAYOUT_NAME);

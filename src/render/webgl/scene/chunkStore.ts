@@ -93,6 +93,22 @@ export interface HatchRegion {
   /** 该区域三角形的顶点范围 [start, start+count)（chunk.fillData 顶点计） */
   vertexStart: number;
   vertexCount: number;
+  /**
+   * 岛（外环）的多边形边界（世界坐标，分块局部 → 世界见 chunk origin）。
+   *
+   * 图案填充需要在「岛」内部绘制剖面线：包围盒只是粗裁剪，
+   * 多边形边界用于精确裁剪，避免剖面线溢出到岛外
+   * （实测：带孔洞的截面填充会溢出到孔洞和轮廓之外）。
+   */
+  islands?: HatchIsland[];
+}
+
+/** 图案填充的一个岛：外环 + 孔洞（世界坐标）。 */
+export interface HatchIsland {
+  /** 外环顶点对（x,y 交替），世界坐标。 */
+  outer: Float64Array;
+  /** 孔洞顶点对（x,y 交替），世界坐标；偶奇规则挖空。 */
+  holes: Float64Array[];
 }
 
 export interface Chunk {

@@ -17,6 +17,7 @@ import { GlDevice, GlProgram } from './glDevice';
 import { SHADER_SOURCES } from './shaders';
 import {
   Chunk,
+  HatchRegion,
   uploadChunkToGpu,
   disposeChunkStore,
 } from './scene/chunkStore';
@@ -69,6 +70,10 @@ export class RenderEngine implements InteractiveRenderEngine {
   private scene: BuiltScene | null = null;
   private gridBuffer: WebGLBuffer | null = null;
   private disposed = false;
+
+  /** 图案填充裁剪数据的上传缓冲（复用，避免每帧/每个填充都分配）。 */
+  private readonly clipPolyBuffer = new Float32Array(64 * 4);
+  private readonly clipVertsBuffer = new Float32Array(512 * 2);
 
   private theme: CanvasTheme = 'black';
   private themeBackground = CANVAS_THEME_COLORS.black;
@@ -234,6 +239,8 @@ export class RenderEngine implements InteractiveRenderEngine {
     gl.uniform2f(fillProgram.locateUniform('u_patternDir'), 1, 0);
     gl.uniform1f(fillProgram.locateUniform('u_patternSpacing'), 1);
     gl.uniform1f(fillProgram.locateUniform('u_pxPerModel'), pxPerModel);
+    // 裁剪数据默认「无裁剪」：u_clipPoly[0].x < 3 时着色器不裁剪。
+    gl.uniform4f(fillProgram.locateUniformArray('u_clipPoly'), 0, 0, 0, 0);
     const glyphProgram = this.programs.glyph;
     glyphProgram.use();
     gl.uniform1i(glyphProgram.locateUniform('u_atlas'), 0);
@@ -288,6 +295,7 @@ export class RenderEngine implements InteractiveRenderEngine {
                 gl.uniform1f(fillProgram.locateUniform('u_fillMode'), region.mode);
                 gl.uniform2f(fillProgram.locateUniform('u_patternDir'), region.dir[0], region.dir[1]);
                 gl.uniform1f(fillProgram.locateUniform('u_patternSpacing'), region.spacing);
+                this.setClipPolygonUniforms(fillProgram, region);
               }
             } else {
               gl.uniform1f(fillProgram.locateUniform('u_fillMode'), 0);
@@ -323,6 +331,60 @@ export class RenderEngine implements InteractiveRenderEngine {
     if (params.selectedIds && params.selectedIds.size > 0) {
       this.renderSelectionOverlay(params, visibleChunks, projOf, pxPerModel, pixelWidth, pixelHeight);
     }
+  }
+
+  /**
+   * 上传图案填充的多边形裁剪数据（外环 + 孔洞）。
+   *
+   * 着色器用偶奇规则判断片元是否落在填充区域内：
+   * - u_clipPoly[0] = 外环点数，其后依次是各孔洞的点数与顶点起始下标；
+   * - u_clipVerts 存放所有顶点对（世界坐标）。
+   *
+   * 顶点总量超出 uniform 容量时退化为「只裁外环」（跳过孔洞），
+   * 宁可少挖孔也不画错位置。
+   */
+  private setClipPolygonUniforms(program: GlProgram, region: HatchRegion): void {
+    const gl = this.device.gl;
+    const islands = region.islands;
+    if (!islands || !islands.length) {
+      gl.uniform4f(program.locateUniformArray('u_clipPoly'), 0, 0, 0, 0);
+      return;
+    }
+
+    const island = islands[0];
+    const outer = island.outer;
+    const outerCount = Math.floor(outer.length / 2);
+    const poly = this.clipPolyBuffer;
+    const verts = this.clipVertsBuffer;
+    poly.fill(0);
+    verts.fill(0);
+    if (outerCount > 512) {
+      // 外环顶点超出 uniform 容量：无法裁剪，退化为不裁剪（整块包围盒）。
+      gl.uniform4f(program.locateUniformArray('u_clipPoly'), 0, 0, 0, 0);
+      return;
+    }
+    for (let i = 0; i < outerCount * 2; i++) verts[i] = outer[i];
+
+    // u_clipPoly: (点数, 顶点起始下标, 0, 0)
+    poly[0] = outerCount;
+    poly[1] = 0;
+    let vertexCursor = outerCount;
+    let ringIndex = 1;
+    for (const hole of island.holes) {
+      const holeCount = Math.floor(hole.length / 2);
+      if (holeCount < 3) continue;
+      if (ringIndex >= 64 || vertexCursor + holeCount > 512) break;
+      poly[ringIndex * 4] = holeCount;
+      poly[ringIndex * 4 + 1] = vertexCursor;
+      for (let i = 0; i < holeCount * 2; i++) verts[vertexCursor * 2 + i] = hole[i];
+      vertexCursor += holeCount;
+      ringIndex++;
+    }
+    // 未使用的环项点数置 0，着色器据此停止遍历。
+    for (let r = ringIndex; r < 64; r++) poly[r * 4] = 0;
+
+    gl.uniform4fv(program.locateUniformArray('u_clipPoly'), poly);
+    gl.uniform2fv(program.locateUniformArray('u_clipVerts'), verts);
   }
 
   private setDashUniforms(program: GlProgram, pattern: number[] | null, _pxPerModel: number): void {

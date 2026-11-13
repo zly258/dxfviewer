@@ -65,12 +65,21 @@ uniform float u_dprScale;
 out vec4 v_color;
 out float v_dist;        // 到中心线的有符号距离（像素）
 out float v_halfWidth;   // 线半宽（像素）
+out float v_feather;     // 抗锯齿斜坡半宽（像素）
 out float v_arcLenPx;
 out float v_dashIdx;
 
 void main() {
-    float halfWidth = max(a_params.y * u_dprScale * 0.5, 0.5);
-    float expanded = halfWidth + u_featherPx;
+    // 线宽是「CSS 像素」语义：几何半宽 = 线宽/2，不做 0.5px 的下限钳制。
+    // 旧的 0.5px 半宽下限会让 0.5px 的细线被画成 1px（再加 0.5px 羽化共 1.5px），
+    // 与 Canvas 引擎（0.5px 线宽）差 3 倍：密集小圆（直径 ~1px）会被描边完全盖住，
+    // 实测渲染成一片实心黑块。
+    float halfWidth = max(a_params.y * u_dprScale * 0.5, 0.125);
+    // 抗锯齿斜坡以「真实边界」为中心：一半在墨迹内、一半在墨迹外，
+    // 因此总墨量 ≈ 线宽（与 Canvas 引擎的原生 AA 一致）。
+    // 旧实现把整个羽化宽度加在线外（墨迹 ≈ 线宽 + 羽化），细线会明显偏粗偏黑。
+    float halfFeather = min(u_featherPx, halfWidth);
+    float expanded = halfWidth + halfFeather;
     vec2 clipPos = (u_proj * vec3(a_pos, 1.0)).xy;
     // 斜接法线经投影线性部分变换到裁剪空间（自动处理 Y 翻转 / 旋转）。
     vec2 clipNormal = (u_proj * vec3(a_pos + a_normal, 1.0)).xy - clipPos;
@@ -83,6 +92,7 @@ void main() {
     // 片元中 |v_dist| ≈ 垂直于中心线的像素距离（顶点处等于展开半宽，跨四边形线性插值）。
     v_dist = a_params.x * expanded;
     v_halfWidth = halfWidth;
+    v_feather = halfFeather;
     v_arcLenPx = a_params.z * u_pxPerModel;
     v_dashIdx = a_params.w;
 }
@@ -94,6 +104,7 @@ precision highp float;
 in vec4 v_color;
 in float v_dist;
 in float v_halfWidth;
+in float v_feather;
 in float v_arcLenPx;
 in float v_dashIdx;
 
@@ -128,7 +139,9 @@ bool dashOn(float arcLenPx) {
 void main() {
     if (v_dashIdx > 0.5 && !dashOn(v_arcLenPx)) discard;
     float d = abs(v_dist);
-    float coverage = clamp((v_halfWidth + u_featherPx - d) / max(u_featherPx, 1e-4), 0.0, 1.0);
+    // 覆盖率：以真实边界（halfWidth）为界，斜坡一半在内、一半在外，
+    // 墨量 ≈ 线宽（与 Canvas 引擎原生 AA 对齐）。
+    float coverage = clamp((v_halfWidth + v_feather - d) / max(2.0 * v_feather, 1e-4), 0.0, 1.0);
     if (coverage <= 0.003) discard;
     vec4 base = u_overrideColor.a > 0.0
         ? vec4(u_overrideColor.rgb, u_overrideColor.a)
@@ -170,8 +183,53 @@ uniform vec2 u_patternDir;     // 剖面线方向（单位向量，已含图案�
 uniform float u_patternSpacing; // 模型单位
 uniform float u_pxPerModel;
 uniform vec4 u_overrideColor;
+// 图案填充的多边形裁剪：外环 + 孔洞（偶奇规则）。
+// u_clipPoly[0] = 外环点数，其后依次是各孔洞的点数与顶点对。
+uniform vec4 u_clipPoly[64];   // 每项: (点数, 顶点起始下标, 0, 0)
+uniform vec2 u_clipVerts[512]; // 顶点对（世界坐标）
 
 out vec4 fragColor;
+
+/** 偶奇规则的多边形包含判定（外环 + 孔洞）。 */
+bool insideClipPolygon(vec2 p) {
+    // 找到外环：clipPoly[0].x 为其点数，clipPoly[0].y 为顶点起始下标。
+    int outerCount = int(u_clipPoly[0].x);
+    int outerStart = int(u_clipPoly[0].y);
+    if (outerCount < 3) return false;
+
+    int crossings = 0;
+    for (int i = 0; i < outerCount; i++) {
+        int i0 = outerStart + i;
+        int i1 = outerStart + ((i + 1 == outerCount) ? 0 : (i + 1));
+        vec2 a = u_clipVerts[i0];
+        vec2 b = u_clipVerts[i1];
+        if ((a.y > p.y) != (b.y > p.y)) {
+            float t = (p.y - a.y) / (b.y - a.y);
+            if (p.x < a.x + t * (b.x - a.x)) crossings++;
+        }
+    }
+    if ((crossings & 1) == 0) return false;
+
+    // 孔洞：每个孔洞独立做偶奇判定（落在孔内则挖空）。
+    for (int r = 1; r < 64; r++) {
+        int cnt = int(u_clipPoly[r].x);
+        if (cnt < 3) break;
+        int st = int(u_clipPoly[r].y);
+        int c2 = 0;
+        for (int i = 0; i < cnt; i++) {
+            int i0 = st + i;
+            int i1 = st + ((i + 1 == cnt) ? 0 : (i + 1));
+            vec2 a = u_clipVerts[i0];
+            vec2 b = u_clipVerts[i1];
+            if ((a.y > p.y) != (b.y > p.y)) {
+                float t = (p.y - a.y) / (b.y - a.y);
+                if (p.x < a.x + t * (b.x - a.x)) c2++;
+            }
+        }
+        if ((c2 & 1) == 1) return false;
+    }
+    return true;
+}
 
 /** 单族剖面线覆盖率：到最近图案线的距离（像素）→ 0..1。 */
 float lineFamilyCoverage(vec2 world, vec2 dir, float spacing) {
@@ -196,6 +254,9 @@ void main() {
     }
     float alpha = v_color.a;
     if (u_fillMode > 0.5 && u_patternSpacing > 1e-9) {
+        // 多边形裁剪：剖面线只画在填充岛内部（含孔洞挖空）。
+        // 没有裁剪数据时（u_clipPoly[0].x < 3）退化为整块包围盒填充。
+        if (u_clipPoly[0].x >= 3.0 && !insideClipPolygon(v_world)) discard;
         float coverage;
         if (u_fillMode < 1.5) {
             coverage = lineFamilyCoverage(v_world, u_patternDir, u_patternSpacing);
