@@ -130,19 +130,19 @@
   --lh-table: 1.35;
   --tracking-body: 0.017em;
 
-  /* ── 尺寸阶梯（M3 compact / dense） ── */
-  --control-h: 32px;
-  --control-h-sm: 28px;
-  --row-h: 30px;
-  --prop-row-h: 26px;
-  --header-h: 52px;
+  /* ── 尺寸阶梯（MDUI / M3 标准） ── */
+  --control-h: 40px;
+  --control-h-sm: 32px;
+  --row-h: 40px;
+  --prop-row-h: 32px;
+  --header-h: 56px;
   --footer-h: 32px;
-  --toolbar-h: 40px;
+  --toolbar-h: 48px;
   --filter-h: 32px;
-  --modal-head-h: 44px;
-  --icon-size: 20px;
-  --icon-size-sm: 18px;
-  --icon-btn: 32px;
+  --modal-head-h: 56px;
+  --icon-size: 24px;
+  --icon-size-sm: 20px;
+  --icon-btn: 40px;
   --side-left-w: clamp(260px, 22vw, 340px);
   --side-right-w: clamp(320px, 27vw, 440px);
   --canvas-bg: var(--bg-viewport);
