@@ -149,7 +149,7 @@ export const UI_TRANSLATIONS: Record<Language, Record<string, string>> = {
     // 关于对话框
     aboutTitle: 'About DXF Viewer',
     aboutHeading: 'DXF Viewer',
-    aboutDescription: 'A React DXF viewer built on WebGL and Canvas 2D, with model/layout switching, common geometry, text, annotations and block references. Designed to stay smooth on very large drawings.',
+    aboutDescription: 'A React DXF viewer built on Three.js (WebGL), with model/layout switching, common geometry, text, annotations and block references. Designed to stay smooth on very large drawings.',
     repository: 'Repository',
     renderEngine: 'Render Engine',
     license: 'License',
@@ -321,7 +321,7 @@ export const UI_TRANSLATIONS: Record<Language, Record<string, string>> = {
     // 关于对话框
     aboutTitle: '关于 DXF Viewer',
     aboutHeading: 'DXF 浏览器',
-    aboutDescription: '基于 React 的 DXF 查看组件，提供 WebGL 与 Canvas 2D 双渲染引擎，支持模型空间、多个图纸空间、常用几何实体、文字、标注和块参照解析渲染；针对超大图纸做过专门优化，浏览保持流畅。',
+    aboutDescription: '基于 React 的 DXF 查看组件，基于 Three.js（WebGL）渲染引擎，支持模型空间、多个图纸空间、常用几何实体、文字、标注和块参照解析渲染；针对超大图纸做过专门优化，浏览保持流畅。',
     repository: '仓库地址',
     renderEngine: '渲染引擎',
     license: '开源协议',
@@ -423,6 +423,7 @@ export const ENTITY_TYPE_NAMES: Record<Language, Record<string, string>> = {
     'REGION': "面域 (REGION)",
   }
 };
+
 
 
 

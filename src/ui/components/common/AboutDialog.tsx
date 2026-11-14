@@ -50,7 +50,7 @@ function AboutDialog({ lang, onClose }: AboutDialogProps) {
               </a>
             </div>
             <div className="about-info-label">{t(lang, 'renderEngine')}</div>
-            <div className="about-info-value">WebGL 2D / Canvas 2D</div>
+            <div className="about-info-value">Three.js（WebGL）</div>
             <div className="about-info-label">{t(lang, 'license')}</div>
             <div className="about-info-value">MIT License</div>
           </div>
@@ -61,3 +61,4 @@ function AboutDialog({ lang, onClose }: AboutDialogProps) {
 }
 
 export default AboutDialog;
+

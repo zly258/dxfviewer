@@ -357,27 +357,28 @@
   flex-shrink: 0;
 }
 
-/* 关闭 ×：24×24 透明底，hover 转危险色 */
+/* 关闭 ×：28×28 透明底圆形，hover 中性 */
 .modal-x {
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   padding: 0;
-  border: 0;
+  border: 1px solid transparent;
   border-radius: var(--radius);
   background: transparent;
-  color: var(--text-muted);
+  color: var(--text-sec);
   font-size: var(--fs-kpi);
   line-height: 1;
   cursor: pointer;
-  transition: background-color var(--t-fast), color var(--t-fast);
+  transition: background-color var(--t-fast), color var(--t-fast), border-color var(--t-fast);
 }
 
 .modal-x:hover {
-  background-color: var(--danger-soft);
-  color: var(--danger);
+  background-color: var(--bg-hover);
+  border-color: var(--border-main);
+  color: var(--text-main);
 }
 
 .ui-kpi-row {
@@ -486,26 +487,41 @@
 }
 
 .about-modal-close {
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  padding: 0;
+  border: 1px solid transparent;
   border-radius: var(--radius);
-  color: var(--text-muted);
+  background-color: transparent;
+  color: var(--text-sec);
   cursor: pointer;
-  transition: background-color var(--t-fast), color var(--t-fast);
+  transition: background-color var(--t-fast), color var(--t-fast), border-color var(--t-fast);
 }
 
 .about-modal-close svg {
-  width: var(--icon-size);
-  height: var(--icon-size);
+  width: 16px;
+  height: 16px;
 }
 
 .about-modal-close:hover {
-  background-color: var(--danger-soft);
-  color: var(--danger);
+  background-color: var(--bg-hover);
+  border-color: var(--border-main);
+  color: var(--text-main);
+}
+
+.about-modal-close:active {
+  background-color: var(--bg-hover);
+  border-color: var(--border-strong);
+  color: var(--text-main);
+}
+
+.about-modal-close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .about-modal-body {

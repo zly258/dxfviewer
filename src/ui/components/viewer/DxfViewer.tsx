@@ -805,6 +805,8 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
             onToggleLayerPanel={() => setShowLayerPanel(v => !v)}
             showProperties={showProperties}
             onToggleProperties={() => setShowProperties(v => !v)}
+            onExport={handleExport}
+            canExport={entities.length > 0}
             showLabels
             onShowAbout={() => setShowAbout(true)}
           />

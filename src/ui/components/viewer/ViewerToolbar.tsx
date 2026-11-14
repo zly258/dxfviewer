@@ -108,7 +108,7 @@ const ViewerToolbar: React.FC<ViewerToolbarProps> = ({
     if (files.length > 0) onImport(files);
   };
 
-  /** 桌面端按钮显示「图标 + 文字」；移动端只用图标（由父级在移动端不渲染本组件保证）。 */
+  /** 桌面端按钮显示「图标 + 文字」；图标型按钮（上一个/下一个）仅图标。移动端由父级不渲染本组件。 */
   const showLabel = showLabels;
   const renderToolButton = (
     icon: ViewerIconName,
@@ -116,20 +116,25 @@ const ViewerToolbar: React.FC<ViewerToolbarProps> = ({
     onClick: () => void,
     disabled = false,
     active = false,
-  ) => (
-    <button
-      type="button"
-      className={`toolbar-button ${showLabel ? 'toolbar-button-label' : 'toolbar-icon-button'} ${active ? 'active' : ''}`}
-      onClick={onClick}
-      title={label}
-      aria-label={label}
-      aria-pressed={active}
-      disabled={disabled}
-    >
-      <span className="toolbar-icon" aria-hidden="true"><ViewerIcon name={icon} /></span>
-      {showLabel && <span className="toolbar-label">{label}</span>}
-    </button>
-  );
+    options: { iconOnly?: boolean; text?: string } = {},
+  ) => {
+    const iconOnly = options.iconOnly === true;
+    const visibleText = options.text ?? label;
+    return (
+      <button
+        type="button"
+        className={`toolbar-button ${showLabel && !iconOnly ? 'toolbar-button-label' : 'toolbar-icon-button'} ${active ? 'active' : ''}`}
+        onClick={onClick}
+        title={label}
+        aria-label={label}
+        aria-pressed={active}
+        disabled={disabled}
+      >
+        <span className="toolbar-icon" aria-hidden="true"><ViewerIcon name={icon} /></span>
+        {showLabel && !iconOnly && <span className="toolbar-label">{visibleText}</span>}
+      </button>
+    );
+  };
 
   return (
     <div className="toolbar" role="toolbar" aria-label={t(lang, 'viewerToolbar')}>
@@ -141,13 +146,13 @@ const ViewerToolbar: React.FC<ViewerToolbarProps> = ({
         className="hidden-file-input"
       />
 
-      {showOpen && renderToolButton('open', tt.openFile, openFileDialog)}
+      {showOpen && renderToolButton('open', tt.openFile, openFileDialog, false, false, { text: '打开' })}
       {showOpen && <span className="tb-sep" role="separator" />}
 
-      {renderToolButton('previous', tt.previousView, onPreviousView, !canGoPreviousView)}
-      {renderToolButton('next', tt.nextView, onNextView, !canGoNextView)}
-      {renderToolButton('fit', tt.fitView, onFitView)}
-      {renderToolButton('search', t(lang, 'searchText'), onToggleSearch, false, isSearchActive)}
+      {renderToolButton('previous', tt.previousView, onPreviousView, !canGoPreviousView, false, { iconOnly: true })}
+      {renderToolButton('next', tt.nextView, onNextView, !canGoNextView, false, { iconOnly: true })}
+      {renderToolButton('fit', tt.fitView, onFitView, false, false, { text: '充满' })}
+      {renderToolButton('search', t(lang, 'searchText'), onToggleSearch, false, isSearchActive, { text: '搜索' })}
 
       <span className="tb-sep" role="separator" />
 
@@ -163,19 +168,18 @@ const ViewerToolbar: React.FC<ViewerToolbarProps> = ({
           aria-expanded={activeMenu === 'view'}
         >
           <span className="toolbar-icon" aria-hidden="true"><ViewerIcon name="view" /></span>
-          {showLabel && <span className="toolbar-label">{tt.view}</span>}
+          {showLabel && <span className="toolbar-label">视图</span>}
         </button>
         {activeMenu === 'view' && (
           <div className="dropdown-menu" role="menu" onClick={(event) => event.stopPropagation()}>
-            <div className="dropdown-header">{tt.light} / {tt.dark}</div>
             <button type="button" onClick={() => closeMenuAndRun(() => onSetUiTheme('system'))} className={`dropdown-item ${uiTheme === 'system' ? 'checked' : ''}`}>
-              <span>{tt.system}</span>
+              <span>跟随</span>
             </button>
             <button type="button" onClick={() => closeMenuAndRun(() => onSetUiTheme('light'))} className={`dropdown-item ${uiTheme === 'light' ? 'checked' : ''}`}>
-              <span>{tt.light}</span>
+              <span>浅色</span>
             </button>
             <button type="button" onClick={() => closeMenuAndRun(() => onSetUiTheme('dark'))} className={`dropdown-item ${uiTheme === 'dark' ? 'checked' : ''}`}>
-              <span>{tt.dark}</span>
+              <span>深色</span>
             </button>
             <div className="divider" />
             <button
@@ -183,18 +187,18 @@ const ViewerToolbar: React.FC<ViewerToolbarProps> = ({
               onClick={() => closeMenuAndRun(() => onSetDrawingColorMode(drawingColorMode === 'monochrome' ? 'original' : 'monochrome'))}
               className={`dropdown-item ${drawingColorMode === 'monochrome' ? 'checked' : ''}`}
             >
-              <span>{tt.monochrome}</span>
+              <span>黑白</span>
             </button>
             <div className="divider" />
             <button type="button" onClick={() => closeMenuAndRun(onToggleLayerPanel)} className={`dropdown-item ${showLayerPanel ? 'checked' : ''}`}>
-              <span>{tt.layers}</span>
+              <span>图层</span>
             </button>
             <button type="button" onClick={() => closeMenuAndRun(onToggleProperties)} className={`dropdown-item ${showProperties ? 'checked' : ''}`}>
-              <span>{tt.properties}</span>
+              <span>属性</span>
             </button>
             <div className="divider" />
             <button type="button" onClick={() => closeMenuAndRun(() => onSetLang(lang === 'zh' ? 'en' : 'zh'))} className="dropdown-item">
-              <span>{tt.language}: {lang === 'zh' ? 'English' : '简体中文'}</span>
+              <span>{lang === 'zh' ? '英文' : '中文'}</span>
             </button>
           </div>
         )}
@@ -213,25 +217,25 @@ const ViewerToolbar: React.FC<ViewerToolbarProps> = ({
             disabled={!canExport}
           >
             <span className="toolbar-icon" aria-hidden="true"><ViewerIcon name="export" /></span>
-            {showLabel && <span className="toolbar-label">{t(lang, 'exportMenu')}</span>}
+            {showLabel && <span className="toolbar-label">导出</span>}
           </button>
           {activeMenu === 'export' && (
             <div className="dropdown-menu" role="menu" onClick={(event) => event.stopPropagation()}>
               {([
-                ['png', 'exportPng'],
-                ['svg', 'exportSvg'],
-                ['pdfVector', 'exportPdf'],
-                ['pngView', 'exportPngView'],
-                ['svgView', 'exportSvgView'],
-                ['dxf', 'exportDxf'],
-              ] as const).map(([kind, labelKey]) => (
+                ['png', 'PNG'],
+                ['svg', 'SVG'],
+                ['pdfVector', 'PDF'],
+                ['pngView', '图PNG'],
+                ['svgView', '图SVG'],
+                ['dxf', 'DXF'],
+              ] as const).map(([kind, label]) => (
                 <button
                   key={kind}
                   type="button"
                   onClick={() => closeMenuAndRun(() => onExport(kind))}
                   className="dropdown-item"
                 >
-                  <span>{t(lang, labelKey)}</span>
+                  <span>{label}</span>
                 </button>
               ))}
             </div>
@@ -250,7 +254,7 @@ const ViewerToolbar: React.FC<ViewerToolbarProps> = ({
             aria-label={t(lang, 'about')}
           >
             <span className="toolbar-icon" aria-hidden="true"><ViewerIcon name="about" /></span>
-            {showLabel && <span className="toolbar-label">{t(lang, 'about')}</span>}
+            {showLabel && <span className="toolbar-label">关于</span>}
           </button>
         </>
       )}
