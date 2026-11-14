@@ -6,7 +6,7 @@ import { fitExtentsToBox } from '@/render/viewportFitting';
 import { RenderEngine } from '@/render/webgl/renderEngine';
 import { CanvasRenderEngine } from '@/render/canvas/CanvasRenderEngine';
 import type { EngineKind, InteractiveRenderEngine } from '@/render/engine';
-import { hasOutlineFont, hasOutlineFontCjkCoverage, loadOutlineFont } from '@/render/text/outlineText';
+import { hasOutlineFont, loadOutlineFont } from '@/render/text/outlineText';
 import { clearAllRenderCaches } from '@/render/text/renderCache';
 import { createDxfLoaderWorker } from '@/io/loader/workerFactory';
 import type { ParseWorkerResponse } from '@/io/loader/dxfLoader.worker';
@@ -144,7 +144,7 @@ const DxfPreview = React.forwardRef<DxfPreviewHandle, DxfPreviewProps>(function 
    * 引擎同源（见 useTextOverlay）。
    */
   const effectiveEngine: EngineKind = engineFallback ? 'canvas' : engineKind;
-  const useTextOverlay = effectiveEngine === 'webgl' && !hasOutlineFontCjkCoverage();
+  const useTextOverlay = effectiveEngine === 'webgl';
 
   // ── 当前布局的实体与范围 ──
   const view = useMemo(() => {

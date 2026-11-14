@@ -2,7 +2,7 @@ import { AnyEntity, DxfText, DxfStyle, EntityType } from '@/types';
 import { CAD_DEFAULT_TEXT_STYLE, CAD_DEFAULT_TEXT_HEIGHT } from '@/config/cadConstants';
 import { TEXT_RENDER_CONFIG } from '@/config/viewerConfig';
 import { getStyleFontFamily, FONT_STACKS, mapCadFontToWebFont } from '@/render/text/fontService';
-import { canvasFontScaleFactor, isOutlineFontAvailable, OUTLINE_FONT_FAMILY } from '@/render/text/fontMetrics';
+import { canvasFontScaleFactor } from '@/render/text/fontMetrics';
 
 /**
  * 获取用于画布绘制的字体样式字符串。
@@ -28,15 +28,10 @@ export const getCanvasFont = (
         height = style.height;
     }
 
+    // 形字体（.shx / 大字体）不直接绘制，按字体名换成系统字体栈。
     let fontFamily = getStyleFontFamily(styleName, styles);
     let fontWeight = 'normal';
     let fontStyle = 'normal';
-
-    // 轮廓字体已注册到浏览器时，Canvas 引擎改用**同一字体文件**渲染：
-    // 字形、字宽、基线与 WebGL 轮廓排版完全一致（这是双引擎细节对不上的根因）。
-    if (isOutlineFontAvailable()) {
-      fontFamily = `"${OUTLINE_FONT_FAMILY}", ${fontFamily}`;
-    }
 
     // 检查多行文字内联高度覆盖 \H...;。
     if (ent.type === EntityType.MTEXT && !options?.ignoreInlineHeight) {
@@ -101,16 +96,11 @@ export const getCanvasFont = (
         }
     }
 
-    // 轮廓字体已注册：font-size 直接写 CAD 字高（像素）。
-    // 真正的 em 在绘制/测量时按字符换算（见 canvasTextRun），
-    // 这样中英混排与 WebGL 轮廓排版的字高、字宽一致。
-    // 系统字体回退：整段按估算系数把字高换成 em（离线仍可读）。
-    const correctedHeight = isOutlineFontAvailable()
-        ? Math.max(TEXT_RENDER_CONFIG.minimumCanvasFontPixelHeight, height)
-        : Math.max(
-            TEXT_RENDER_CONFIG.minimumCanvasFontPixelHeight,
-            height * canvasFontScaleFactor(),
-        );
+    // 系统字体的 px 是 em。CAD 字高是大写字母高度，按度量系数换成 em。
+    const correctedHeight = Math.max(
+        TEXT_RENDER_CONFIG.minimumCanvasFontPixelHeight,
+        height * canvasFontScaleFactor(),
+    );
 
     return `${fontStyle} ${fontWeight} ${correctedHeight}px ${fontFamily}`;
 };

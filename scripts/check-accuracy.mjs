@@ -230,21 +230,15 @@ try {
         check(`${label}：CIRCLE 存在`, false, '未找到圆弧类绘制');
       }
 
-      // TEXT：SHX 样式画成单线笔画（不是 fillText）。
-      // 去掉对角线和圆之后，剩下的小笔画合在一起，水平中心应落在单元中心。
-      const glyphStrokes = strokeOps.filter(op => op !== bigStroke && op !== circleOp
-        && (op.bbox.maxX - op.bbox.minX) < 80 && (op.bbox.maxY - op.bbox.minY) < 80);
-      if (glyphStrokes.length > 0) {
-        let minX = Infinity, maxX = -Infinity;
-        for (const op of glyphStrokes) {
-          minX = Math.min(minX, op.bbox.minX);
-          maxX = Math.max(maxX, op.bbox.maxX);
-        }
-        const tcx = (minX + maxX) / 2;
-        check(`${label}：TEXT 水平锚点（第二对齐点）`, near(tcx, cell.minX + 150, 10),
-          `中心 ${tcx.toFixed(1)}，期望 ${cell.minX + 150}，笔画 ${glyphStrokes.length}`);
+      // TEXT：系统字体 fillText。水平中心应落在单元中心（第二对齐点）。
+      const textOps = cellOps.filter(op => op.type === 'text');
+      const textOp = textOps[0];
+      if (textOp) {
+        const [tcx] = bboxCenter(textOp.bbox);
+        check(`${label}：TEXT 水平锚点（第二对齐点）`, near(tcx, cell.minX + 150, 12),
+          `中心 ${tcx.toFixed(1)}，期望 ${cell.minX + 150}，文字"${textOp.text}"`);
       } else {
-        check(`${label}：TEXT 存在`, false, '未找到文字笔画');
+        check(`${label}：TEXT 存在`, false, '未找到文字绘制');
       }
 
       // 无越界野图元：所有该格绘制均在格内（容差 8px）
@@ -283,17 +277,14 @@ try {
     theme: 'white',
   });
 
-  // SHX 路径按字符 fillText（汉字、直径号等），ASCII 走单线笔画，所以直接拼接。
-  const drawn = ops.filter(op => op.type === 'text').map(op => op.text).join('');
-  const strokeCount = ops.filter(op => op.type === 'stroke').length;
-  const expectIncludes = ['Ø', '°', '±', '∅', '下划线', '恢复', '第二行', '钢板'];
+  const drawn = ops.filter(op => op.type === 'text').map(op => op.text).join('\n');
+  const expectIncludes = ['Ø', '°', '±', 'ABC', '∅', '3/4', '下划线', '恢复', '第二行', '钢板'];
   for (const token of expectIncludes) {
     check(`特殊格式：绘制内容包含 "${token}"`, drawn.includes(token), `实际绘制文本：${drawn.slice(0, 120)}`);
   }
   // 连续 \U+XXXX 转义（中文图纸最常见的写法）：相邻转义不能被跳过，
   // 否则会漏掉一半字形并把 "U+XXXX" 字面量画出来（旧实现的字形分段器有此缺陷）。
-  check('特殊格式：连续 \\U+XXXX 转义全部解码', drawn.includes('温度°∅钢板'), `实际绘制文本：${drawn.slice(0, 120)}`);
-  check('特殊格式：ASCII（%%65→ABC、分数）走单线笔画', strokeCount > 15, `笔画 ${strokeCount}`);
+  check('特殊格式：连续 \\U+XXXX 转义全部解码', drawn.includes('温度°∅钢板'), `实际绘制文本：${drawn.slice(0, 160)}`);
   check('特殊格式：无残留未转换的 %%', !drawn.includes('%%'), drawn.includes('%%') ? `残留：${drawn.match(/.{0,10}%%.{0,10}/g)?.join(' | ')}` : '');
   check('特殊格式：无残留未转换的 \\U+', !drawn.includes('U+') && !drawn.includes('\\U'), '');
 } finally {

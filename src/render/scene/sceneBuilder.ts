@@ -37,14 +37,11 @@ import { resolveCadStrokeStyle } from '@/utils/lineStyle';
 import { sampleSplinePoints, sampleHatchLoop } from '@/core/geometry/curveSampling';
 import { isDimensionBlockLocal } from '@/core/geometry/transform';
 import { getEffectiveTextHeight, getEffectiveTextWidthFactor, getCadTextAnchorPosition, cleanMText, cleanCadText } from '@/utils/textUtils';
-import { isShxTextStyle } from '../text/textStyleKind';
 import { LineMeshBuilder, LineStyle, LinePolylineOp } from '../webgl/mesh/lineMeshBuilder';
 import { FillMeshBuilder } from '../webgl/mesh/fillMeshBuilder';
 import { GlyphMeshBuilder, PointMeshBuilder, TextStyle } from '../webgl/mesh/glyphPointMeshBuilders';
 import { Chunk, WorldRect, ChunkDrawOp, HatchRegion, EntityGeometryRanges } from '../webgl/scene/chunkStore';
-import { resolveStrokeFont } from '../text/shx/strokeFontRegistry';
-import { shapeStrokeText, strokeShapingBounds } from '../text/strokeTextShaper';
-import { hasOutlineFont, layoutOutlineTextEntity } from '../text/outlineText';
+
 import { shouldDrawViewportBorder } from '../viewportBorder';
 import { GlyphAtlas, GlyphStyleKey, RASTER_PX } from '../text/glyphAtlas';
 import { getStyleFontFamily } from '../text/fontService';
@@ -1219,25 +1216,12 @@ class SceneBaker {
     const rawValue = ent.value || '';
     if (!rawValue.trim()) return;
     const styles = this.options.styles;
-    const styleName = ent.styleName || 'STANDARD';
-    const style = styles?.[styleName] || styles?.[styleName.toUpperCase()];
     const effectiveHeight = getEffectiveTextHeight(ent, styles);
     if (!(effectiveHeight > 0) || !Number.isFinite(effectiveHeight)) return;
 
     // 文字烘焙标志：期间所有 drawOp（描边 line + glyph + fill）推入文字列表。
     this.inTextBake = true;
     this.curTextHeight = effectiveHeight;
-
-    // 只有 TrueType 样式才走轮廓填充。SHX / 大字体必须走单线字，
-    // 否则 tssdeng+hztxt 会被画成仿宋，字宽比 AutoCAD 大约 15%。
-    if (hasOutlineFont() && !isShxTextStyle(style)) {
-      const outlineLayout = layoutOutlineTextEntity(ent, styles);
-      if (outlineLayout && outlineLayout.lines.length > 0) {
-        this.writeOutlineTextEntity(outlineLayout, color);
-        this.inTextBake = false;
-        return;
-      }
-    }
 
     const isMText = ent.type === EntityType.MTEXT;
     // 统一走完整解码（%%130 钢筋符号、%%140 上标、%%146 圈号等 TSSD 扩展码，以及 \\U+XXXX、堆叠分数）。
@@ -1282,124 +1266,13 @@ class SceneBaker {
       const originX = position.x - sin * localY;
       const originY = position.y + cos * localY;
 
-      const resolution = resolveStrokeFont(style?.fontFileName, style?.bigFontFileName, true)
-        || resolveStrokeFont('txt', style?.bigFontFileName, true);
-      const oblique = resolution?.obliqueAngle ?? 0;
-
-      if (resolution) {
-        // ── SHX 描边路径（含 CJK 混排） ──
-        const shaping = shapeStrokeText(lineText, resolution.font, {
-          height: effectiveHeight, widthFactor, oblique, bigFont: resolution.bigFont,
-        });
-        if (shaping.advance <= 0 && !shaping.hasCjk) return;
-        const bounds = strokeShapingBounds(shaping);
-        const totalWidth = shaping.advance;
-
-        let alignShift = 0;
-        if (isMText) {
-          if (attachment % 3 === 2) alignShift = -totalWidth / 2;
-          else if (attachment % 3 === 0) alignShift = -totalWidth;
-        } else if (hAlign === 1 || hAlign === 4) alignShift = -totalWidth / 2;
-        else if (hAlign === 2) alignShift = -totalWidth;
-
-        const applyXf = (lx: number, ly: number): [number, number] => ([
-          originX + lx * cos - ly * sin,
-          originY + lx * sin + ly * cos,
-        ]);
-
-        for (const item of shaping.items) {
-          if (item.kind !== 'strokes') continue;
-          for (const stroke of item.strokes) {
-            if (stroke.length < 4) continue;
-            const worldPts: number[] = [];
-            for (let k = 0; k < stroke.length; k += 2) {
-              const [wx, wy] = applyXf(stroke[k] + alignShift, stroke[k + 1]);
-              worldPts.push(wx, wy);
-            }
-            this.writePolyline(worldPts, lineStyleOf(color, 0, 1), false);
-          }
-        }
-        for (const item of shaping.items) {
-          if (item.kind !== 'cjk') continue;
-          const [wx, wy] = applyXf(item.x + alignShift, 0);
-          this.writeCjkGlyph(ent, item.char, wx, wy, rotation, item.height, widthFactor, color);
-        }
-
-        const corners = [
-          applyXf(alignShift, bounds.minY),
-          applyXf(alignShift + totalWidth, bounds.minY),
-          applyXf(alignShift + totalWidth, bounds.maxY),
-          applyXf(alignShift, bounds.maxY),
-        ];
-        const bx0 = Math.min(corners[0][0], corners[1][0], corners[2][0], corners[3][0]);
-        const by0 = Math.min(corners[0][1], corners[1][1], corners[2][1], corners[3][1]);
-        const bx1 = Math.max(corners[0][0], corners[1][0], corners[2][0], corners[3][0]);
-        const by1 = Math.max(corners[0][1], corners[1][1], corners[2][1], corners[3][1]);
-        if (this.currentBaker) {
-          this.baker.updateBounds(bx0, by0, bx1, by1);
-        }
-      } else {
-        // ── 系统字体图集路径 ──
-        this.writeAtlasTextLine(ent, lineText, originX, originY, rotation, effectiveHeight, widthFactor, color, hAlign, attachment, isMText);
-      }
+      // 形字体不画成单线字，改用样式名对应的系统字体图集。
+      this.writeAtlasTextLine(ent, lineText, originX, originY, rotation, effectiveHeight, widthFactor, color, hAlign, attachment, isMText);
     });
     // 文字烘焙结束：恢复几何 op 通道。
     this.inTextBake = false;
   }
 
-  /**
-   * 将一个文字实体（单行或多行）通过 opentype.js 提取轮廓并由 earcut 三角化写入实心多边形网格（fill）。
-   * 遵循 AutoCAD 规范计算完整对齐方式（hAlign、vAlign、MTEXT attachmentPoint、Fit/Aligned自适应与自动折行）。
-   * 纯几何渲染，无位图/图集/分辨率限制，极端放大边缘依然平滑精确。
-   */
-  private writeOutlineTextEntity(
-    layout: NonNullable<ReturnType<typeof layoutOutlineTextEntity>>,
-    color: string,
-  ): void {
-    const cos = Math.cos(layout.rotation);
-    const sin = Math.sin(layout.rotation);
-    const origin = layout.origin;
-    const fillStyle = { color: hexToRgba(color) };
-
-    for (const line of layout.lines) {
-      const v = line.vertices;
-      if (v.length < 6) continue;
-      // 每行独立统计包围盒并独立路由：此前跨行累积的包围盒会让后续行落入其它分块，
-      // 而分块包围盒只更新了最后一块——视口剔除随即把那块文字整体丢掉
-      // （表现为"远处看不到文字、放大到那个位置才出现"）。
-      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-      const worldVerts = new Float64Array(v.length);
-      for (let i = 0; i < v.length; i += 2) {
-        const lx = line.localX + v[i], ly = line.localY + v[i + 1];
-        const wx = origin.x + lx * cos - ly * sin;
-        const wy = origin.y + lx * sin + ly * cos;
-        worldVerts[i] = wx;
-        worldVerts[i + 1] = wy;
-        if (wx < minX) minX = wx;
-        if (wx > maxX) maxX = wx;
-        if (wy < minY) minY = wy;
-        if (wy > maxY) maxY = wy;
-      }
-
-      const baker = this.routeTo((minX + maxX) / 2, (minY + maxY) / 2);
-      const vertexStart = baker.fill.vertexCount;
-      for (let i = 0; i + 5 < worldVerts.length; i += 6) {
-        baker.fill.addTriangle(
-          worldVerts[i], worldVerts[i + 1],
-          worldVerts[i + 2], worldVerts[i + 3],
-          worldVerts[i + 4], worldVerts[i + 5],
-          fillStyle,
-        );
-      }
-      const appended = baker.fill.vertexCount - vertexStart;
-      if (appended > 0) {
-        this.pushDrawOp('fill', vertexStart, appended);
-        this.stats.fillVertices += appended;
-        this.recordEntityOp(baker, 'fill', vertexStart, appended);
-      }
-      baker.updateBounds(minX, minY, maxX, maxY);
-    }
-  }
   /**
    * 字形世界缩放系数：CAD 字高 H 表示「大写字高」，
    * 系统字体按 em 光栅化（capHeight ≈ 0.7em），必须换算才能得到正确视觉字高。
@@ -1490,40 +1363,6 @@ class SceneBaker {
     this.writeGlyphQuads(quads, color, [bx0, by0, bx1, by1]);
   }
 
-  private writeCjkGlyph(
-    ent: DxfText,
-    char: string,
-    worldX: number,
-    worldY: number,
-    rotation: number,
-    height: number,
-    widthFactor: number,
-    color: string,
-  ): void {
-    const styleName = ent.styleName || 'STANDARD';
-    const family = getStyleFontFamily(styleName, this.options.styles);
-    const styleKey: GlyphStyleKey = { fontFamily: family, bold: false, italic: false };
-    const glyph = this.atlas.get(styleKey, char);
-    if (!glyph) return;
-    const cos = Math.cos(rotation), sin = Math.sin(rotation);
-    const s = this.glyphWorldScale(styleKey, char, glyph, height);
-    const lx = glyph.offsetX * s * widthFactor;
-    const ly = glyph.offsetY * s;
-    const w = glyph.widthPx * s * widthFactor;
-    const h = glyph.heightPx * s;
-    const cornerLocals: [number, number][] = [
-      [lx, ly + h], [lx + w, ly + h], [lx + w, ly], [lx, ly],
-    ];
-    const corners = cornerLocals.map(([clx, cly]) => ([
-      worldX + clx * cos - cly * sin,
-      worldY + clx * sin + cly * cos,
-    ])) as [number, number][];
-    this.writeGlyphQuads([{
-      corners,
-      uvs: [[glyph.u0, glyph.v0], [glyph.u1, glyph.v0], [glyph.u1, glyph.v1], [glyph.u0, glyph.v1]],
-      page: glyph.page,
-    }], color, [worldX, worldY - height, worldX + w + height, worldY + height]);
-  }
 }
 
 /** 块内实体变换特化（返回 null 表示不支持，跳过）。 */

@@ -4,9 +4,8 @@ import { hitTest, hitTestBox } from '@/render/picking/hitTest';
 import { RenderEngine } from '@/render/webgl/renderEngine';
 import { CanvasRenderEngine } from '@/render/canvas/CanvasRenderEngine';
 import type { EngineKind, InteractiveRenderEngine } from '@/render/engine';
-import { TEXT_RENDER_MODE } from '@/config/viewerConfig';
-import { hasOutlineFont, hasOutlineFontCjkCoverage, loadOutlineFont } from '@/render/text/outlineText';
-import { loadBundledShxFonts } from '@/render/text/shx/loadShxFonts';
+import { hasOutlineFont, loadOutlineFont } from '@/render/text/outlineText';
+
 import { Language, t } from '@/ui/i18n';
 import { CANVAS_THEME_COLORS, SELECTION_CONFIG, SHORTCUT_CONFIG, VIEWER_DEFAULTS, ZOOM_CONFIG, BREAKPOINTS, INTERACTION_CONFIG, CONTEXT_MENU_CONFIG } from '@/config/viewerConfig';
 import { boxQueryBounds, createSceneIndex, pointQueryBounds, SceneBounds, SceneIndex } from '@/render/picking/sceneIndex';
@@ -132,8 +131,8 @@ const ViewerCanvas: React.FC<ViewerCanvasProps> = ({
    * 会把字号、标点与笔画都画坏 —— 实测标题栏同一张图里字号大小不一、
    * 句号变成空心圆、笔画断裂，而同一张图的 Canvas 引擎完全正常。
    */
-  const textOverlayActive = engineKind === 'webgl'
-    && (TEXT_RENDER_MODE === 'overlay' || !hasOutlineFontCjkCoverage());
+  // 文字一律用系统字体，由 Canvas 文字层绘制。WebGL 不再烘焙 SHX 单线字。
+  const textOverlayActive = engineKind === 'webgl';
 
   // 尝试自动异步预载轮廓字体（工程仿宋为主字体，Arial 为西文/特殊符号后备字体）
   useEffect(() => {
@@ -162,9 +161,6 @@ const ViewerCanvas: React.FC<ViewerCanvasProps> = ({
           break;
         }
       }
-      // public/fonts 里如果放了 hztxt.shx、tssdeng.shx 等，注册后按真实单线字绘制。
-      const shxCount = await loadBundledShxFonts();
-      if (!cancelled && shxCount > 0) setOutlineFontVersion(v => v + 1);
     };
     tryLoad();
     return () => { cancelled = true; };

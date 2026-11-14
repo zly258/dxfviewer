@@ -11,8 +11,7 @@
 import type { CanvasTheme, DrawingColorMode, DxfData, ViewPort } from '@/types';
 import { RenderEngine } from '@/render/webgl/renderEngine';
 import { CanvasRenderEngine } from '@/render/canvas/CanvasRenderEngine';
-import { TEXT_RENDER_MODE } from '@/config/viewerConfig';
-import { hasOutlineFontCjkCoverage } from '@/render/text/outlineText';
+
 import { resolveSceneView } from './sceneView';
 import type { HeadlessCanvas } from './canvasUtils';
 
@@ -82,7 +81,7 @@ export const renderSceneToRasterCanvas = (
 
   // 与交互查看器同一判定：轮廓字体不可用时，GPU 文字只能退化为字形图集/描边
   // 字体（字号不一、标点走形），必须改由 Canvas 2D 文字层绘制后叠加。
-  const textOverlayActive = TEXT_RENDER_MODE === 'overlay' || !hasOutlineFontCjkCoverage();
+  const textOverlayActive = true;
 
   const glCanvas = createCanvasElement(pixelWidth, pixelHeight);
   const engine = new RenderEngine(glCanvas as HTMLCanvasElement);

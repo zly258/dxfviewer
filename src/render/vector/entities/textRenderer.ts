@@ -8,9 +8,6 @@ import {
     splitCadFormattedText,
 } from '@/utils/textUtils';
 import { getCanvasFont } from '@/utils/fontResolver';
-import { getStyleForText } from '@/utils/textUtils';
-import { isShxTextStyle } from '@/render/text/textStyleKind';
-import { drawShxText } from './shxTextDraw';
 import { getAutoCadColor } from '@/utils/colorUtils';
 import { getMeasuredTextWidthCached, getTextLayoutCached } from '@/render/text/renderCache';
 import { fillCadTextRun } from '@/render/text/canvasTextRun';
@@ -267,21 +264,6 @@ export const drawTextEntity = (
     // 极端缩小时不再绘制填充占位块，避免远距离视图中出现错位黑块。
     // 这里按真实缩放结果跳过不可见文字，因此不会产生固定像素大小的“假文字”。
     if (!Number.isFinite(screenTextHeight) || screenTextHeight < TEXT_RENDER_CONFIG.minimumTextRenderPixelHeight) {
-        ctx.restore();
-        return;
-    }
-
-    const style = getStyleForText(ent, styles);
-    if (isShxTextStyle(style)) {
-        const position = getCadTextAnchorPosition(ent);
-        const screenPosition = transform.project(position);
-        ctx.translate(screenPosition.x, screenPosition.y);
-        const alignedTextAngle = (!isMText && (hAlign === 3 || hAlign === 5) && ent.secondPosition)
-            ? Math.atan2(ent.secondPosition.y - ent.position.y, ent.secondPosition.x - ent.position.x)
-            : ((ent.rotation || 0) * Math.PI / 180);
-        const totalRotation = alignedTextAngle + transform.rotation;
-        if (totalRotation !== 0) ctx.rotate(-totalRotation);
-        drawShxText(ctx, ent, styles, screenTextHeight);
         ctx.restore();
         return;
     }
