@@ -80,8 +80,18 @@ export const isOutlineFontAvailable = (): boolean => {
  */
 export const charHeightRatio = (): number => currentMetrics.capHeightRatio;
 
-/** Canvas font-size 系数：em = 字高 / 大写字高。 */
-export const canvasFontScaleFactor = (): number => 1 / currentMetrics.capHeightRatio;
+const CJK_TEXT = /[\u2e80-\u9fff\uf900-\ufaff]/;
 
-/** 与整段相同。TrueType 不再按字符分开换算。 */
-export const canvasCharFontScaleFactor = (): number => 1 / currentMetrics.capHeightRatio;
+/**
+ * 系统字体的 em 系数。画面不再画轮廓字体，所以不用轮廓度量。
+ * 含中文时按中文字身（约 0.88em）换算，否则中文比字高大一截，
+ * 多行文字会提前碰到列宽、行数明显变多。
+ */
+export const canvasFontScaleFactor = (text?: string): number => {
+  const metrics = SYSTEM_FONT_METRICS;
+  const ratio = text && CJK_TEXT.test(text) ? metrics.cjkHeightRatio : metrics.capHeightRatio;
+  return 1 / ratio;
+};
+
+/** 与整段相同。系统字体一段一个字号。 */
+export const canvasCharFontScaleFactor = (text?: string): number => canvasFontScaleFactor(text);

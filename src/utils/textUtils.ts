@@ -2,7 +2,6 @@ import { TEXT_RENDER_CONFIG } from '@/config/viewerConfig';
 import { CAD_DEFAULT_TEXT_HEIGHT, CAD_DEFAULT_TEXT_STYLE } from '@/config/cadConstants';
 import { DxfStyle, DxfText, EntityType, Point2D } from '@/types';
 import { resolveCadTextFontProfile } from '@/render/text/fontService';
-import { getFontMetrics } from '@/render/text/fontMetrics';
 
 const TEMP_BACKSLASH = '\x01';
 const TEMP_LEFT_BRACE = '\x02';
@@ -207,9 +206,6 @@ export function getEffectiveTextWidthFactor(ent: DxfText, styles?: Record<string
 
 
 export function getCadFontWidthCompensation(ent: DxfText, styles?: Record<string, DxfStyle>): number {
-  // 轮廓字体的字宽就是真实 advance × 宽度因子，不再额外乘 0.88 之类的补偿，
-  // 否则 Canvas 会比 WebGL 窄一截。
-  if (getFontMetrics().fromOutlineFont) return 1;
   const profile = resolveCadTextFontProfile(ent.styleName, styles, ent.value);
   switch (profile) {
     case 'cjk':

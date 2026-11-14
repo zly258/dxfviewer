@@ -20,9 +20,7 @@ export type { VectorContext, RenderPaint, RenderTextMetrics } from '@/render/vec
 export { hitTest, hitTestBox } from '@/render/picking/hitTest';
 
 // ── SHX 形字体：宿主可注册真实 .shx 文件提升文字保真度 ──
-export { parseShxFont } from '@/render/text/shx/shxParser';
-export type { StrokeFontData, StrokeGlyph } from '@/render/text/shx/shxParser';
-export { registerParsedShxFont, resolveStrokeFont } from '@/render/text/shx/strokeFontRegistry';
+
 export { setOutlineFont, setFallbackOutlineFont, loadOutlineFont, hasOutlineFont, hasOutlineFontCjkCoverage, getGlyphMesh, measureOutlineTextWidth, layoutOutlineToTriangles } from '@/render/text/outlineText';
 export type { GlyphMesh, OutlineTextLayoutRun } from '@/render/text/outlineText';
 
