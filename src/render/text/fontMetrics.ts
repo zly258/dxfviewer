@@ -80,11 +80,20 @@ export const isOutlineFontAvailable = (): boolean => {
  */
 export const charHeightRatio = (): number => currentMetrics.capHeightRatio;
 
-/** ctx.font 里的 px 写 CAD 字高。中英文不再分开放大。 */
+/** ctx.font 里的 px 写 CAD 字高。逐字符的 em 换算在 canvasCharFontScaleFactor 里做。 */
 export const canvasFontScaleFactor = (): number => 1;
 
+const CJK_CHAR = /[\u2e80-\u9fff\uf900-\ufaff]/;
+
 /**
- * 中文和英文用同一个 font-size，等于 CAD 字高。
- * 之前英文再乘约 1.39，字号比汉字大一截，材料表里 Q235-B 比「上部支架」高。
+ * 单个字符的 em / 字高。
+ * - 汉字：AutoCAD 里汉字是「方格」，字号 = 字高（墨迹约 0.88em，且字宽≈字号，
+ *   乘宽度因子后正好等于格子宽度，材料表单行名称不会溢出邻格）。
+ * - 英文数字：不额外放大到比汉字还高；按与汉字相同的墨迹高度换算
+ *   （font = cjkHeightRatio / capHeightRatio），中英文视觉高度一致。
+ * 注意：不能把汉字放大到 1.14，否则单行名称会撑破表格列宽。
  */
-export const canvasCharFontScaleFactor = (_ch?: string): number => 1;
+export const canvasCharFontScaleFactor = (ch?: string): number => {
+  if (ch && CJK_CHAR.test(ch)) return 1;
+  return SYSTEM_FONT_METRICS.cjkHeightRatio / SYSTEM_FONT_METRICS.capHeightRatio;
+};

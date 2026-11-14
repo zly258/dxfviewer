@@ -248,9 +248,13 @@ export const buildCadTextLayout = ({
 
   const formattedLines = splitCadFormattedLines(entity.value || '');
   const declaredMTextWidth = entity.width && entity.width > 0 ? entity.width * worldToScreenScale : 0;
-  // 修正 MTEXT 声明宽度折行逻辑：AutoCAD 声明宽度即为内容区域边界。
-  // 此前错误地将声明宽度再除以水平因子，导致判定边界偏大，从而过早触发换行。
-  const maxWidth = declaredMTextWidth > screenHeight * 0.5 ? declaredMTextWidth : 0;
+  // 换行阈值必须按水平缩放因子折算。measureWidth 返回的是字体原始宽度（不含宽度因子），
+  // 而实际绘制时整行会再乘 horizontalScale(=宽度因子)。若这里不除以 horizontalScale，
+  // 排满一行的文字画出来只占「宽度因子」的比例（中文 0.85、英文 0.8），
+  // 右侧留空、字形显小且发疏。除以它后，绘制宽度正好填满声明列宽。
+  const maxWidth = declaredMTextWidth > screenHeight * 0.5
+    ? declaredMTextWidth / Math.max(TEXT_RENDER_CONFIG.minimumWidthFactor, Math.abs(horizontalScale))
+    : 0;
   const useFormattedLines = noWrap || maxWidth <= 0;
   const sourceLines = useFormattedLines
     ? (formattedLines.length > 0 ? formattedLines.map(line => line.plainText) : plainText.split('\n'))

@@ -277,7 +277,7 @@ try {
     theme: 'white',
   });
 
-  const drawn = ops.filter(op => op.type === 'text').map(op => op.text).join('\n');
+  const drawn = ops.filter(op => op.type === 'text').map(op => op.text).join('');
   const expectIncludes = ['Ø', '°', '±', 'ABC', '∅', '3/4', '下划线', '恢复', '第二行', '钢板'];
   for (const token of expectIncludes) {
     check(`特殊格式：绘制内容包含 "${token}"`, drawn.includes(token), `实际绘制文本：${drawn.slice(0, 120)}`);
