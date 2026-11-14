@@ -1,6 +1,6 @@
 {
   "name": "@zhangly1403/dxfviewer",
-  "version": "1.11.0",
+  "version": "1.10.0",
   "description": "React DXF viewer with WebGL / Canvas dual engines, built for very large drawings.",
   "author": "DXF Viewer contributors",
   "license": "MIT",

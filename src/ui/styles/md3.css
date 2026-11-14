@@ -1,692 +1,541 @@
 /*
- * MDUI（Material Design 3）组件层 —— 针对性覆盖，最后加载。
+ * Material Design 3 组件层（最后加载，覆盖基础样式）。
  *
- * 采用 `.app-container` 前缀提高特异性，确保稳定覆盖基础样式；
- * 完整覆盖「静止 / 悬浮 / 按下 / 选中 / 禁用 / 聚焦」全状态，
- * 以及前景、背景、高亮、文字颜色、字号、圆角、高度、状态层。
+ * 目标：把现有工业 CAD 界面整体重构为 M3（Material You）视觉语言：
+ *  - 形状：12/16/28px 圆角，按钮/标签为全圆；
+ *  - 颜色：M3 色彩角色（primary/secondary/surface 容器/outline）；
+ *  - 状态层：hover/press 用容器色或半透明覆盖（8%/12%）；
+ *  - 高度：M3 elevation 1~5；
+ *  - 字体：M3 字体阶梯与字距；
+ *  - 组件：filled/tonal/outlined 按钮、outlined 输入、elevated 菜单、chip 过滤、
+ *    snackbar 提示、FAB 风格悬浮按钮、M3 对话框（28px 圆角）。
+ *
+ * 所有取值来自 variables.css 的令牌，深色主题自动跟随。
  */
 
-/* ═════════════ 基础排版与背景 ═════════════ */
+/* ───────────────── 基础 ───────────────── */
 .app-container {
   background: var(--md-surface-container);
-  color: var(--md-on-surface);
+  color: var(--text-main);
   font-family: var(--font-sans);
   font-size: var(--fs-body);
   letter-spacing: var(--tracking-body);
   -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
 }
+
 .app-container * {
-  /* M3 状态层使用容器色，圆角跟随 */
-  -webkit-tap-highlight-color: transparent;
+  scrollbar-color: var(--scroll-thumb) transparent;
 }
-.app-container ::-webkit-scrollbar { width: 12px; height: 12px; }
+.app-container ::-webkit-scrollbar { width: 10px; height: 10px; }
+.app-container ::-webkit-scrollbar-track { background: transparent; }
 .app-container ::-webkit-scrollbar-thumb {
-  background: var(--md-outline-variant);
+  background: var(--scroll-thumb);
   border: 3px solid transparent;
   background-clip: content-box;
   border-radius: 999px;
 }
-.app-container ::-webkit-scrollbar-thumb:hover { background: var(--md-outline); background-clip: content-box; }
-.app-container ::-webkit-scrollbar-track { background: transparent; }
+.app-container ::-webkit-scrollbar-thumb:hover { background: var(--scroll-thumb-hover); background-clip: content-box; }
 
-/* 焦点环：M3 focus indicator（3dp primary） */
-.app-container button:focus-visible,
-.app-container input:focus-visible,
-.app-container [tabindex]:focus-visible {
-  outline: 3px solid var(--md-primary) !important;
-  outline-offset: 2px !important;
+/* 焦点环：M3 focus indicator */
+.app-container :focus-visible {
+  outline: 3px solid var(--md-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
 }
 
-/* ═════════════ 顶栏 Top App Bar（56dp） ═════════════ */
-.app-container .app-header {
+/* ───────────────── 顶栏 Top App Bar ───────────────── */
+.app-header {
   height: var(--header-h) !important;
-  padding: 0 8px 0 16px !important;
   background: var(--md-surface-container) !important;
   color: var(--md-on-surface) !important;
-  border: 0 !important;
   border-bottom: 1px solid var(--md-outline-variant) !important;
   box-shadow: none !important;
+  padding: 0 8px 0 16px !important;
 }
-.app-container .app-header-title {
+.app-header-title {
   font-size: var(--fs-page) !important;
   font-weight: 500 !important;
   letter-spacing: 0 !important;
   color: var(--md-on-surface) !important;
 }
-.app-container .app-header-tag {
+.app-header-tag {
   background: var(--md-secondary-container) !important;
   color: var(--md-on-secondary-container) !important;
-  border: 0 !important;
+  border: none !important;
   border-radius: var(--radius-sm) !important;
   font-size: var(--fs-caption) !important;
   font-weight: 500 !important;
   padding: 2px 8px !important;
-  letter-spacing: 0.03em;
 }
-.app-container .app-header-actions button,
-.app-container .app-header-actions .tb-icon-btn {
-  width: 48px !important;
-  height: 48px !important;
+.app-header-actions button,
+.app-header-actions .tb-icon-btn {
+  width: 40px !important;
+  height: 40px !important;
   border-radius: var(--radius-pill) !important;
-  border: 0 !important;
   background: transparent !important;
   color: var(--md-on-surface-variant) !important;
-  transition: background-color var(--t-fast), color var(--t-fast);
+  border: none !important;
+  transition: background-color var(--t-fast);
 }
-.app-container .app-header-actions button:hover,
-.app-container .app-header-actions .tb-icon-btn:hover {
+.app-header-actions button:hover,
+.app-header-actions .tb-icon-btn:hover {
   background: color-mix(in srgb, var(--md-on-surface) 8%, transparent) !important;
-  color: var(--md-on-surface) !important;
-}
-.app-container .app-header-actions button:active,
-.app-container .app-header-actions .tb-icon-btn:active {
-  background: color-mix(in srgb, var(--md-on-surface) 12%, transparent) !important;
-  color: var(--md-on-surface) !important;
 }
 
-/* ═════════════ 工具条（48dp，图标按钮 40dp） ═════════════ */
-.app-container .toolbar,
-.app-container .ui-toolbar-row {
+/* ───────────────── 工具条 / 按钮 ───────────────── */
+.toolbar, .ui-toolbar-row {
+  background: var(--md-surface-container) !important;
+  border-bottom: 1px solid var(--md-outline-variant) !important;
   height: var(--toolbar-h) !important;
   padding: 4px 8px !important;
   gap: 4px !important;
-  background: var(--md-surface-container) !important;
-  border: 0 !important;
-  border-bottom: 1px solid var(--md-outline-variant) !important;
 }
 
-/* 图标按钮（M3 icon button 40dp，图标 24dp，全圆状态层） */
-.app-container .toolbar-button.toolbar-icon-button,
-.app-container .toolbar-button,
-.app-container .tb-icon-btn,
-.app-container .layer-tool-btn {
+/* 图标按钮（M3 icon button，全圆 + 状态层） */
+.toolbar-icon-button, .tb-icon-btn, .layer-tool-btn, .toolbar-button.toolbar-icon {
   width: var(--icon-btn) !important;
-  min-width: var(--icon-btn) !important;
   height: var(--icon-btn) !important;
-  padding: 0 !important;
-  border: 0 !important;
   border-radius: var(--radius-pill) !important;
   background: transparent !important;
   color: var(--md-on-surface-variant) !important;
+  border: none !important;
   transition: background-color var(--t-fast), color var(--t-fast);
 }
-.app-container .toolbar-button:hover:not(:disabled),
-.app-container .tb-icon-btn:hover:not(:disabled),
-.app-container .layer-tool-btn:hover:not(:disabled) {
+.toolbar-icon-button:hover, .tb-icon-btn:hover, .layer-tool-btn:hover {
   background: color-mix(in srgb, var(--md-on-surface) 8%, transparent) !important;
   color: var(--md-on-surface) !important;
 }
-.app-container .toolbar-button:active:not(:disabled),
-.app-container .tb-icon-btn:active:not(:disabled),
-.app-container .layer-tool-btn:active:not(:disabled) {
+.toolbar-icon-button:active, .tb-icon-btn:active, .layer-tool-btn:active {
   background: color-mix(in srgb, var(--md-on-surface) 12%, transparent) !important;
-  color: var(--md-on-surface) !important;
-}
-/* 选中 / 激活：M3 tonal（secondary-container） */
-.app-container .toolbar-button.active,
-.app-container .tb-icon-btn.active,
-.app-container .toolbar-menu.active > .toolbar-button {
-  background: var(--md-secondary-container) !important;
-  color: var(--md-on-secondary-container) !important;
-  border: 0 !important;
-}
-.app-container .toolbar-button:disabled,
-.app-container .tb-icon-btn:disabled {
-  background: transparent !important;
-  color: color-mix(in srgb, var(--md-on-surface) 38%, transparent) !important;
-  cursor: default !important;
-}
-.app-container .toolbar-icon,
-.app-container .toolbar-icon svg {
-  width: var(--icon-size) !important;
-  height: var(--icon-size) !important;
-}
-.app-container .toolbar-menu { height: var(--icon-btn) !important; }
-
-/* 分隔符（M3 divider） */
-.app-container .tb-sep,
-.app-container .toolbar-separator {
-  width: 1px !important;
-  height: 24px !important;
-  margin: 0 4px !important;
-  background: var(--md-outline-variant) !important;
 }
 
-/* ═════════════ 普通按钮（M3 filled / outlined / text） ═════════════ */
-.app-container .tb-btn {
+/* 文本按钮（tonal / text） */
+.toolbar-button, .tb-btn {
   height: var(--control-h) !important;
-  padding: 0 20px !important;
+  min-width: 0 !important;
+  padding: 0 16px !important;
   border-radius: var(--radius-pill) !important;
-  border: 1px solid var(--md-outline) !important;
   background: transparent !important;
   color: var(--md-primary) !important;
+  border: none !important;
   font-size: var(--fs-body) !important;
   font-weight: 500 !important;
   letter-spacing: 0.01em !important;
+  display: inline-flex !important;
+  align-items: center !important;
   gap: 8px !important;
-  transition: background-color var(--t-fast), box-shadow var(--t-fast), color var(--t-fast);
+  transition: background-color var(--t-fast);
 }
-.app-container .tb-btn:hover:not(:disabled) {
+.toolbar-button:hover, .tb-btn:hover {
   background: color-mix(in srgb, var(--md-primary) 8%, transparent) !important;
-  color: var(--md-primary) !important;
-  border-color: var(--md-outline) !important;
 }
-.app-container .tb-btn:disabled {
-  background: transparent !important;
-  color: color-mix(in srgb, var(--md-on-surface) 38%, transparent) !important;
-  border-color: color-mix(in srgb, var(--md-on-surface) 12%, transparent) !important;
-}
-/* filled */
-.app-container .tb-btn-primary,
-.app-container .tb-btn.active,
-.app-container .viewer-error-button {
+/* filled 主按钮 */
+.tb-btn-primary, .close-confirm-ok, .viewer-error-button {
   background: var(--md-primary) !important;
   color: var(--md-on-primary) !important;
-  border: 0 !important;
+  border-radius: var(--radius-pill) !important;
   box-shadow: var(--elev-1) !important;
+  border: none !important;
+  font-weight: 500 !important;
 }
-.app-container .tb-btn-primary:hover:not(:disabled),
-.app-container .tb-btn.active:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--md-primary) 90%, var(--md-on-primary)) !important;
+.tb-btn-primary:hover, .close-confirm-ok:hover, .viewer-error-button:hover {
+  background: color-mix(in srgb, var(--md-primary) 88%, var(--md-on-primary)) !important;
   box-shadow: var(--elev-2) !important;
 }
-/* danger（filled error） */
-.app-container .tb-btn-danger {
+/* danger 按钮 */
+.tb-btn-danger {
   background: var(--md-error) !important;
   color: var(--md-on-error) !important;
-  border: 0 !important;
+  border-radius: var(--radius-pill) !important;
+  border: none !important;
+  font-weight: 500 !important;
 }
-.app-container .tb-btn-danger:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--md-error) 90%, var(--md-on-error)) !important;
-  color: var(--md-on-error) !important;
-}
-.app-container .tb-btn-sm {
+/* 小号 chips 型按钮 */
+.tb-btn-sm {
   height: var(--control-h-sm) !important;
-  padding: 0 16px !important;
+  padding: 0 12px !important;
+  border-radius: var(--radius-pill) !important;
   font-size: var(--fs-small) !important;
 }
 
-/* ═════════════ 下拉菜单（M3 menu，4dp 圆角，elevation 3） ═════════════ */
-.app-container .dropdown-menu,
-.app-container .toolbar-menu .dropdown-menu,
-.app-container .canvas-context-menu,
-.app-container .layer-panel-menu {
-  min-width: 200px !important;
-  padding: 8px 0 !important;
-  border: 1px solid var(--md-outline-variant) !important;
-  border-radius: var(--radius-xs) !important;
-  background: var(--md-surface-container) !important;
-  box-shadow: var(--elev-3) !important;
-  top: calc(100% + 6px) !important;
-  animation: cadFadeIn 0.12s var(--easing-standard) !important;
+/* 分隔线 */
+.tb-sep, .toolbar-separator {
+  width: 1px !important;
+  height: 20px !important;
+  background: var(--md-outline-variant) !important;
+  margin: 0 4px !important;
 }
-.app-container .dropdown-item {
-  height: 48px !important;
-  padding: 0 16px !important;
-  border-radius: 0 !important;
-  background: transparent !important;
+
+/* ───────────────── 菜单 / 下拉（M3 elevated menu） ───────────────── */
+.dropdown-menu, .toolbar-menu, .canvas-context-menu, .layer-panel-menu {
+  background: var(--md-surface-container-high) !important;
   color: var(--md-on-surface) !important;
-  font-size: var(--fs-body) !important;
-  font-weight: 400 !important;
-  gap: 12px !important;
-  transition: background-color var(--t-fast), color var(--t-fast);
+  border: none !important;
+  border-radius: var(--radius-md) !important;
+  box-shadow: var(--elev-3) !important;
+  padding: 8px !important;
+  min-width: 180px !important;
 }
-.app-container .dropdown-item:hover:not(:disabled) {
+.dropdown-item, .canvas-context-menu .dropdown-item {
+  height: 40px !important;
+  padding: 0 12px !important;
+  border-radius: var(--radius-sm) !important;
+  color: var(--md-on-surface) !important;
+  background: transparent !important;
+  font-size: var(--fs-body) !important;
+  border: none !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+}
+.dropdown-item:hover {
   background: color-mix(in srgb, var(--md-on-surface) 8%, transparent) !important;
   color: var(--md-on-surface) !important;
 }
-.app-container .dropdown-item:active:not(:disabled) {
-  background: color-mix(in srgb, var(--md-on-surface) 12%, transparent) !important;
-  color: var(--md-on-surface) !important;
-}
-.app-container .dropdown-item.checked {
+.dropdown-item.checked {
   background: var(--md-secondary-container) !important;
   color: var(--md-on-secondary-container) !important;
 }
-.app-container .dropdown-item.checked:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--md-on-secondary-container) 90%, var(--md-secondary-container)) !important;
-  color: var(--md-on-secondary-container) !important;
+.dropdown-item.checked::after {
+  content: "✓";
+  margin-left: auto;
+  color: var(--md-primary);
+  font-size: 16px;
 }
-.app-container .dropdown-item.checked::after {
-  background-color: var(--md-primary) !important;
-}
-.app-container .dropdown-header {
-  height: 32px !important;
-  padding: 8px 16px 0 !important;
+.dropdown-header {
   color: var(--md-on-surface-variant) !important;
   font-size: var(--fs-small) !important;
   font-weight: 500 !important;
   letter-spacing: 0.04em !important;
   text-transform: uppercase !important;
+  padding: 8px 12px 4px !important;
 }
-.app-container .divider,
-.app-container .dropdown-divider {
+.dropdown-divider, .divider {
   height: 1px !important;
-  margin: 8px 0 !important;
   background: var(--md-outline-variant) !important;
+  margin: 6px 0 !important;
+  opacity: 1 !important;
 }
 
-/* ═════════════ 输入框 / 搜索（M3 outlined，40dp） ═════════════ */
-.app-container .layer-search-box,
-.app-container .text-search-input,
-.app-container select,
-.app-container .select {
-  height: var(--control-h) !important;
+/* ───────────────── 输入框（M3 outlined text field） ───────────────── */
+.layer-search-box, .layer-search-input, .text-search-input {
+  height: 40px !important;
+  border-radius: var(--radius-sm) !important;
+  background: var(--md-surface-container-lowest) !important;
+  border: 1px solid var(--md-outline) !important;
+  color: var(--md-on-surface) !important;
+  font-size: var(--fs-body) !important;
+  transition: border-color var(--t-fast), box-shadow var(--t-fast);
+}
+.layer-search-box:focus-within, .text-search-input:focus {
+  border-color: var(--md-primary) !important;
+  box-shadow: 0 0 0 1px var(--md-primary) !important;
+}
+.layer-search-box .layer-search-input {
+  border: none !important;
+  background: transparent !important;
+  height: auto !important;
+  box-shadow: none !important;
+}
+.layer-search-icon, .layer-search-clear, .text-search-icon, .text-search-clear {
+  color: var(--md-on-surface-variant) !important;
+}
+.layer-search-clear:hover, .text-search-close:hover {
+  background: color-mix(in srgb, var(--md-on-surface) 8%, transparent) !important;
+  border-radius: var(--radius-pill) !important;
+}
+
+select, .select {
+  height: 40px !important;
   border-radius: var(--radius-sm) !important;
   background: var(--md-surface-container-lowest) !important;
   border: 1px solid var(--md-outline) !important;
   color: var(--md-on-surface) !important;
   font-size: var(--fs-body) !important;
   padding: 0 12px !important;
-  transition: border-color var(--t-fast), box-shadow var(--t-fast);
-}
-.app-container .layer-search-box:focus-within,
-.app-container .text-search-input:focus,
-.app-container select:focus {
-  border-color: var(--md-primary) !important;
-  box-shadow: 0 0 0 1px var(--md-primary) !important;
-  outline: none !important;
-}
-.app-container .layer-search-box { display: flex; align-items: center; gap: 8px; padding: 0 8px 0 12px !important; }
-.app-container .layer-search-input {
-  height: auto !important;
-  border: 0 !important;
-  background: transparent !important;
-  box-shadow: none !important;
-  color: var(--md-on-surface) !important;
-  padding: 0 !important;
-}
-.app-container .layer-search-input::placeholder,
-.app-container .text-search-input::placeholder {
-  color: var(--md-on-surface-variant) !important;
-}
-.app-container .layer-search-icon,
-.app-container .layer-search-clear,
-.app-container .text-search-icon,
-.app-container .text-search-clear {
-  color: var(--md-on-surface-variant) !important;
-}
-.app-container .layer-search-clear:hover,
-.app-container .text-search-close:hover {
-  background: color-mix(in srgb, var(--md-on-surface) 8%, transparent) !important;
-  color: var(--md-on-surface) !important;
-  border-radius: var(--radius-pill) !important;
 }
 
-/* ═════════════ 过滤 chip（M3 filter chip，32dp） ═════════════ */
-.app-container .filter-tab {
+/* ───────────────── 过滤 chip（M3 filter chip） ───────────────── */
+.filter-tab {
   height: var(--filter-h) !important;
-  padding: 0 12px !important;
+  padding: 0 8px !important;
   border-radius: var(--radius-sm) !important;
   border: 1px solid var(--md-outline-variant) !important;
   background: transparent !important;
   color: var(--md-on-surface-variant) !important;
   font-size: var(--fs-small) !important;
-  font-weight: 500 !important;
-  gap: 6px !important;
-  transition: background-color var(--t-fast), color var(--t-fast), border-color var(--t-fast);
 }
-.app-container .filter-tab:hover {
-  background: color-mix(in srgb, var(--md-on-surface) 8%, transparent) !important;
-  color: var(--md-on-surface) !important;
-  border-color: var(--md-outline) !important;
-}
-.app-container .filter-tab.active,
-.app-container .filter-tab.active:hover {
+.filter-tab:hover { background: color-mix(in srgb, var(--md-on-surface) 8%, transparent) !important; color: var(--md-on-surface) !important; }
+.filter-tab.active, .filter-tab.checked, .filter-tab[aria-selected="true"] {
   background: var(--md-secondary-container) !important;
   color: var(--md-on-secondary-container) !important;
   border-color: transparent !important;
-  font-weight: 500 !important;
 }
-.app-container .filter-tab-count {
-  background: color-mix(in srgb, var(--md-on-surface) 12%, transparent) !important;
-  color: inherit !important;
-  border-radius: var(--radius-pill) !important;
-  height: 16px !important;
-  line-height: 16px !important;
-  padding: 0 6px !important;
-  font-size: var(--fs-micro) !important;
-}
-.app-container .filter-tab.active .filter-tab-count {
-  background: var(--md-primary) !important;
-  color: var(--md-on-primary) !important;
-}
+.filter-tab-count { color: inherit !important; opacity: .8; }
 
-/* ═════════════ 侧栏面板 / 列表项 ═════════════ */
-.app-container .side-panel-shell,
-.app-container .side-panel-frame,
-.app-container .layer-panel,
-.app-container .properties-panel {
+/* ───────────────── 侧栏面板 ───────────────── */
+.side-panel-shell, .side-panel-frame, .layer-panel, .properties-panel {
   background: var(--md-surface-container-low) !important;
-  border: 0 !important;
+  border: none !important;
   color: var(--md-on-surface) !important;
 }
-.app-container .layer-panel-header,
-.app-container .properties-header {
-  height: 56px !important;
-  padding: 0 16px !important;
+.layer-panel-header, .properties-header, .layer-panel-title {
   background: transparent !important;
   border-bottom: 1px solid var(--md-outline-variant) !important;
   color: var(--md-on-surface) !important;
+  height: 48px !important;
+  padding: 0 16px !important;
 }
-.app-container .layer-panel-title,
-.app-container .properties-header {
+.layer-panel-title, .properties-header {
   font-size: var(--fs-title) !important;
   font-weight: 500 !important;
   letter-spacing: 0 !important;
 }
-.app-container .layer-panel-header-count,
-.app-container .layer-count {
+.layer-panel-header-count, .layer-count {
   background: var(--md-secondary-container) !important;
   color: var(--md-on-secondary-container) !important;
   border-radius: var(--radius-pill) !important;
-  padding: 2px 10px !important;
+  padding: 1px 8px !important;
   font-size: var(--fs-caption) !important;
-  font-weight: 500 !important;
 }
-.app-container .layer-toolbar {
+.layer-toolbar {
   background: transparent !important;
   border-bottom: 1px solid var(--md-outline-variant) !important;
   padding: 4px 8px !important;
-  gap: 4px !important;
 }
 
-/* 列表项（M3 list，40dp，12dp 圆角状态层） */
-.app-container .layer-row,
-.app-container .tree-row,
-.app-container .entity-row,
-.app-container .property-type-row {
+/* 列表项（M3 list item） */
+.layer-row, .tree-row, .entity-row, .filter-tab, .property-type-row {
   min-height: var(--row-h) !important;
   border-radius: var(--radius-sm) !important;
   color: var(--md-on-surface) !important;
-  transition: background-color var(--t-fast), color var(--t-fast);
+  transition: background-color var(--t-fast);
 }
-.app-container .layer-row:hover,
-.app-container .tree-row:hover,
-.app-container .entity-row:hover,
-.app-container .property-type-row:hover {
+.layer-row:hover, .tree-row:hover, .entity-row:hover, .property-type-row:hover {
   background: color-mix(in srgb, var(--md-on-surface) 8%, transparent) !important;
   color: var(--md-on-surface) !important;
 }
-.app-container .layer-row.selected,
-.app-container .tree-row.selected,
-.app-container .entity-row.selected,
-.app-container .layer-row.active,
-.app-container .tree-row.active,
-.app-container .entity-row.active {
+.layer-row.selected, .tree-row.selected, .entity-row.selected,
+.layer-row.active, .tree-row.active, .entity-row.active {
   background: var(--md-secondary-container) !important;
   color: var(--md-on-secondary-container) !important;
 }
-.app-container .layer-row.selected .layer-name,
-.app-container .tree-row.selected .tree-label,
-.app-container .entity-row.selected .entity-name {
+.layer-row.selected .layer-name, .tree-row.selected .tree-label,
+.entity-row.selected .entity-name {
   color: var(--md-on-secondary-container) !important;
   font-weight: 500 !important;
 }
-.app-container .layer-name,
-.app-container .tree-label,
-.app-container .entity-name {
+.layer-name, .tree-label, .entity-name {
   font-size: var(--fs-small) !important;
   color: var(--md-on-surface) !important;
 }
-.app-container .layer-row.layer-hidden .layer-name,
-.app-container .tree-row.layer-hidden .tree-label {
+.layer-row.layer-hidden .layer-name, .tree-row.layer-hidden .tree-label {
   color: var(--md-on-surface-variant) !important;
   text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--md-on-surface-variant) 60%, transparent);
 }
-.app-container .tree-check,
-.app-container .layer-visibility-toggle {
+
+/* 复选框（M3 checkbox） */
+.tree-check, .layer-visibility-toggle {
   color: var(--md-on-surface-variant) !important;
   border-radius: var(--radius-xs) !important;
 }
-.app-container .tree-check.checked,
-.app-container .layer-visibility-toggle.checked { color: var(--md-primary) !important; }
+.tree-check.checked, .layer-visibility-toggle.checked { color: var(--md-primary) !important; }
 
-/* 属性面板 */
-.app-container .property-label-cell,
-.app-container .property-section-title,
-.app-container .property-type-name { color: var(--md-on-surface-variant) !important; font-size: var(--fs-small) !important; }
-.app-container .property-value-cell,
-.app-container .property-value-strong,
-.app-container .property-type-value { color: var(--md-on-surface) !important; font-size: var(--fs-small) !important; }
-.app-container .property-value-mono { font-family: var(--font-mono) !important; color: var(--md-on-surface) !important; }
-.app-container .property-empty-title { color: var(--md-on-surface) !important; font-size: var(--fs-title) !important; }
-.app-container .property-empty-subtitle,
-.app-container .property-muted { color: var(--md-on-surface-variant) !important; }
+/* 属性面板行 */
+.property-row, .property-section-row {
+  border-radius: var(--radius-xs) !important;
+  background: transparent !important;
+}
+.property-row:nth-child(even) { background: color-mix(in srgb, var(--md-on-surface) 3%, transparent) !important; }
+.property-label-cell, .property-section-title, .property-type-name {
+  color: var(--md-on-surface-variant) !important;
+  font-size: var(--fs-small) !important;
+}
+.property-value-cell, .property-value-strong, .property-type-value {
+  color: var(--md-on-surface) !important;
+  font-size: var(--fs-small) !important;
+}
+.property-value-mono { font-family: var(--font-mono) !important; color: var(--md-on-surface) !important; }
+.property-empty-title { color: var(--md-on-surface) !important; font-size: var(--fs-title) !important; }
+.property-empty-subtitle, .property-muted { color: var(--md-on-surface-variant) !important; }
 
-/* ═════════════ 状态栏 ═════════════ */
-.app-container .status-bar {
+/* ───────────────── 状态栏 ───────────────── */
+.status-bar {
   height: var(--footer-h) !important;
-  padding: 0 16px !important;
   background: var(--md-surface-container) !important;
   border-top: 1px solid var(--md-outline-variant) !important;
   color: var(--md-on-surface-variant) !important;
   font-size: var(--fs-small) !important;
+  padding: 0 12px !important;
 }
-.app-container .status-value,
-.app-container .status-coords,
-.app-container .status-summary,
-.app-container .status-selection {
+.status-value, .status-coords, .status-summary, .status-selection {
   color: var(--md-on-surface-variant) !important;
   font-size: var(--fs-small) !important;
 }
 
-/* ═════════════ 遮罩 / 加载 / Snackbar ═════════════ */
-.app-container .loading-overlay,
-.app-container .modal-backdrop,
-.app-container .close-confirm-overlay,
-.app-container .about-modal-overlay,
-.app-container .mobile-side-backdrop {
+/* ───────────────── 遮罩 / 加载 ───────────────── */
+.loading-overlay, .modal-backdrop, .close-confirm-overlay, .about-modal-overlay,
+.mobile-side-backdrop {
   background: var(--md-scrim) !important;
 }
-.app-container .loading-card {
+.loading-card {
   background: var(--md-surface-container-high) !important;
   color: var(--md-on-surface) !important;
   border-radius: var(--radius-xl) !important;
   box-shadow: var(--elev-3) !important;
-  border: 0 !important;
+  border: none !important;
   padding: 24px !important;
 }
-.app-container .cad-loading-title,
-.app-container .loading-title { color: var(--md-on-surface) !important; font-size: var(--fs-title) !important; }
-.app-container .cad-loading-track,
-.app-container .loading-progressbar {
-  height: 4px !important;
-  border-radius: var(--radius-pill) !important;
+.cad-loading-title, .loading-title { color: var(--md-on-surface) !important; font-size: var(--fs-title) !important; }
+.cad-loading-track, .loading-progressbar {
   background: var(--md-surface-container-highest) !important;
+  border-radius: var(--radius-pill) !important;
+  height: 4px !important;
   overflow: hidden;
 }
-.app-container .cad-loading-pct,
-.app-container .loading-progressbar-value {
+.cad-loading-pct, .loading-progressbar-value {
   background: var(--md-primary) !important;
   border-radius: var(--radius-pill) !important;
 }
-.app-container .cad-spinner,
-.app-container .loading-spinner { color: var(--md-primary) !important; }
+.cad-spinner, .loading-spinner {
+  color: var(--md-primary) !important;
+}
 
-.app-container .cad-toast,
-.app-container .toast {
+/* Snackbar / Toast（M3 snackbar） */
+.cad-toast, .toast {
   background: var(--md-inverse-surface) !important;
   color: var(--md-inverse-on-surface) !important;
-  border-radius: var(--radius-xs) !important;
+  border-radius: var(--radius-sm) !important;
   box-shadow: var(--elev-3) !important;
-  border: 0 !important;
-  min-height: 48px !important;
-  padding: 14px 16px !important;
+  border: none !important;
+  padding: 12px 16px !important;
   font-size: var(--fs-body) !important;
+  min-height: 44px !important;
   display: flex !important;
   align-items: center !important;
   gap: 12px !important;
 }
-.app-container .toast-message { color: var(--md-inverse-on-surface) !important; }
-.app-container .toast-close {
+.toast-message { color: var(--md-inverse-on-surface) !important; }
+.toast-close {
   color: var(--md-inverse-on-surface) !important;
   border-radius: var(--radius-pill) !important;
 }
-.app-container .toast-close:hover {
-  background: color-mix(in srgb, var(--md-inverse-on-surface) 12%, transparent) !important;
-  color: var(--md-inverse-on-surface) !important;
-}
+.toast-close:hover { background: color-mix(in srgb, var(--md-inverse-on-surface) 12%, transparent) !important; }
 
-/* ═════════════ 对话框（M3 dialog，28dp 圆角） ═════════════ */
-.app-container .app-modal,
-.app-container .ui-modal,
-.app-container .about-modal-content,
-.app-container .close-confirm {
+/* ───────────────── 对话框（M3 dialog 28px 圆角） ───────────────── */
+.app-modal, .ui-modal, .about-modal-content, .close-confirm, .close-confirm-box {
   background: var(--md-surface-container-high) !important;
   color: var(--md-on-surface) !important;
   border-radius: var(--radius-xl) !important;
   box-shadow: var(--elev-3) !important;
-  border: 0 !important;
+  border: none !important;
+  padding: 0 !important;
   overflow: hidden;
 }
-.app-container .ui-modal-head,
-.app-container .ui-dialog-head,
-.app-container .about-modal-header {
+.ui-modal-head, .ui-dialog-head, .about-modal-header {
   padding: 24px 24px 8px !important;
+  color: var(--md-on-surface) !important;
+  border: none !important;
   background: transparent !important;
-  border: 0 !important;
-  color: var(--md-on-surface) !important;
 }
-.app-container .ui-modal-title,
-.app-container .about-modal-title,
-.app-container .close-confirm-title {
-  font-size: 24px !important;
-  font-weight: 400 !important;
+.ui-modal-title, .about-modal-title, .close-confirm-title {
+  font-size: 20px !important;
+  font-weight: 500 !important;
+  color: var(--md-on-surface) !important;
   letter-spacing: 0 !important;
-  color: var(--md-on-surface) !important;
 }
-.app-container .ui-modal-body,
-.app-container .about-modal-body,
-.app-container .close-confirm-message {
+.ui-modal-body, .about-modal-body, .close-confirm-message {
   padding: 8px 24px 20px !important;
   color: var(--md-on-surface-variant) !important;
   font-size: var(--fs-body) !important;
-  line-height: 1.5 !important;
 }
-.app-container .ui-modal-actions,
-.app-container .close-confirm-actions {
+.ui-modal-actions, .close-confirm-actions {
   padding: 8px 16px 16px !important;
   display: flex !important;
   justify-content: flex-end !important;
   gap: 8px !important;
 }
-.app-container .about-modal-close,
-.app-container .modal-x {
+.about-modal-close, .modal-x {
   color: var(--md-on-surface-variant) !important;
   border-radius: var(--radius-pill) !important;
 }
-.app-container .about-modal-close:hover,
-.app-container .modal-x:hover {
+.about-modal-close:hover, .modal-x:hover {
   background: color-mix(in srgb, var(--md-on-surface) 8%, transparent) !important;
-  color: var(--md-on-surface) !important;
 }
-/* M3 text button（取消） / filled button（确定） */
-.app-container .close-confirm-cancel {
-  height: 40px !important;
-  padding: 0 20px !important;
-  border: 0 !important;
-  border-radius: var(--radius-pill) !important;
+.close-confirm-cancel {
   background: transparent !important;
   color: var(--md-primary) !important;
+  border-radius: var(--radius-pill) !important;
+  height: 40px !important;
+  padding: 0 20px !important;
+  border: none !important;
   font-weight: 500 !important;
 }
-.app-container .close-confirm-cancel:hover {
-  background: color-mix(in srgb, var(--md-primary) 8%, transparent) !important;
-  color: var(--md-primary) !important;
-}
-.app-container .close-confirm-ok {
+.close-confirm-cancel:hover { background: color-mix(in srgb, var(--md-primary) 8%, transparent) !important; }
+.close-confirm-ok {
   height: 40px !important;
   padding: 0 24px !important;
-  border: 0 !important;
-  border-radius: var(--radius-pill) !important;
-  background: var(--md-primary) !important;
-  color: var(--md-on-primary) !important;
-  font-weight: 500 !important;
-  box-shadow: var(--elev-1) !important;
-}
-.app-container .close-confirm-ok:hover {
-  background: color-mix(in srgb, var(--md-primary) 90%, var(--md-on-primary)) !important;
-  color: var(--md-on-primary) !important;
-  box-shadow: var(--elev-2) !important;
 }
 
-/* ═════════════ 文本搜索面板 ═════════════ */
-.app-container .text-search-panel {
+/* ───────────────── 文本搜索面板 ───────────────── */
+.text-search-panel {
   background: var(--md-surface-container-high) !important;
-  border: 0 !important;
   border-radius: var(--radius-lg) !important;
   box-shadow: var(--elev-3) !important;
+  border: none !important;
   color: var(--md-on-surface) !important;
 }
-.app-container .text-search-row { border-radius: var(--radius-sm) !important; }
-.app-container .text-search-row:hover {
-  background: color-mix(in srgb, var(--md-on-surface) 8%, transparent) !important;
-  color: var(--md-on-surface) !important;
-}
-.app-container .text-search-highlight {
-  background: var(--md-tertiary-container) !important;
-  color: var(--md-on-tertiary-container) !important;
-  border-radius: 2px;
-}
+.text-search-row { border-radius: var(--radius-sm) !important; }
+.text-search-row:hover { background: color-mix(in srgb, var(--md-on-surface) 8%, transparent) !important; color: var(--md-on-surface) !important; }
+.text-search-highlight { background: var(--md-tertiary-container) !important; color: var(--md-on-tertiary-container) !important; border-radius: 2px; }
 
-/* ═════════════ 画布 / 选区 / 拖拽柄 ═════════════ */
-.app-container .canvas-container,
-.app-container .viewer-container,
-.app-container .dxf-preview { background: var(--bg-viewport) !important; }
-.app-container .panel-resize-handle { background: transparent !important; }
-.app-container .panel-resize-handle:hover {
-  background: color-mix(in srgb, var(--md-primary) 32%, transparent) !important;
-}
-.app-container .selection-box {
+/* ───────────────── 画布 / 选区 / 拖拽 ───────────────── */
+.canvas-container, .viewer-container, .dxf-preview { background: var(--bg-viewport) !important; }
+.panel-resize-handle { background: transparent !important; }
+.panel-resize-handle:hover { background: color-mix(in srgb, var(--md-primary) 24%, transparent) !important; }
+.selection-box {
   border: 1.5px solid var(--md-primary) !important;
   background: color-mix(in srgb, var(--md-primary) 12%, transparent) !important;
 }
-.app-container .color-swatch,
-.app-container .color-preview-container {
+
+/* 颜色色块 */
+.color-swatch, .color-preview-container {
   border-radius: var(--radius-xs) !important;
   border: 1px solid var(--md-outline-variant) !important;
 }
-.app-container .color-hex { font-family: var(--font-mono) !important; color: var(--md-on-surface-variant) !important; }
+.color-hex { font-family: var(--font-mono) !important; color: var(--md-on-surface-variant) !important; }
 
-/* ═════════════ 移动端控件 ═════════════ */
-.app-container .mobile-tool-button {
-  width: 48px !important;
-  height: 48px !important;
+/* ───────────────── 移动端控件 ───────────────── */
+.mobile-tool-button {
+  width: 44px !important;
+  height: 44px !important;
   border-radius: var(--radius-pill) !important;
   background: var(--md-secondary-container) !important;
   color: var(--md-on-secondary-container) !important;
   box-shadow: var(--elev-2) !important;
-  border: 0 !important;
+  border: none !important;
 }
-.app-container .mobile-coord-chip {
+.mobile-coord-chip {
   background: var(--md-surface-container-high) !important;
   color: var(--md-on-surface) !important;
   border-radius: var(--radius-pill) !important;
   box-shadow: var(--elev-2) !important;
-  border: 0 !important;
+  border: none !important;
 }
-.app-container .mobile-side-panel {
+.mobile-side-panel {
   background: var(--md-surface-container-low) !important;
-  color: var(--md-on-surface) !important;
   border-radius: var(--radius-xl) 0 0 var(--radius-xl) !important;
   box-shadow: var(--elev-3) !important;
-}
-.app-container .mobile-side-panel-header { border-bottom: 1px solid var(--md-outline-variant) !important; }
-.app-container .mobile-view-item { border-radius: var(--radius-sm) !important; }
-.app-container .mobile-view-item:hover {
-  background: color-mix(in srgb, var(--md-on-surface) 8%, transparent) !important;
   color: var(--md-on-surface) !important;
 }
+.mobile-side-panel-header { border-bottom: 1px solid var(--md-outline-variant) !important; }
+.mobile-view-item { border-radius: var(--radius-sm) !important; }
+.mobile-view-item:hover { background: color-mix(in srgb, var(--md-on-surface) 8%, transparent) !important; color: var(--md-on-surface) !important; }
 
-/* ═════════════ 杂项 ═════════════ */
-.app-container .empty-state,
-.app-container .layer-empty-hint,
-.app-container .text-search-empty,
-.app-container .dxf-preview-message {
+/* ───────────────── 杂项 ───────────────── */
+.empty-state, .layer-empty-hint, .text-search-empty, .dxf-preview-message {
   color: var(--md-on-surface-variant) !important;
   font-size: var(--fs-body) !important;
 }
-.app-container .dxf-preview-spinner,
-.app-container .dxf-preview-text-layer { color: var(--md-primary) !important; }
+.dxf-preview-spinner, .dxf-preview-text-layer { color: var(--md-primary) !important; }
