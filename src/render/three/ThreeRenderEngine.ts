@@ -58,10 +58,10 @@ export class ThreeRenderEngine implements InteractiveRenderEngine {
     this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 1, WORLD_OFFSET_R * 3);
   }
 
-  /** 相机方位（度）。elevation=90 为俯视。 */
-  setOrbit(azimuth: number, elevation: number): void {    this.azimuth = azimuth;
+  /** 相机方位（度）。elevation=90 为俯视（2D CAD 视图，默认）。 */
+  setOrbit(azimuth: number, elevation: number): void {
+    this.azimuth = azimuth;
     this.elevation = Math.max(-89.9, Math.min(89.999, elevation === 90 ? 89.999 : elevation));
-    // 允许精确 90：单独处理（用 89.999 避免 lookAt 退化）
     if (elevation >= 90) this.elevation = 89.999;
   }
 

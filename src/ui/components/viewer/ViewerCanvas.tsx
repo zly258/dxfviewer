@@ -91,9 +91,6 @@ const ViewerCanvas: React.FC<ViewerCanvasProps> = ({
   const onViewPortChangeRef = useRef(onViewPortChange);
   const dirtyRef = useRef(true);
   const selectedRef = useRef(selectedEntityIds);
-  /** 相机朝向（默认三维等轴视角；始终为三维场景，无 2D/3D 切换）。 */
-  const orbitRef = useRef({ azimuth: 35, elevation: 55 });
-  const orbitDragRef = useRef<{ x: number; y: number } | null>(null);
   const sizeRef = useRef({ width: 0, height: 0, dpr: 1 });
   const isInteractingRef = useRef(false);
   const lastMiddleClickRef = useRef<{ time: number; x: number; y: number } | null>(null);
@@ -219,14 +216,6 @@ const ViewerCanvas: React.FC<ViewerCanvasProps> = ({
               };
               engine.render(renderParams);
               if (textEngine) textEngine.render(renderParams);
-              // 把文字覆盖层按相机平面仿射变换贴合三维平面（正交投影精确）。
-              const teCanvas = textCanvasRef.current;
-              if (teCanvas) {
-                teCanvas.style.transformOrigin = '0 0';
-                const e3t = engine as unknown as { getTextTransform?: () => number[] | null };
-                const m = e3t.getTextTransform ? e3t.getTextTransform() : null;
-                teCanvas.style.transform = m ? `matrix(${m.join(',')})` : '';
-              }
               if (errorReported) {
                 errorReported = false;
                 onRenderError?.(null);
@@ -272,13 +261,7 @@ const ViewerCanvas: React.FC<ViewerCanvasProps> = ({
       }
       // 调试句柄：控制台可用 __dxfEngine.stats 查看引擎状态。
       (window as unknown as { __dxfEngine?: InteractiveRenderEngine }).__dxfEngine = engine;
-      // Three 引擎三维视角调试句柄（控制台可调用 setOrbit 观察三维构件）。
-      (window as unknown as { __dxfEngine3d?: unknown }).__dxfEngine3d = engine;
-      (window as unknown as { __dxfSetOrbit?: (az: number, el: number) => void }).__dxfSetOrbit = (az: number, el: number) => {
-        const e = engine as unknown as { setOrbit?: (a: number, b: number) => void };
-        if (e?.setOrbit) { e.setOrbit(az, el); dirtyRef.current = true; }
-      };
-      // 调试句柄：设置/读取视口，便于双引擎在完全相同的视口下对比。
+      // 调试句柄：设置/读取视口，便于对比。
       (window as unknown as { __dxfViewport?: {
         get: () => ViewPort;
         set: (vp: ViewPort) => void;
@@ -289,9 +272,7 @@ const ViewerCanvas: React.FC<ViewerCanvasProps> = ({
 
       startLoop();
 
-      // 始终为三维场景：应用默认等轴视角。
-      const e3 = engine as unknown as { setOrbit?: (a: number, b: number) => void };
-      if (e3.setOrbit) e3.setOrbit(orbitRef.current.azimuth, orbitRef.current.elevation);
+      // 2D 俯视渲染（无三维场景）。
 
       // 引擎重建后重放当前场景。
       engine.setTheme(theme, CANVAS_THEME_COLORS[theme]);
@@ -597,9 +578,17 @@ const ViewerCanvas: React.FC<ViewerCanvasProps> = ({
       const MAX_ZOOM = ZOOM_CONFIG.maxZoom;
       if (newZoom < MIN_ZOOM || newZoom > MAX_ZOOM) return;
 
+      const rect = container.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
       const safeZoom = Math.max(Math.min(newZoom, MAX_ZOOM), MIN_ZOOM);
-      // 三维场景：滚轮以中心整体缩放（不改变目标点，避免视角漂移）。
-      scheduleViewPortChange({ targetX: currentVP.targetX, targetY: currentVP.targetY, zoom: safeZoom });
+      // 2D 视图：以光标为锚点缩放（光标下的世界坐标保持不动）。
+      const centerX = rect.width / 2;
+      const centerY = rect.height / 2;
+      const newTargetX = currentVP.targetX + (mouseX - centerX) * (1 / currentVP.zoom - 1 / safeZoom);
+      const newTargetY = currentVP.targetY - (mouseY - centerY) * (1 / currentVP.zoom - 1 / safeZoom);
+      scheduleViewPortChange({ targetX: newTargetX, targetY: newTargetY, zoom: safeZoom });
     };
 
     const onTouchStart = (e: TouchEvent) => {
@@ -772,19 +761,6 @@ const ViewerCanvas: React.FC<ViewerCanvasProps> = ({
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
 
-    // 三维场景：左键拖拽环绕旋转相机；Shift+左键 拖拽为框选；中键/Alt+左键 平移。
-    if (e.button === 0 && !e.shiftKey && !e.altKey) {
-      e.preventDefault();
-      orbitDragRef.current = { x: e.clientX, y: e.clientY };
-      return;
-    }
-    if (e.button === 0 && e.shiftKey) {
-      setIsBoxSelecting(true);
-      setDragStart({ x: mouseX, y: mouseY });
-      setCurrentMousePos({ x: mouseX, y: mouseY });
-      return;
-    }
-
     if (e.button === SHORTCUT_CONFIG.middleButton) {
       e.preventDefault();
       const now = Date.now();
@@ -819,18 +795,6 @@ const ViewerCanvas: React.FC<ViewerCanvasProps> = ({
     const worldPos = screenToWorld(mouseX, mouseY);
     onMouseMoveWorld?.(worldPos.x + (worldOffset?.x || 0), worldPos.y + (worldOffset?.y || 0));
 
-    if (orbitDragRef.current) {
-      const dx = e.clientX - orbitDragRef.current.x;
-      const dy = e.clientY - orbitDragRef.current.y;
-      orbitRef.current.azimuth -= dx * 0.4;
-      orbitRef.current.elevation = Math.max(-85, Math.min(89, orbitRef.current.elevation - dy * 0.4));
-      orbitDragRef.current = { x: e.clientX, y: e.clientY };
-      const e3 = engineRef.current as unknown as { setOrbit?: (a: number, b: number) => void } | null;
-      e3?.setOrbit?.(orbitRef.current.azimuth, orbitRef.current.elevation);
-      requestFrame();
-      return;
-    }
-
     if (isPanning) {
       const dx = e.clientX - dragStart.x;
       const dy = e.clientY - dragStart.y;
@@ -852,10 +816,6 @@ const ViewerCanvas: React.FC<ViewerCanvasProps> = ({
   };
 
   const handleMouseUp = (e: MouseEvent) => {
-    if (orbitDragRef.current) {
-      orbitDragRef.current = null;
-      return;
-    }
     if (isPanning) {
       setIsPanning(false);
     } else if (isBoxSelecting) {
@@ -942,13 +902,12 @@ const ViewerCanvas: React.FC<ViewerCanvasProps> = ({
       onMouseLeave={() => {
         setIsPanning(false);
         setIsBoxSelecting(false);
-        orbitDragRef.current = null;
       }}
-      style={{ cursor: isPanning ? 'grabbing' : (orbitDragRef.current ? 'grabbing' : 'grab'), '--canvas-bg': canvasBgColor } as React.CSSProperties}
+      style={{ cursor: isPanning ? 'grabbing' : 'default', '--canvas-bg': canvasBgColor } as React.CSSProperties}
     >
       <canvas key="three" ref={canvasRef} />
       {textOverlayActive && (
-        <canvas key="text" ref={textCanvasRef} className="viewer-text-layer" style={{ transformOrigin: '0 0' }} />
+        <canvas key="text" ref={textCanvasRef} className="viewer-text-layer" />
       )}
 
       {isBoxSelecting && (
