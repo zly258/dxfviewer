@@ -1,7 +1,8 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
 import ViewerCanvas from '@/ui/components/viewer/ViewerCanvas';
 import type { EngineKind } from '@/render/engine';
-import ViewerToolbar, { ExportKind } from '@/ui/components/viewer/ViewerToolbar';
+import type { ExportKind } from '@/ui/components/viewer/ViewerToolbar';
+import ViewerMenuBar from '@/ui/components/viewer/ViewerMenuBar';
 import ViewerHeader from '@/ui/components/viewer/ViewerHeader';
 import { exportPng, exportPdfVector, exportSvg } from '@/export';
 import { writeDxf } from '@/writer';
@@ -778,46 +779,47 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
       {toastMessage && <Toast toast={toastMessage} lang={lang} onClose={() => setToastMessage(null)} />}
       {isLoading && <LoadingOverlay lang={lang} fileName={loadingFileName} progress={loadingProgress} />}
 
-      {/* 顶栏 42px：文件标题 [DXF] | 导出 关于（不放 logo） */}
-      <ViewerHeader
-        lang={lang}
-        fileName={fileName}
-        fileTag="DXF"
-        onExport={handleExport}
-        canExport={entities.length > 0}
-        onShowAbout={() => setShowAbout(true)}
-        onClose={onClose}
-      />
-
-      {/* 工具条行 32px：视口工具。移动端改用底部浮层，不占这一行。 */}
-      {!isMobile && (
-        <div className="ui-toolbar-row">
-            <ViewerToolbar
-              onImport={handleImport}
-              onFitView={handleFitView}
-              onPreviousView={handlePreviousView}
-              onNextView={handleNextView}
-              onToggleSearch={() => setShowTextSearch(value => !value)}
-              isSearchActive={showTextSearch}
-              canGoPreviousView={canGoPreviousView}
-              canGoNextView={canGoNextView}
-              showOpen={showOpenMenu}
-              uiTheme={uiTheme}
-              onSetUiTheme={handleSetUiTheme}
-              drawingColorMode={drawingColorMode}
-              onSetDrawingColorMode={handleSetDrawingColorMode}
-              renderEngine={renderEngine}
-              onSetRenderEngine={setRenderEngine}
-              lang={lang}
-              onSetLang={handleSetLang}
-              showLayerPanel={showLayerPanel}
-              onToggleLayerPanel={() => setShowLayerPanel(v => !v)}
-              showProperties={showProperties}
-              onToggleProperties={() => setShowProperties(v => !v)}
-              is3D={is3D}
-              onToggle3D={() => setIs3D(v => !v)}
-            />
-        </div>
+      {/* 顶部：桌面端为经典文字菜单栏（无图标）；移动端为精简图标顶栏（纯图标在底部浮层）。 */}
+      {isMobile ? (
+        <ViewerHeader
+          lang={lang}
+          fileName={fileName}
+          fileTag="DXF"
+          onExport={handleExport}
+          canExport={entities.length > 0}
+          onShowAbout={() => setShowAbout(true)}
+          onClose={onClose}
+        />
+      ) : (
+        <ViewerMenuBar
+          lang={lang}
+          hasFile={entities.length > 0}
+          onImport={() => mobileFileInputRef.current?.click()}
+          onExport={handleExport}
+          canExport={entities.length > 0}
+          onClose={onClose}
+          onFitView={handleFitView}
+          onPreviousView={handlePreviousView}
+          onNextView={handleNextView}
+          canGoPreviousView={canGoPreviousView}
+          canGoNextView={canGoNextView}
+          onToggleSearch={() => setShowTextSearch(value => !value)}
+          isSearchActive={showTextSearch}
+          is3D={is3D}
+          onToggle3D={() => setIs3D(v => !v)}
+          showLayerPanel={showLayerPanel}
+          onToggleLayerPanel={() => setShowLayerPanel(v => !v)}
+          showProperties={showProperties}
+          onToggleProperties={() => setShowProperties(v => !v)}
+          uiTheme={uiTheme}
+          onSetUiTheme={handleSetUiTheme}
+          drawingColorMode={drawingColorMode}
+          onSetDrawingColorMode={handleSetDrawingColorMode}
+          renderEngine={renderEngine}
+          onSetRenderEngine={setRenderEngine}
+          onSetLang={handleSetLang}
+          onShowAbout={() => setShowAbout(true)}
+        />
       )}
 
       <div className="main-content">
@@ -926,6 +928,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
           selectedCount={selectedEntityIds.size}
           activeLayoutName={activeLayoutName}
           entityCount={displayEntities.length}
+          fileName={fileName}
         />
       )}
 

@@ -5,6 +5,8 @@ import { sampleSplinePoints } from '@/core/geometry/curveSampling';
 
 export const parseLine = (state: DxfParserState, common: any): AnyEntity => {
     const entity: any = { ...common, type: EntityType.LINE, start: {x:0, y:0}, end: {x:0, y:0} };
+    let sz = 0;
+    let ez = 0;
     while(state.hasNext) {
         const p = state.peek();
         if (!p || p.code === 0) break;
@@ -13,10 +15,15 @@ export const parseLine = (state: DxfParserState, common: any): AnyEntity => {
         switch(g.code) {
             case 10: entity.start.x = g.float; break;
             case 20: entity.start.y = g.float; break;
+            case 30: sz = g.float; break;
             case 11: entity.end.x = g.float; break;
             case 21: entity.end.y = g.float; break;
+            case 31: ez = g.float; break;
         }
     }
+    // 三维直线：仅保留 z（3D 直线顶点通常已是 WCS，避免改动 2D 图元坐标）。
+    if (sz) entity.start.z = sz;
+    if (ez) entity.end.z = ez;
     return entity;
 };
 
@@ -112,9 +119,12 @@ export const parseLwPolyline = (state: DxfParserState, common: any): DxfPolyline
             }
         }
     }
+    // 带标高（38）的轻量多段线补上 z，供三维渲染使用。
+    if (elevation) {
+        for (let i = 0; i < points.length; i++) (points[i] as any).z = elevation;
+    }
     return { ...common, type: EntityType.LWPOLYLINE, points, bulges, closed };
 };
-
 export const parsePolyline = (state: DxfParserState, common: any): DxfPolyline => {
     let closed = false;
     let is3DPolyline = false;
@@ -142,17 +152,20 @@ export const parsePolyline = (state: DxfParserState, common: any): DxfPolyline =
             if (p.value === 'SEQEND') { state.next(); break; }
             if (p.value === 'VERTEX') {
                 state.next();
-                let x=0, y=0, b=0, valid = false;
+                let x=0, y=0, z=0, b=0, valid = false;
                 while(state.hasNext) {
                     const vp = state.peek();
                     if (!vp || vp.code === 0) break;
                     const vg = state.next()!;
                     if (vg.code === 10) { x = vg.float; valid = true; }
                     if (vg.code === 20) y = vg.float;
+                    if (vg.code === 30) z = vg.float;
                     if (vg.code === 42) b = vg.float;
                 }
                 if (valid) {
-                    points.push({x, y});
+                    const pt: any = { x, y };
+                    if (z) pt.z = z;
+                    points.push(pt);
                     bulges.push(b);
                 }
                 continue;
@@ -172,6 +185,10 @@ export const parsePolyline = (state: DxfParserState, common: any): DxfPolyline =
                 bulges[i] = -bulges[i];
             }
         }
+    }
+    // 2D 多段线若有标高（38），补上 z；3D 多段线各顶点 z 已在上面保留。
+    if (!is3DPolyline && elevation) {
+        for (let i = 0; i < points.length; i++) (points[i] as any).z = elevation;
     }
     return { ...common, type: EntityType.POLYLINE, points, bulges, closed };
 };

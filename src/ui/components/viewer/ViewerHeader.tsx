@@ -62,7 +62,8 @@ const ViewerHeader: React.FC<ViewerHeaderProps> = ({
     };
   }, [exportOpen]);
 
-  const title = fileName || t(lang, 'noFileOpen');
+  // 顶部不再显示打开的图纸文件名（改在任务栏/状态栏显示），此处仅显示产品名。
+  const title = fileName ? 'DXF Viewer' : t(lang, 'noFileOpen');
 
   return (
     <header className="app-header" role="banner">

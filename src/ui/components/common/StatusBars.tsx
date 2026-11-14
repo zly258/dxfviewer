@@ -14,6 +14,8 @@ export interface StatusBarProps {
   selectedCount: number;
   activeLayoutName: string;
   entityCount: number;
+  /** 当前图纸文件名（显示在任务栏/状态栏，而非顶部）。 */
+  fileName?: string;
 }
 
 const getLayoutLabel = (layout: DxfLayout, lang: Language) => {
@@ -53,10 +55,11 @@ export function SpaceSwitchBar({ layouts, activeLayoutName, lang, onSelect }: Sp
 /**
  * 底栏 30px（R9）：坐标 | 选择 | 空间与实体数。
  */
-export function StatusBar({ lang, mouseCoords, selectedCount, activeLayoutName, entityCount }: StatusBarProps) {
+export function StatusBar({ lang, mouseCoords, selectedCount, activeLayoutName, entityCount, fileName }: StatusBarProps) {
   return (
     <div className="app-footer status-bar">
       <div className="status-left">
+        {fileName && <span className="status-filename" title={fileName}>{fileName}</span>}
         <div className="status-coords">
           <span>X: <span className="status-value">{mouseCoords.x.toFixed(3)}</span></span>
           <span>Y: <span className="status-value">{mouseCoords.y.toFixed(3)}</span></span>

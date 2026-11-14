@@ -24,10 +24,18 @@ import {
 
 const TWO_PI = Math.PI * 2;
 
+export interface ThreeEntityRange {
+  /** 线段起始顶点（linePos 顶点序号）与顶点数。 */
+  line?: { start: number; count: number };
+  tri?: { start: number; count: number };
+  pt?: { start: number; count: number };
+}
+
 export interface ThreeGeometryData {
   linePos: number[]; lineCol: number[];
   triPos: number[]; triCol: number[];
   ptPos: number[]; ptCol: number[];
+  ranges: Map<string, ThreeEntityRange>;
   bounds: { minX: number; minY: number; maxX: number; maxY: number };
 }
 
@@ -61,6 +69,7 @@ export const buildThreeGeometry = (opts: BuildThreeGeometryOptions): ThreeGeomet
     linePos: [], lineCol: [],
     triPos: [], triCol: [],
     ptPos: [], ptCol: [],
+    ranges: new Map(),
     bounds: { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity },
   };
 
@@ -336,7 +345,20 @@ export const buildThreeGeometry = (opts: BuildThreeGeometryOptions): ThreeGeomet
     if (isolatedEntityIds && !isolatedEntityIds.has(ent.id)) continue;
     const layer = layers[ent.layer];
     const color = resolveEntityColor(ent, layer, undefined, drawingColorMode, theme);
+    const lineStart = data.linePos.length / 3;
+    const triStart = data.triPos.length / 3;
+    const ptStart = data.ptPos.length / 3;
     emit(ent as AnyEntity, identity, color, undefined, 0);
+    const lineCount = data.linePos.length / 3 - lineStart;
+    const triCount = data.triPos.length / 3 - triStart;
+    const ptCount = data.ptPos.length / 3 - ptStart;
+    if (lineCount > 0 || triCount > 0 || ptCount > 0) {
+      const range: ThreeEntityRange = {};
+      if (lineCount > 0) range.line = { start: lineStart, count: lineCount };
+      if (triCount > 0) range.tri = { start: triStart, count: triCount };
+      if (ptCount > 0) range.pt = { start: ptStart, count: ptCount };
+      data.ranges.set(ent.id, range);
+    }
   }
 
   if (!Number.isFinite(data.bounds.minX)) {

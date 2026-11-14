@@ -13,6 +13,7 @@ import type { EngineRenderParams, EngineSceneOptions, InteractiveRenderEngine } 
 import type { CanvasTheme } from '@/types';
 import { CANVAS_THEME_COLORS } from '@/config/viewerConfig';
 import { buildThreeGeometry, hexToRgb } from './threeGeometry';
+import type { ThreeEntityRange } from './threeGeometry';
 
 const WORLD_OFFSET_R = 1e6;
 
@@ -34,6 +35,14 @@ export class ThreeRenderEngine implements InteractiveRenderEngine {
   private statLineVerts = 0;
   private statTriVerts = 0;
   private statPointVerts = 0;
+
+  // 选中高亮：逐实体几何区间 + 对应顶点缓冲 + 高亮叠加对象。
+  private ranges = new Map<string, ThreeEntityRange>();
+  private lineArr: Float32Array | null = null;
+  private triArr: Float32Array | null = null;
+  private ptArr: Float32Array | null = null;
+  private highlightGroup: THREE.Group | null = null;
+  private selKey = '';
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, premultipliedAlpha: false });
@@ -72,6 +81,8 @@ export class ThreeRenderEngine implements InteractiveRenderEngine {
       isolatedEntityIds: options.isolatedEntityIds,
     });
     this.theme = options.theme;
+    this.ranges = geo.ranges;
+    this.lineArr = null; this.triArr = null; this.ptArr = null;
     // 线段
     if (geo.linePos.length) {
       const g = new THREE.BufferGeometry();
@@ -83,6 +94,7 @@ export class ThreeRenderEngine implements InteractiveRenderEngine {
       this.lineObj.renderOrder = 1;
       this.scene.add(this.lineObj);
       this.statLineVerts = geo.linePos.length / 3;
+      this.lineArr = (g.getAttribute('position') as THREE.BufferAttribute).array as Float32Array;
     }
     // 三角面
     if (geo.triPos.length) {
@@ -95,6 +107,7 @@ export class ThreeRenderEngine implements InteractiveRenderEngine {
       this.triObj.renderOrder = 0;
       this.scene.add(this.triObj);
       this.statTriVerts = geo.triPos.length / 3;
+      this.triArr = (g.getAttribute('position') as THREE.BufferAttribute).array as Float32Array;
     }
     // 点
     if (geo.ptPos.length) {
@@ -107,6 +120,7 @@ export class ThreeRenderEngine implements InteractiveRenderEngine {
       this.pointObj.renderOrder = 2;
       this.scene.add(this.pointObj);
       this.statPointVerts = geo.ptPos.length / 3;
+      this.ptArr = (g.getAttribute('position') as THREE.BufferAttribute).array as Float32Array;
     }
   }
 
@@ -149,7 +163,81 @@ export class ThreeRenderEngine implements InteractiveRenderEngine {
       this.renderer.setClearAlpha(1);
     }
 
+    this.updateHighlight(params.selectedIds);
     this.renderer.render(this.scene, cam);
+  }
+
+  /** 重建选中高亮叠加层（仅在选中集合变化时重建）。 */
+  private updateHighlight(selected: ReadonlySet<string> | undefined): void {
+    if (!selected || selected.size === 0) {
+      if (this.selKey) { this.clearHighlight(); this.selKey = ''; }
+      return;
+    }
+    let key = '';
+    for (const id of selected) key += id + '|';
+    if (key === this.selKey) return;
+    this.clearHighlight();
+    this.selKey = key;
+
+    const group = new THREE.Group();
+    const hColor = new THREE.Color('#ffab00');
+    const lineChunks: number[] = [];
+    const triChunks: number[] = [];
+    const ptChunks: number[] = [];
+    const collect = (target: number[], src: Float32Array | null, r: { start: number; count: number } | undefined) => {
+      if (!src || !r) return;
+      const s = r.start * 3;
+      const e = s + r.count * 3;
+      for (let i = s; i < e; i++) target.push(src[i]);
+    };
+    for (const id of selected) {
+      const r = this.ranges.get(id);
+      if (!r) continue;
+      collect(lineChunks, this.lineArr, r.line);
+      collect(triChunks, this.triArr, r.tri);
+      collect(ptChunks, this.ptArr, r.pt);
+    }
+    const attr = (arr: number[]) => new THREE.Float32BufferAttribute(arr, 3);
+    if (triChunks.length) {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', attr(triChunks));
+      const m = new THREE.MeshBasicMaterial({ color: hColor, transparent: true, opacity: 0.28, side: THREE.DoubleSide, depthTest: false, depthWrite: false });
+      const mesh = new THREE.Mesh(g, m);
+      mesh.renderOrder = 10;
+      group.add(mesh);
+    }
+    if (lineChunks.length) {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', attr(lineChunks));
+      const m = new THREE.LineBasicMaterial({ color: hColor, depthTest: false });
+      const ls = new THREE.LineSegments(g, m);
+      ls.renderOrder = 11;
+      group.add(ls);
+    }
+    if (ptChunks.length) {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', attr(ptChunks));
+      const m = new THREE.PointsMaterial({ color: hColor, size: 8, sizeAttenuation: false, depthTest: false });
+      const pts = new THREE.Points(g, m);
+      pts.renderOrder = 12;
+      group.add(pts);
+    }
+    this.highlightGroup = group;
+    this.scene.add(group);
+  }
+
+  private clearHighlight(): void {
+    const group = this.highlightGroup;
+    if (!group) return;
+    this.scene.remove(group);
+    group.traverse((obj) => {
+      const mesh = obj as THREE.Mesh;
+      if (mesh.geometry) mesh.geometry.dispose();
+      const mat = (mesh as unknown as { material?: THREE.Material | THREE.Material[] }).material;
+      if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
+      else if (mat) mat.dispose();
+    });
+    this.highlightGroup = null;
   }
 
   /** 读回当前帧像素（自上而下 RGBA，供 PNG 导出）。 */
@@ -176,6 +264,10 @@ export class ThreeRenderEngine implements InteractiveRenderEngine {
   }
 
   private disposeObjects(): void {
+    this.clearHighlight();
+    this.selKey = '';
+    this.ranges = new Map();
+    this.lineArr = this.triArr = this.ptArr = null;
     for (const obj of [this.lineObj, this.triObj, this.pointObj]) {
       if (!obj) continue;
       this.scene.remove(obj);

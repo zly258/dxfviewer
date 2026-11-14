@@ -621,6 +621,11 @@ const ViewerCanvas: React.FC<ViewerCanvasProps> = ({
       const mouseY = e.clientY - rect.top;
 
       const safeZoom = Math.max(Math.min(newZoom, MAX_ZOOM), MIN_ZOOM);
+      // 三维模式：滚轮只做整体缩放（不改变目标点，避免视角漂移）。
+      if (is3DRef.current) {
+        scheduleViewPortChange({ targetX: currentVP.targetX, targetY: currentVP.targetY, zoom: safeZoom });
+        return;
+      }
       const centerX = rect.width / 2;
       const centerY = rect.height / 2;
 

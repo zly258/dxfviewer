@@ -1,4 +1,4 @@
-﻿import { Point2D, Point3D } from '@/types';
+import { Point2D, Point3D } from '@/types';
 
 export interface OcsMatrix {
   Ax: Point3D;
@@ -46,6 +46,23 @@ export const applyOcs = (p: { x: number; y: number }, matrix: OcsMatrix | null, 
     const x = p.x * matrix.Ax.x + p.y * matrix.Ay.x + elevation * matrix.Az.x;
     const y = p.x * matrix.Ax.y + p.y * matrix.Ay.y + elevation * matrix.Az.y;
     return { x, y };
+};
+
+/**
+ * 将点从对象坐标系转换到世界坐标系（保留 z / 标高）。
+ * 用于三维实体（3D LINE / 3D POLYLINE / 带标高的 LWPOLYLINE 等）。
+ */
+export const applyOcs3D = (
+    p: { x: number; y: number; z?: number },
+    matrix: OcsMatrix | null,
+    elevation = 0,
+): Point3D => {
+    const pz = Number.isFinite(p.z) ? (p.z as number) : elevation;
+    if (!matrix) return { x: p.x, y: p.y, z: pz };
+    const x = p.x * matrix.Ax.x + p.y * matrix.Ay.x + pz * matrix.Az.x;
+    const y = p.x * matrix.Ax.y + p.y * matrix.Ay.y + pz * matrix.Az.y;
+    const z = p.x * matrix.Ax.z + p.y * matrix.Ay.z + pz * matrix.Az.z;
+    return { x, y, z };
 };
 
 /** 将旋转角度（度）从对象坐标系转换到世界坐标系。 */
