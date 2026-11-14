@@ -185,6 +185,8 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
   const [internalDrawingColorMode, setInternalDrawingColorMode] = useState<DrawingColorMode>(savedUiSettingsRef.current.drawingColorMode ?? VIEWER_DEFAULTS.drawingColorMode);
   // 渲染引擎（webgl / canvas 可切换对比）
   const [renderEngine, setRenderEngine] = useState<EngineKind>(savedUiSettingsRef.current.renderEngine ?? 'webgl');
+  /** 三维视图模式（仅 WebGL/Three 引擎生效）。 */
+  const [is3D, setIs3D] = useState(false);
   const [internalLang, setInternalLang] = useState<Language>(savedUiSettingsRef.current.language ?? defaultLanguage);
   const [systemTheme, setSystemTheme] = useState<ResolvedUiTheme>(() => getSystemUiTheme());
   const [mouseCoords, setMouseCoords] = useState<{x: number, y: number}>({x: 0, y: 0});
@@ -812,6 +814,8 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
               onToggleLayerPanel={() => setShowLayerPanel(v => !v)}
               showProperties={showProperties}
               onToggleProperties={() => setShowProperties(v => !v)}
+              is3D={is3D}
+              onToggle3D={() => setIs3D(v => !v)}
             />
         </div>
       )}
@@ -845,6 +849,7 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
           <ViewerCanvas
             active={active}
             engine={renderEngine}
+            is3D={is3D}
             entities={entities}
             layers={layers}
             blocks={blocks}

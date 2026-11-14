@@ -3,7 +3,7 @@ import type { CanvasTheme, DrawingColorMode, DxfData, ViewPort } from '@/types';
 import { CANVAS_THEME_COLORS, INTERACTION_CONFIG, ZOOM_CONFIG } from '@/config/viewerConfig';
 import { calculateExtents, calculatePaperLayoutExtents } from '@/core/geometry/extents';
 import { fitExtentsToBox } from '@/render/viewportFitting';
-import { ThreeRenderEngine as RenderEngine } from '@/render/three/ThreeRenderEngine';
+import { createThreeEngine } from '@/render/three/createThreeEngine';
 import { CanvasRenderEngine } from '@/render/canvas/CanvasRenderEngine';
 import type { EngineKind, InteractiveRenderEngine } from '@/render/engine';
 import { hasOutlineFont, loadOutlineFont } from '@/render/text/outlineText';
@@ -260,52 +260,66 @@ const DxfPreview = React.forwardRef<DxfPreviewHandle, DxfPreviewProps>(function 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    let engine: InteractiveRenderEngine;
-    try {
-      engine = effectiveEngine === 'canvas' ? new CanvasRenderEngine(canvas) : new RenderEngine(canvas);
-    } catch (err) {
-      if (effectiveEngine !== 'canvas') {
-        setEngineFallback(true); // WebGL2 不可用：回退 Canvas 2D
-        return;
-      }
-      setError(err instanceof Error ? err : new Error(String(err)));
-      return;
-    }
-    engineRef.current = engine;
-    // WebGL + 轮廓字体不可用（宿主没放字体 / 字体不含中文）时，文字改由
-    // Canvas 2D 覆盖层绘制：几何仍在 GPU（大图性能不受影响），文字与 Canvas
-    // 引擎同源，不会出现字号不一、标点走形。
+    let cancelled = false;
+    let engine: InteractiveRenderEngine | null = null;
     let textEngine: CanvasRenderEngine | null = null;
-    if (effectiveEngine === 'webgl' && useTextOverlay && textCanvasRef.current) {
-      try {
-        textEngine = new CanvasRenderEngine(textCanvasRef.current, { textOnly: true });
-        textEngineRef.current = textEngine;
-      } catch {
-        textEngine = null;
-      }
-    }
     let raf = 0;
-    const loop = () => {
-      if (dirtyRef.current) {
-        const { width, height, dpr } = sizeRef.current;
-        if (width > 0 && height > 0) {
+
+    const start = async () => {
+      try {
+        if (effectiveEngine === 'canvas') {
+          engine = new CanvasRenderEngine(canvas);
+        } else {
           try {
-            const params = { viewPort: viewPortRef.current, cssWidth: width, cssHeight: height, dpr };
-            engine.render(params);
-            textEngine?.render(params);
+            engine = await createThreeEngine(canvas);
           } catch (err) {
-            setError(err instanceof Error ? err : new Error(String(err)));
+            // Three 加载 / WebGL2 不可用：回退 Canvas 2D
+            if (!cancelled) setEngineFallback(true);
+            void err;
+            return;
           }
         }
-        dirtyRef.current = false;
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err : new Error(String(err)));
+        return;
       }
+      if (cancelled) { engine.dispose(); return; }
+      engineRef.current = engine;
+      // WebGL + 轮廓字体不可用（宿主没放字体 / 字体不含中文）时，文字改由
+      // Canvas 2D 覆盖层绘制。
+      if (effectiveEngine === 'webgl' && useTextOverlay && textCanvasRef.current) {
+        try {
+          textEngine = new CanvasRenderEngine(textCanvasRef.current, { textOnly: true });
+          textEngineRef.current = textEngine;
+        } catch {
+          textEngine = null;
+        }
+      }
+      const loop = () => {
+        if (engine && dirtyRef.current) {
+          const { width, height, dpr } = sizeRef.current;
+          if (width > 0 && height > 0) {
+            try {
+              const params = { viewPort: viewPortRef.current, cssWidth: width, cssHeight: height, dpr };
+              engine.render(params);
+              textEngine?.render(params);
+            } catch (err) {
+              setError(err instanceof Error ? err : new Error(String(err)));
+            }
+          }
+          dirtyRef.current = false;
+        }
+        raf = requestAnimationFrame(loop);
+      };
       raf = requestAnimationFrame(loop);
+      requestFrame();
     };
-    raf = requestAnimationFrame(loop);
-    requestFrame();
+    void start();
+
     return () => {
+      cancelled = true;
       cancelAnimationFrame(raf);
-      engine.dispose();
+      engine?.dispose();
       textEngine?.dispose();
       if (textEngineRef.current === textEngine) textEngineRef.current = null;
       if (engineRef.current === engine) engineRef.current = null;

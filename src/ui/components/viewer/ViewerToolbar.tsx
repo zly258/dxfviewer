@@ -30,6 +30,9 @@ interface ViewerToolbarProps {
   /** 导出（PNG/SVG/PDF/DXF），由 DxfViewer 提供实现 */
   onExport?: (kind: ExportKind) => void;
   canExport?: boolean;
+  /** 三维视图开关。 */
+  is3D: boolean;
+  onToggle3D: () => void;
 }
 export type ExportKind = 'png' | 'svg' | 'pdf' | 'pdfVector' | 'dxf' | 'pngView' | 'svgView';
 
@@ -66,6 +69,8 @@ const ViewerToolbar: React.FC<ViewerToolbarProps> = ({
   onToggleProperties,
   onExport,
   canExport = false,
+  is3D,
+  onToggle3D,
 }) => {
   const [activeMenu, setActiveMenu] = useState<MenuKey | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -143,6 +148,17 @@ const ViewerToolbar: React.FC<ViewerToolbarProps> = ({
       {renderToolButton('next', tt.nextView, onNextView, !canGoNextView)}
       {renderToolButton('fit', tt.fitView, onFitView)}
       {renderToolButton('search', t(lang, 'searchText'), onToggleSearch, false, isSearchActive)}
+      <button
+        type="button"
+        className={`tb-btn tb-btn-sm ${is3D ? 'active' : ''}`}
+        onClick={onToggle3D}
+        title={is3D ? '切换为俯视（2D）' : '三维视图（倾斜/旋转观察）'}
+        aria-label={is3D ? '切换为俯视（2D）' : '三维视图'}
+        aria-pressed={is3D}
+        style={{ minWidth: 40 }}
+      >
+        {is3D ? '3D' : '2D'}
+      </button>
 
       <span className="tb-sep" role="separator" />
 
