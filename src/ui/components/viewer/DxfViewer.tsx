@@ -1,6 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
 import ViewerCanvas from '@/ui/components/viewer/ViewerCanvas';
-import type { EngineKind } from '@/render/engine';
 import ViewerToolbar, { ExportKind } from '@/ui/components/viewer/ViewerToolbar';
 import ViewerHeader from '@/ui/components/viewer/ViewerHeader';
 import { exportPng, exportPdfVector, exportSvg } from '@/export';
@@ -183,10 +182,6 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
 
   const [internalUiTheme, setInternalUiTheme] = useState<UiTheme>(savedUiSettingsRef.current.uiTheme ?? VIEWER_DEFAULTS.uiTheme);
   const [internalDrawingColorMode, setInternalDrawingColorMode] = useState<DrawingColorMode>(savedUiSettingsRef.current.drawingColorMode ?? VIEWER_DEFAULTS.drawingColorMode);
-  // 渲染引擎（webgl / canvas 可切换对比）
-  const [renderEngine, setRenderEngine] = useState<EngineKind>(savedUiSettingsRef.current.renderEngine ?? 'webgl');
-  /** 三维视图模式（仅 WebGL/Three 引擎生效）。 */
-  const [is3D, setIs3D] = useState(false);
   const [internalLang, setInternalLang] = useState<Language>(savedUiSettingsRef.current.language ?? defaultLanguage);
   const [systemTheme, setSystemTheme] = useState<ResolvedUiTheme>(() => getSystemUiTheme());
   const [mouseCoords, setMouseCoords] = useState<{x: number, y: number}>({x: 0, y: 0});
@@ -255,12 +250,11 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
     writeViewerUiSettings({
       uiTheme,
       drawingColorMode,
-      renderEngine,
       language: lang,
       showLayerPanel,
       showProperties,
     });
-  }, [uiTheme, drawingColorMode, renderEngine, lang, showLayerPanel, showProperties]);
+  }, [uiTheme, drawingColorMode, lang, showLayerPanel, showProperties]);
 
   const handleSetLang = useCallback((newLang: Language) => {
     setInternalLang(newLang);
@@ -805,16 +799,12 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
             onSetUiTheme={handleSetUiTheme}
             drawingColorMode={drawingColorMode}
             onSetDrawingColorMode={handleSetDrawingColorMode}
-            renderEngine={renderEngine}
-            onSetRenderEngine={setRenderEngine}
             lang={lang}
             onSetLang={handleSetLang}
             showLayerPanel={showLayerPanel}
             onToggleLayerPanel={() => setShowLayerPanel(v => !v)}
             showProperties={showProperties}
             onToggleProperties={() => setShowProperties(v => !v)}
-            is3D={is3D}
-            onToggle3D={() => setIs3D(v => !v)}
             showLabels
             onShowAbout={() => setShowAbout(true)}
           />
@@ -849,8 +839,6 @@ const DxfViewer: React.FC<DxfViewerProps> = ({
           )}
           <ViewerCanvas
             active={active}
-            engine={renderEngine}
-            is3D={is3D}
             entities={entities}
             layers={layers}
             blocks={blocks}

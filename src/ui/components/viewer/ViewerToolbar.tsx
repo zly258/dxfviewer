@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Language, UI_TRANSLATIONS, t } from '@/ui/i18n';
 import { DrawingColorMode, UiTheme } from '@/types';
-import type { EngineKind } from '@/render/engine';
 import ViewerIcon, { ViewerIconName } from '@/ui/components/common/ViewerIcon';
 
 interface ViewerToolbarProps {
@@ -19,8 +18,6 @@ interface ViewerToolbarProps {
   drawingColorMode: DrawingColorMode;
   onSetDrawingColorMode: (mode: DrawingColorMode) => void;
   /** 渲染引擎（WebGL / Canvas 可切换对比）。 */
-  renderEngine: EngineKind;
-  onSetRenderEngine: (engine: EngineKind) => void;
   lang: Language;
   onSetLang: (lang: Language) => void;
   showLayerPanel: boolean;
@@ -31,8 +28,6 @@ interface ViewerToolbarProps {
   onExport?: (kind: ExportKind) => void;
   canExport?: boolean;
   /** 三维视图开关。 */
-  is3D: boolean;
-  onToggle3D: () => void;
   /** 是否在按钮上显示文字标签（桌面端 true，移动端 false）。 */
   showLabels?: boolean;
   /** 帮助 / 关于入口（桌面端工具条右侧）。 */
@@ -63,8 +58,6 @@ const ViewerToolbar: React.FC<ViewerToolbarProps> = ({
   onSetUiTheme,
   drawingColorMode,
   onSetDrawingColorMode,
-  renderEngine,
-  onSetRenderEngine,
   lang,
   onSetLang,
   showLayerPanel,
@@ -73,8 +66,6 @@ const ViewerToolbar: React.FC<ViewerToolbarProps> = ({
   onToggleProperties,
   onExport,
   canExport = false,
-  is3D,
-  onToggle3D,
   showLabels = true,
   onShowAbout,
 }) => {
@@ -157,17 +148,6 @@ const ViewerToolbar: React.FC<ViewerToolbarProps> = ({
       {renderToolButton('next', tt.nextView, onNextView, !canGoNextView)}
       {renderToolButton('fit', tt.fitView, onFitView)}
       {renderToolButton('search', t(lang, 'searchText'), onToggleSearch, false, isSearchActive)}
-      <button
-        type="button"
-        className={`toolbar-button ${showLabel ? 'toolbar-button-label' : 'toolbar-icon-button'} ${is3D ? 'active' : ''}`}
-        onClick={onToggle3D}
-        title={is3D ? '切换为俯视（2D）' : '三维视图（倾斜/旋转观察）'}
-        aria-label={is3D ? '切换为俯视（2D）' : '三维视图'}
-        aria-pressed={is3D}
-      >
-        <span className="toolbar-icon" aria-hidden="true"><ViewerIcon name="layout" /></span>
-        {showLabel && <span className="toolbar-label">{is3D ? '三维' : '二维'}</span>}
-      </button>
 
       <span className="tb-sep" role="separator" />
 
@@ -204,20 +184,6 @@ const ViewerToolbar: React.FC<ViewerToolbarProps> = ({
               className={`dropdown-item ${drawingColorMode === 'monochrome' ? 'checked' : ''}`}
             >
               <span>{tt.monochrome}</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => closeMenuAndRun(() => onSetRenderEngine('webgl'))}
-              className={`dropdown-item ${renderEngine === 'webgl' ? 'checked' : ''}`}
-            >
-              <span>{tt.engineWebgl}</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => closeMenuAndRun(() => onSetRenderEngine('canvas'))}
-              className={`dropdown-item ${renderEngine === 'canvas' ? 'checked' : ''}`}
-            >
-              <span>{tt.engineCanvas}</span>
             </button>
             <div className="divider" />
             <button type="button" onClick={() => closeMenuAndRun(onToggleLayerPanel)} className={`dropdown-item ${showLayerPanel ? 'checked' : ''}`}>

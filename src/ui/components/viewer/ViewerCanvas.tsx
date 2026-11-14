@@ -3,7 +3,7 @@ import { AnyEntity, ViewPort, DxfLayer, DxfBlock, DxfStyle, DxfLineType, Point2D
 import { hitTest, hitTestBox } from '@/render/picking/hitTest';
 import { createThreeEngine } from '@/render/three/createThreeEngine';
 import { CanvasRenderEngine } from '@/render/canvas/CanvasRenderEngine';
-import type { EngineKind, InteractiveRenderEngine } from '@/render/engine';
+import type { InteractiveRenderEngine } from '@/render/engine';
 import { hasOutlineFont, loadOutlineFont } from '@/render/text/outlineText';
 
 import { Language, t } from '@/ui/i18n';
@@ -22,8 +22,6 @@ import type { SceneIndexBuildHandle } from '@/render/picking/sceneIndexAsync';
  */
 interface ViewerCanvasProps {
   active?: boolean;
-  /** 渲染引擎：webgl（默认）或 canvas（对比用）。 */
-  engine?: EngineKind;
   entities: AnyEntity[];
   /** 模型空间实体：渲染纸张空间布局时供视口投影使用（当前布局为模型空间时不传/传同数组）。 */
   modelEntities?: AnyEntity[];
@@ -50,8 +48,6 @@ interface ViewerCanvasProps {
   onHideSelected?: (ids?: Set<string>) => void;
   onIsolateSelected?: (ids?: Set<string>) => void;
   onHideSelectedLayers?: (ids?: Set<string>) => void;
-  /** 三维视图模式：开启后相机可倾斜（旋转观察三维元素）。 */
-  is3D?: boolean;
 }
 
 /** 稳定的空集合默认值：未传可见性集合时避免每次渲染新建对象。 */
@@ -59,7 +55,6 @@ const EMPTY_ENTITY_IDS: ReadonlySet<string> = new Set<string>();
 
 const ViewerCanvas: React.FC<ViewerCanvasProps> = ({
   active = true,
-  engine: engineKind = 'webgl',
   entities,
   modelEntities,
   layers,
@@ -85,20 +80,18 @@ const ViewerCanvas: React.FC<ViewerCanvasProps> = ({
   onHideSelected,
   onIsolateSelected,
   onHideSelectedLayers,
-  is3D = false,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<InteractiveRenderEngine | null>(null);
-  /** 文字覆盖层（仅 WebGL 引擎）：几何走 GPU，文字走浏览器原生文本引擎。 */
+  /** 文字覆盖层：几何走 Three（GPU），文字走浏览器原生文本引擎。 */
   const textCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const textEngineRef = useRef<CanvasRenderEngine | null>(null);
   const viewPortRef = useRef(viewPort);
   const onViewPortChangeRef = useRef(onViewPortChange);
   const dirtyRef = useRef(true);
   const selectedRef = useRef(selectedEntityIds);
-  /** 三维视图状态与相机朝向（仅 Three 引擎使用）。 */
-  const is3DRef = useRef(is3D);
+  /** 相机朝向（默认三维等轴视角；始终为三维场景，无 2D/3D 切换）。 */
   const orbitRef = useRef({ azimuth: 35, elevation: 55 });
   const orbitDragRef = useRef<{ x: number; y: number } | null>(null);
   const sizeRef = useRef({ width: 0, height: 0, dpr: 1 });
@@ -138,8 +131,8 @@ const ViewerCanvas: React.FC<ViewerCanvasProps> = ({
    * 会把字号、标点与笔画都画坏 —— 实测标题栏同一张图里字号大小不一、
    * 句号变成空心圆、笔画断裂，而同一张图的 Canvas 引擎完全正常。
    */
-  // 文字一律用系统字体，由 Canvas 文字层绘制。WebGL 不再烘焙 SHX 单线字。
-  const textOverlayActive = engineKind === 'webgl';
+  // 文字一律用系统字体，由 Canvas 文字层绘制（几何由 Three 渲染）。
+  const textOverlayActive = true;
 
   // 尝试自动异步预载轮廓字体（工程仿宋为主字体，Arial 为西文/特殊符号后备字体）
   useEffect(() => {
@@ -198,7 +191,7 @@ const ViewerCanvas: React.FC<ViewerCanvasProps> = ({
     dirtyRef.current = true;
   }, []);
 
-  // ── 引擎生命周期与渲染循环（engineKind 变化时重建引擎并重放场景） ──
+  // ── 引擎生命周期与渲染循环（重建引擎并重放场景） ──
   useEffect(() => {
     if (!active) return;
     const canvas = canvasRef.current;
@@ -226,17 +219,13 @@ const ViewerCanvas: React.FC<ViewerCanvasProps> = ({
               };
               engine.render(renderParams);
               if (textEngine) textEngine.render(renderParams);
-              // 三维：把文字覆盖层按相机平面仿射变换贴合倾斜平面（正交投影精确）。
+              // 把文字覆盖层按相机平面仿射变换贴合三维平面（正交投影精确）。
               const teCanvas = textCanvasRef.current;
               if (teCanvas) {
                 teCanvas.style.transformOrigin = '0 0';
-                if (is3DRef.current) {
-                  const e3t = engine as unknown as { getTextTransform?: () => number[] | null };
-                  const m = e3t.getTextTransform ? e3t.getTextTransform() : null;
-                  teCanvas.style.transform = m ? `matrix(${m.join(',')})` : '';
-                } else if (teCanvas.style.transform) {
-                  teCanvas.style.transform = '';
-                }
+                const e3t = engine as unknown as { getTextTransform?: () => number[] | null };
+                const m = e3t.getTextTransform ? e3t.getTextTransform() : null;
+                teCanvas.style.transform = m ? `matrix(${m.join(',')})` : '';
               }
               if (errorReported) {
                 errorReported = false;
@@ -257,17 +246,13 @@ const ViewerCanvas: React.FC<ViewerCanvasProps> = ({
     };
 
     const init = async () => {
-      // Three 引擎按需异步加载（three 独立成 chunk）；加载/WebGL 失败回退 Canvas 2D。
+      // 仅 Three.js 引擎（按需异步加载，three 独立 chunk）；加载/WebGL 失败回退 Canvas 2D 兜底。
       try {
-        if (engineKind === 'canvas') {
+        try {
+          engine = await createThreeEngine(canvas);
+        } catch (err) {
+          onRenderError?.(err instanceof Error ? err.message : String(err));
           engine = new CanvasRenderEngine(canvas);
-        } else {
-          try {
-            engine = await createThreeEngine(canvas);
-          } catch (err) {
-            onRenderError?.(err instanceof Error ? err.message : String(err));
-            engine = new CanvasRenderEngine(canvas);
-          }
         }
       } catch (err) {
         onRenderError?.(err instanceof Error ? err.message : String(err));
@@ -276,10 +261,8 @@ const ViewerCanvas: React.FC<ViewerCanvasProps> = ({
       if (cancelled) { engine.dispose(); return; }
 
       engineRef.current = engine;
-      // WebGL 模式下额外挂一层文字覆盖层：字形由 Canvas 2D 文本引擎绘制，
-      // 与 Canvas 引擎完全同源（CJK/字距/行距/对齐天然一致），
-      // 几何仍由 GPU 渲染。GL 场景因此可跳过全部文字烘焙。
-      if (engineKind !== 'canvas' && textOverlayActive && textCanvasRef.current) {
+      // 文字覆盖层：字形由 Canvas 2D 文本引擎绘制，几何由 Three 渲染。
+      if (textOverlayActive && textCanvasRef.current) {
         try {
           textEngine = new CanvasRenderEngine(textCanvasRef.current, { textOnly: true });
           textEngineRef.current = textEngine;
@@ -306,14 +289,11 @@ const ViewerCanvas: React.FC<ViewerCanvasProps> = ({
 
       startLoop();
 
-      // 应用当前三维/二维视角。
+      // 始终为三维场景：应用默认等轴视角。
       const e3 = engine as unknown as { setOrbit?: (a: number, b: number) => void };
-      if (e3.setOrbit) {
-        const on3d = is3DRef.current;
-        e3.setOrbit(on3d ? orbitRef.current.azimuth : 90, on3d ? orbitRef.current.elevation : 90);
-      }
+      if (e3.setOrbit) e3.setOrbit(orbitRef.current.azimuth, orbitRef.current.elevation);
 
-      // 引擎重建后重放当前场景（依赖 engineKind 触发本 effect 重跑）。
+      // 引擎重建后重放当前场景。
       engine.setTheme(theme, CANVAS_THEME_COLORS[theme]);
       try {
         const sceneOptions = {
@@ -353,18 +333,7 @@ const ViewerCanvas: React.FC<ViewerCanvasProps> = ({
     // onRenderError 允许变化但不重建引擎（经 ref 语义使用）。
     // textOverlayActive 变化（轮廓字体加载完成 / 失败）需要重建引擎与文字层。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, engineKind, textOverlayActive]);
-
-  // ── 三维视图切换：把 is3D 传给引擎相机（3D 倾斜 / 2D 俯视） ──
-  useEffect(() => {
-    is3DRef.current = is3D;
-    const e = engineRef.current as unknown as { setOrbit?: (a: number, b: number) => void } | null;
-    if (e?.setOrbit) {
-      if (is3D) e.setOrbit(orbitRef.current.azimuth, orbitRef.current.elevation);
-      else e.setOrbit(90, 90);
-      requestFrame();
-    }
-  }, [is3D, requestFrame]);
+  }, [active, textOverlayActive]);
 
   // ── 场景重建（低频）：实体/样式/可见性/主题变化 ──
   useEffect(() => {
@@ -492,7 +461,7 @@ const ViewerCanvas: React.FC<ViewerCanvasProps> = ({
   useEffect(() => {
     engineRef.current?.setSceneIndex?.(sceneIndexRef.current ?? null);
     requestFrame();
-  }, [sceneIndex, engineKind, requestFrame]);
+  }, [sceneIndex, requestFrame]);
 
   // 视图 prop 由外部变化（适应视图 / 历史回退）：重绘。
   useEffect(() => {
@@ -628,27 +597,9 @@ const ViewerCanvas: React.FC<ViewerCanvasProps> = ({
       const MAX_ZOOM = ZOOM_CONFIG.maxZoom;
       if (newZoom < MIN_ZOOM || newZoom > MAX_ZOOM) return;
 
-      const rect = container.getBoundingClientRect();
-      const mouseX = e.clientX - rect.left;
-      const mouseY = e.clientY - rect.top;
-
       const safeZoom = Math.max(Math.min(newZoom, MAX_ZOOM), MIN_ZOOM);
-      // 三维模式：滚轮只做整体缩放（不改变目标点，避免视角漂移）。
-      if (is3DRef.current) {
-        scheduleViewPortChange({ targetX: currentVP.targetX, targetY: currentVP.targetY, zoom: safeZoom });
-        return;
-      }
-      const centerX = rect.width / 2;
-      const centerY = rect.height / 2;
-
-      const newTargetX = currentVP.targetX + (mouseX - centerX) * (1 / currentVP.zoom - 1 / safeZoom);
-      const newTargetY = currentVP.targetY - (mouseY - centerY) * (1 / currentVP.zoom - 1 / safeZoom);
-
-      scheduleViewPortChange({
-        targetX: newTargetX,
-        targetY: newTargetY,
-        zoom: safeZoom,
-      });
+      // 三维场景：滚轮以中心整体缩放（不改变目标点，避免视角漂移）。
+      scheduleViewPortChange({ targetX: currentVP.targetX, targetY: currentVP.targetY, zoom: safeZoom });
     };
 
     const onTouchStart = (e: TouchEvent) => {
@@ -821,10 +772,16 @@ const ViewerCanvas: React.FC<ViewerCanvasProps> = ({
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
 
-    // 三维模式：左键拖拽环绕旋转相机。
-    if (is3D && e.button === 0 && !e.altKey) {
+    // 三维场景：左键拖拽环绕旋转相机；Shift+左键 拖拽为框选；中键/Alt+左键 平移。
+    if (e.button === 0 && !e.shiftKey && !e.altKey) {
       e.preventDefault();
       orbitDragRef.current = { x: e.clientX, y: e.clientY };
+      return;
+    }
+    if (e.button === 0 && e.shiftKey) {
+      setIsBoxSelecting(true);
+      setDragStart({ x: mouseX, y: mouseY });
+      setCurrentMousePos({ x: mouseX, y: mouseY });
       return;
     }
 
@@ -987,11 +944,11 @@ const ViewerCanvas: React.FC<ViewerCanvasProps> = ({
         setIsBoxSelecting(false);
         orbitDragRef.current = null;
       }}
-      style={{ cursor: isPanning ? 'grabbing' : (is3D ? 'grab' : 'default'), '--canvas-bg': canvasBgColor } as React.CSSProperties}
+      style={{ cursor: isPanning ? 'grabbing' : (orbitDragRef.current ? 'grabbing' : 'grab'), '--canvas-bg': canvasBgColor } as React.CSSProperties}
     >
-      <canvas key={engineKind} ref={canvasRef} />
-      {engineKind === 'webgl' && textOverlayActive && (
-        <canvas key={`text-${engineKind}`} ref={textCanvasRef} className="viewer-text-layer" style={{ transformOrigin: '0 0' }} />
+      <canvas key="three" ref={canvasRef} />
+      {textOverlayActive && (
+        <canvas key="text" ref={textCanvasRef} className="viewer-text-layer" style={{ transformOrigin: '0 0' }} />
       )}
 
       {isBoxSelecting && (
