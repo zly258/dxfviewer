@@ -1370,7 +1370,11 @@ const xformEntity = (ent: AnyEntity, xf: (p: Point2D) => Point2D, sx: number): A
       return { ...ent, start: xf(ent.start), end: xf(ent.end) };
     case EntityType.LWPOLYLINE:
     case EntityType.POLYLINE:
-      return { ...ent, points: ent.points.map(xf) };
+      return {
+        ...ent,
+        points: ent.points.map(xf),
+        constantWidth: ent.constantWidth !== undefined ? ent.constantWidth * Math.abs(sx) : undefined,
+      };
     case EntityType.MLINE:
       return { ...ent, vertices: ent.vertices.map(xf) };
     case EntityType.SPLINE:
