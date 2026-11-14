@@ -31,24 +31,31 @@ export const parsePolyfaceMesh = (state: DxfParserState, common: any): AnyEntity
       if (p.value === 'VERTEX') {
         state.next();
         let flags = 0;
-        // 按组码顺序收集坐标/索引：10/20/30/40…（PFACE 面记录用 10/20/30/40 存索引），
-        // 同时兼容部分实现把索引写到 71/72/73/74 的写法。
-        const ordered: number[] = [];
+        let x = 0, y = 0, z = 0;
+        // 面记录索引在 71/72/73/74…（子类 AcDbFaceRecord，flag 128）；
+        // 顶点坐标为 10/20/30（flag 192）。
+        const faceIdx: number[] = [];
         while (state.hasNext) {
           const vp = state.peek();
           if (!vp || vp.code === 0) break;
           const vg = state.next()!;
-          if (vg.code === 70) { flags = vg.float | 0; continue; }
-          if (vg.code >= 10 && vg.code % 10 === 0) ordered.push(vg.float);
-          else if (vg.code >= 71 && vg.code <= 74) ordered.push(vg.float);
+          switch (vg.code) {
+            case 70: flags = vg.float | 0; break;
+            case 10: x = vg.float; break;
+            case 20: y = vg.float; break;
+            case 30: z = vg.float; break;
+            default:
+              if (vg.code >= 71 && vg.code <= 80) faceIdx.push(vg.float);
+              break;
+          }
         }
 
         const isFace = (flags & PFACE_FACE_BIT) !== 0 && (flags & PFACE_VERTEX_BIT) === 0;
         if (isFace) {
-          const idx = ordered.map((n) => (n | 0) - 1).filter((i) => i >= 0);
+          const idx = faceIdx.map((n) => (n | 0) - 1).filter((i) => i >= 0);
           if (idx.length >= 3) faces.push(idx);
-        } else if ((flags & PFACE_VERTEX_BIT) !== 0 || ordered.length >= 2) {
-          vertices.push({ x: ordered[0] ?? 0, y: ordered[1] ?? 0, z: ordered[2] ?? 0 });
+        } else if ((flags & PFACE_VERTEX_BIT) !== 0) {
+          vertices.push({ x, y, z });
         }
         continue;
       }
