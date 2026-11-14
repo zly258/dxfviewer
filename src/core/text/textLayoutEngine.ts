@@ -1,7 +1,6 @@
 import type { VectorContext } from '@/render/vector/context';
 import { DxfStyle, DxfText, EntityType } from '@/types';
 import { TEXT_RENDER_CONFIG } from '@/config/viewerConfig';
-import { getFontMetrics } from '@/render/text/fontMetrics';
 import { measureCadTextRun, measureCadTextVertical } from '@/render/text/canvasTextRun';
 import {
   cleanCadText,
@@ -57,24 +56,11 @@ export interface CadTextLayoutResult {
   lines: CadTextLineLayout[];
 }
 
-const CJK_CHAR_PATTERN = /[\u2e80-\u9fff\uf900-\ufaff]/;
-
-/**
- * 字高修正系数：CAD 字高 = 大写字高（cap height），浏览器字体尺寸是 em。
- * - 含中文：中文墨迹约占 0.88em → 系数 1.14；
- * - 纯西文：capHeight ≈ 0.72em → 系数 1.39。
- *
- * 注意：Canvas 渲染始终使用系统字体（SHX 样式也映射为系统字体），
- * 因此不能再按 SHX 的 1.0 处理——那会让 SHX 样式的文字只有 0.7 倍字高
- * （实测"有的偏小"）。
- */
-const getTextHeightCorrectionFactor = (entity: DxfText, _styles?: Record<string, DxfStyle>): number => {
-  // 轮廓字体下字形已按 CAD 字高缩放，视觉高度就是字高本身。
-  if (getFontMetrics().fromOutlineFont) return 1;
-  if (CJK_CHAR_PATTERN.test(entity.value || '')) {
-    return TEXT_RENDER_CONFIG.cjkFontHeightFactor;
-  }
-  return TEXT_RENDER_CONFIG.trueTypeFontHeightFactor;
+/** 行距不再二次放大。墨迹高度由 getCanvasFont 的 em 换算负责。 */
+const getTextHeightCorrectionFactor = (_entity: DxfText, _styles?: Record<string, DxfStyle>): number => {
+  // 字号已经在 getCanvasFont 里按中文/西文换成 em。这里再乘 1.14 或 1.39
+  // 会把行距和列宽再放大一截，中文块比英文块更高。
+  return 1;
 };
 
 const CJK_WRAP_FORBIDDEN_START = new Set('，。；：！？、）】》〉」』”’%,.;:!?)]}');
@@ -262,7 +248,9 @@ export const buildCadTextLayout = ({
 
   const formattedLines = splitCadFormattedLines(entity.value || '');
   const declaredMTextWidth = entity.width && entity.width > 0 ? entity.width * worldToScreenScale : 0;
-  const maxWidth = declaredMTextWidth > 0
+  // 列宽比半个字高还窄时，装不下一个字，是导出残留（如表头「名      称」列宽 1.7、字高 150）。
+  // 这种宽度不能用来折行，否则每个字独占一行，下一字会掉进下一格。
+  const maxWidth = declaredMTextWidth > screenHeight * 0.5
     ? declaredMTextWidth / Math.max(TEXT_RENDER_CONFIG.minimumWidthFactor, Math.abs(horizontalScale))
     : 0;
   const useFormattedLines = noWrap || maxWidth <= 0;

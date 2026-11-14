@@ -205,19 +205,10 @@ export function getEffectiveTextWidthFactor(ent: DxfText, styles?: Record<string
 }
 
 
-export function getCadFontWidthCompensation(ent: DxfText, styles?: Record<string, DxfStyle>): number {
-  const profile = resolveCadTextFontProfile(ent.styleName, styles, ent.value);
-  switch (profile) {
-    case 'cjk':
-      return TEXT_RENDER_CONFIG.cjkRenderWidthFactor;
-    case 'engineeringShx':
-      return TEXT_RENDER_CONFIG.engineeringShxRenderWidthFactor;
-    case 'shx':
-      return TEXT_RENDER_CONFIG.shxRenderWidthFactor;
-    case 'trueType':
-    default:
-      return TEXT_RENDER_CONFIG.trueTypeRenderWidthFactor;
-  }
+export function getCadFontWidthCompensation(_ent: DxfText, _styles?: Record<string, DxfStyle>): number {
+  // 横向只使用图纸自己的宽度因子。再按“中文样式 ×0.88、形文件 ×1”分档，
+  // 同一字高会宽窄不一。
+  return 1;
 }
 
 export function getCadTextExtentsWidthCompensation(ent: DxfText, styles?: Record<string, DxfStyle>): number {
@@ -605,7 +596,7 @@ export function estimateCadTextLayout(ent: DxfText, styles?: Record<string, DxfS
     : textHeight;
 
   const wrappedLines: string[] = [];
-  if (isMText && ent.width && ent.width > 0) {
+  if (isMText && ent.width && ent.width > textHeight * 0.5) {
     sourceLines.forEach(line => {
       if (!line) {
         wrappedLines.push('');

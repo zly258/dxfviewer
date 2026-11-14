@@ -96,10 +96,10 @@ export const getCanvasFont = (
         }
     }
 
-    // 系统字体的 px 是 em。CAD 字高是大写字母高度，按度量系数换成 em。
+    // px 写 CAD 字高。中文和英文的 em 在绘制时按字符分开换算，避免整段一个字号。
     const correctedHeight = Math.max(
         TEXT_RENDER_CONFIG.minimumCanvasFontPixelHeight,
-        height * canvasFontScaleFactor(textEnt?.value || ''),
+        height * canvasFontScaleFactor(),
     );
 
     return `${fontStyle} ${fontWeight} ${correctedHeight}px ${fontFamily}`;

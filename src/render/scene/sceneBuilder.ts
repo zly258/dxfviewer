@@ -29,7 +29,6 @@ import {
 } from '@/types';
 import {
   TEXT_RENDER_CONFIG,
-  LINE_RENDER_CONFIG,
   CANVAS_THEME_COLORS,
 } from '@/config/viewerConfig';
 import { resolveEntityColor } from '@/utils/entityColor';
@@ -534,10 +533,8 @@ class SceneBaker {
     let width = stroke.lineWidth;
     const constantWidth = (ent as { constantWidth?: number }).constantWidth;
     if (constantWidth !== undefined && constantWidth > 0) {
-      width = Math.max(
-        LINE_RENDER_CONFIG.minimumScreenLineWidth,
-        Math.min(constantWidth, LINE_RENDER_CONFIG.maximumScreenLineWidth),
-      );
+      // 负值：世界单位。着色器按当前缩放换成像素，并封顶 4px（与 Canvas 相同）。
+      width = -constantWidth;
     }
     // 导出补偿：在 CAD 钳制后的屏幕线宽基础上按输出尺寸放大。
     return { dashIdx, widthPx: width * (this.options.lineWidthScale ?? 1) };
@@ -1047,6 +1044,7 @@ class SceneBaker {
               ? {
                 ...attrib,
                 position: moved,
+                secondPosition: textEnt.secondPosition ? attribXf(textEnt.secondPosition) : undefined,
                 height: (textEnt.height || 0) * sf,
                 rotation: (textEnt.rotation || 0) + rotation,
               }

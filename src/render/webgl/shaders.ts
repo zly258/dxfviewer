@@ -71,10 +71,16 @@ out float v_dashIdx;
 
 void main() {
     // 线宽是「CSS 像素」语义：几何半宽 = 线宽/2，不做 0.5px 的下限钳制。
-    // 旧的 0.5px 半宽下限会让 0.5px 的细线被画成 1px（再加 0.5px 羽化共 1.5px），
-    // 与 Canvas 引擎（0.5px 线宽）差 3 倍：密集小圆（直径 ~1px）会被描边完全盖住，
-    // 实测渲染成一片实心黑块。
-    float halfWidth = max(a_params.y * u_dprScale * 0.5, 0.125);
+    // a_params.y < 0 表示世界单位的固定线宽（多段线 constantWidth），
+    // 乘上每模型单位的像素数，随缩放变化，与 Canvas 的 constantWidth * zoom 一致。
+    // 正值仍是 CAD 线宽换算后的 CSS 像素。两者都封顶，避免世界线宽在放大后铺成色块。
+    // 世界线宽：CSS 像素 = 线宽 × 缩放，并夹在 0.5～4px。
+    // 没有下限时，缩到全图这些线会细到看不见（显示不全）；没有上限时放大又铺成色块。
+    float widthCss = a_params.y < 0.0
+        ? clamp(-a_params.y * u_pxPerModel / max(u_dprScale, 1e-4), 0.5, 4.0)
+        : a_params.y;
+    float widthDev = widthCss * u_dprScale;
+    float halfWidth = max(widthDev * 0.5, 0.125);
     // 抗锯齿斜坡以「真实边界」为中心：一半在墨迹内、一半在墨迹外，
     // 因此总墨量 ≈ 线宽（与 Canvas 引擎的原生 AA 一致）。
     // 旧实现把整个羽化宽度加在线外（墨迹 ≈ 线宽 + 羽化），细线会明显偏粗偏黑。

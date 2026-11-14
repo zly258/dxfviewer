@@ -80,18 +80,11 @@ export const isOutlineFontAvailable = (): boolean => {
  */
 export const charHeightRatio = (): number => currentMetrics.capHeightRatio;
 
-const CJK_TEXT = /[\u2e80-\u9fff\uf900-\ufaff]/;
+/** ctx.font 里的 px 写 CAD 字高。中英文不再分开放大。 */
+export const canvasFontScaleFactor = (): number => 1;
 
 /**
- * 系统字体的 em 系数。画面不再画轮廓字体，所以不用轮廓度量。
- * 含中文时按中文字身（约 0.88em）换算，否则中文比字高大一截，
- * 多行文字会提前碰到列宽、行数明显变多。
+ * 中文和英文用同一个 font-size，等于 CAD 字高。
+ * 之前英文再乘约 1.39，字号比汉字大一截，材料表里 Q235-B 比「上部支架」高。
  */
-export const canvasFontScaleFactor = (text?: string): number => {
-  const metrics = SYSTEM_FONT_METRICS;
-  const ratio = text && CJK_TEXT.test(text) ? metrics.cjkHeightRatio : metrics.capHeightRatio;
-  return 1 / ratio;
-};
-
-/** 与整段相同。系统字体一段一个字号。 */
-export const canvasCharFontScaleFactor = (text?: string): number => canvasFontScaleFactor(text);
+export const canvasCharFontScaleFactor = (_ch?: string): number => 1;

@@ -122,8 +122,9 @@ const getCadSingleLineBaselineY = (
     const vAlign = ent.vAlign || 0;
     if (vAlign === 3) return capHeightPx;
     if (vAlign === 2 || hAlign === 4) return capHeightPx / 2;
-    if (vAlign === 1) return -descent;
-    return 0;
+    // 基线对齐：系统字体的汉字有下伸，alphabetic 基线会让字压到下一格的线上。
+    // 把墨迹底部放到 CAD 基线上。
+    return -descent;
 };
 
 /**
@@ -167,8 +168,9 @@ const drawTextLayout = (
         // 这里与 WebGL 轮廓文字 layoutOutlineTextEntity（firstLineBaseline = top - 字高）
         // 保持完全一致。
         const lineBoxHeight = layout.screenHeight * k;
+        const baselineLift = (layout.descent || 0) * k;
         layout.lines.forEach(line => {
-            const baselineY = line.y * k + lineBoxHeight;
+            const baselineY = line.y * k + lineBoxHeight - baselineLift;
             if (line.formatted) {
                 drawFormattedSegmentsLine(ctx, line.formatted.segments, line.formatted.plainText, line.x * k, baselineY, line.align, 'alphabetic', layout.visualScreenHeight * k);
             } else {

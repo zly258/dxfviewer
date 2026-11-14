@@ -55,6 +55,11 @@ export const parseText = (state: DxfParserState, common: any, type: EntityType):
                 if (type === EntityType.MTEXT) entity.lineSpacingStyle = parseInt(g.value, 10);
                 else entity.vAlign = parseInt(g.value, 10);
                 break;
+            case 74:
+                if (type === EntityType.ATTRIB || type === EntityType.ATTDEF) {
+                    entity.vAlign = parseInt(g.value, 10);
+                }
+                break;
             case 11:
                 if (type === EntityType.MTEXT) {
                     if (!direction) direction = { x: 0, y: 0 };
@@ -96,7 +101,7 @@ export const parseText = (state: DxfParserState, common: any, type: EntityType):
 
     entity.value = valueParts.join('');
     if (type === EntityType.MTEXT) {
-        const matches = entity.value.match(/\\[Ww](\d+(\.\d+)?)(?:;|$)/);
+        const matches = entity.value.match(/\\[Ww]([0-9]*\.?[0-9]+)(?:;|$)/);
         if (matches?.[1]) entity.widthFactor = parseFloat(matches[1]);
     }
 
