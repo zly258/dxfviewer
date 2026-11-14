@@ -1,6 +1,7 @@
 import { AnyEntity, DxfHelix, DxfMLine, DxfPolyline, DxfSpline, EntityType, Point2D } from '@/types';
 import { DxfParserState, applyCommonGroupFrom } from './parserState';
 import { getOcsToWcsMatrix, applyOcs, getWcsRotation } from '@/core/geometry/ocs';
+import { parsePolyfaceMesh } from './meshEntityParser';
 import { sampleSplinePoints } from '@/core/geometry/curveSampling';
 
 export const parseLine = (state: DxfParserState, common: any): AnyEntity => {
@@ -128,6 +129,7 @@ export const parseLwPolyline = (state: DxfParserState, common: any): DxfPolyline
 export const parsePolyline = (state: DxfParserState, common: any): DxfPolyline => {
     let closed = false;
     let is3DPolyline = false;
+    let isPolyfaceMesh = false;
     let elevation = 0;
     while(state.hasNext) {
         const p = state.peek();
@@ -138,10 +140,15 @@ export const parsePolyline = (state: DxfParserState, common: any): DxfPolyline =
              const flags = (g.float | 0);
              closed = (flags & 1) === 1;
              is3DPolyline = (flags & 8) === 8;
+             // bit 6 (64) = 多面网格（PFACE），三维模型的常见载体。
+             isPolyfaceMesh = (flags & 64) === 64;
         }
         if (g.code === 40 || g.code === 41) common.constantWidth = g.float;
         if (g.code === 30) elevation = g.float;
     }
+
+    // 多面网格：交给网格解析器（真实三维面片）。
+    if (isPolyfaceMesh) return parsePolyfaceMesh(state, common) as unknown as DxfPolyline;
 
     const points: Point2D[] = [];
     const bulges: number[] = [];

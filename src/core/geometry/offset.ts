@@ -24,6 +24,13 @@ export const offsetEntity = (ent: AnyEntity, offset: Point2D): void => {
                 ent.points.forEach((p: Point2D) => { p.x -= ox; p.y -= oy; });
             }
             break;
+        case EntityType.MESH: {
+            const meshEnt = ent as unknown as { vertices?: { x: number; y: number }[] };
+            if (meshEnt.vertices) {
+                meshEnt.vertices.forEach((p) => { p.x -= ox; p.y -= oy; });
+            }
+            break;
+        }
         case EntityType.MLINE:
             if (ent.vertices) {
                 ent.vertices.forEach((p: Point2D) => { p.x -= ox; p.y -= oy; });

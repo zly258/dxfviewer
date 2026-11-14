@@ -65,6 +65,39 @@ const zOf = (p: Point2D | undefined): number =>
 const samePoint = (a: Point2D, b: Point2D): boolean =>
   Math.abs(a.x - b.x) < 1e-9 && Math.abs(a.y - b.y) < 1e-9 && Math.abs(zOf(a) - zOf(b)) < 1e-9;
 
+/** 三维面片的简单光照方向（世界坐标，归一化后使用）。 */
+const LIGHT_DIR = (() => {
+  const v = { x: 0.45, y: -0.35, z: 0.82 };
+  const len = Math.hypot(v.x, v.y, v.z) || 1;
+  return { x: v.x / len, y: v.y / len, z: v.z / len };
+})();
+
+/**
+ * 按面法线做明暗调制：让三维网格/面片呈现立体感（不再是一整块纯色）。
+ * 双面光照（法线取绝对值方向），保证背面也可见。
+ */
+const shadeByNormal = (
+  col: [number, number, number],
+  a: Point3D, b: Point3D, c: Point3D,
+): [number, number, number] => {
+  const ux = b.x - a.x, uy = b.y - a.y, uz = (b.z ?? 0) - (a.z ?? 0);
+  const vx = c.x - a.x, vy = c.y - a.y, vz = (c.z ?? 0) - (a.z ?? 0);
+  let nx = uy * vz - uz * vy;
+  let ny = uz * vx - ux * vz;
+  let nz = ux * vy - uy * vx;
+  const len = Math.hypot(nx, ny, nz);
+  if (!Number.isFinite(len) || len < 1e-12) return col;
+  nx /= len; ny /= len; nz /= len;
+  const dot = Math.abs(nx * LIGHT_DIR.x + ny * LIGHT_DIR.y + nz * LIGHT_DIR.z);
+  // 0.55 ~ 1.0 的环境光 + 漫反射区间，避免面片过暗看不清。
+  const k = 0.55 + 0.45 * dot;
+  return [
+    Math.min(1, col[0] * k + 0.12 * (1 - k)),
+    Math.min(1, col[1] * k + 0.12 * (1 - k)),
+    Math.min(1, col[2] * k + 0.12 * (1 - k)),
+  ];
+};
+
 export const buildThreeGeometry = (opts: BuildThreeGeometryOptions): ThreeGeometryData => {
   const { entities, blocks, layers, theme, drawingColorMode, hiddenLayers, hiddenEntityIds, isolatedEntityIds } = opts;
 
@@ -99,7 +132,7 @@ export const buildThreeGeometry = (opts: BuildThreeGeometryOptions): ThreeGeomet
   const addSegment = (a: Point2D, b: Point2D, col: [number, number, number], xf: (p: Point2D) => Point2D) => {
     const pa = xf(a); const pb = xf(b);
     const za = zOf(a) * activeZScale; const zb = zOf(b) * activeZScale;
-    if (!sanitize(pa.x, pa.y, pb.x, pb.y)) return;
+    if (!sanitize(pa.x, pa.y, pb.x, pb.y, za, zb)) return;
     data.linePos.push(pa.x, pa.y, za, pb.x, pb.y, zb);
     pushVertexColor(col, data.lineCol);
     pushVertexColor(col, data.lineCol);
@@ -115,8 +148,17 @@ export const buildThreeGeometry = (opts: BuildThreeGeometryOptions): ThreeGeomet
   const addTriangle = (a: Point2D, b: Point2D, c: Point2D, col: [number, number, number], xf: (p: Point2D) => Point2D) => {
     const pa = xf(a), pb = xf(b), pc = xf(c);
     if (!sanitize(pa.x, pa.y, pb.x, pb.y, pc.x, pc.y)) return;
-    data.triPos.push(pa.x, pa.y, zOf(a) * activeZScale, pb.x, pb.y, zOf(b) * activeZScale, pc.x, pc.y, zOf(c) * activeZScale);
-    for (let k = 0; k < 3; k++) pushVertexColor(col, data.triCol);
+    const za = zOf(a) * activeZScale, zb = zOf(b) * activeZScale, zc = zOf(c) * activeZScale;
+    if (!sanitize(za, zb, zc)) return;
+    data.triPos.push(pa.x, pa.y, za, pb.x, pb.y, zb, pc.x, pc.y, zc);
+    // 三维面片按法线着色（平面图元 dot 恒定，颜色与原来一致）。
+    const shaded = shadeByNormal(
+      col,
+      { x: pa.x, y: pa.y, z: za },
+      { x: pb.x, y: pb.y, z: zb },
+      { x: pc.x, y: pc.y, z: zc },
+    );
+    for (let k = 0; k < 3; k++) pushVertexColor(shaded, data.triCol);
     updateBounds(pa.x, pa.y); updateBounds(pb.x, pb.y); updateBounds(pc.x, pc.y);
   };
 
@@ -194,6 +236,7 @@ export const buildThreeGeometry = (opts: BuildThreeGeometryOptions): ThreeGeomet
       case EntityType.POINT: {
         const p = xf(ent.position);
         data.ptPos.push(p.x, p.y, zOf(ent.position) * activeZScale);
+        if (!sanitize(p.x, p.y, zOf(ent.position) * activeZScale)) { data.ptPos.length -= 3; break; }
         pushVertexColor(col, data.ptCol);
         updateBounds(p.x, p.y);
         break;
@@ -341,8 +384,26 @@ export const buildThreeGeometry = (opts: BuildThreeGeometryOptions): ThreeGeomet
         addPolyline(pts, true, col, xf);
         break;
       }
-      // 文字类：由 Canvas 文字层绘制
-      case EntityType.TEXT:
+      case EntityType.MESH: {
+        // 三维网格（PFACE / MESH）：每个面三角化 + 边线，正确呈现三维外形。
+        const mesh = ent as unknown as { vertices?: Point3D[]; faces?: number[][] };
+        const verts = mesh.vertices || [];
+        const faces = mesh.faces || [];
+        if (verts.length >= 3 && faces.length) {
+          for (const face of faces) {
+            if (!face || face.length < 3) continue;
+            const pts = face
+              .map((i) => verts[i])
+              .filter((p) => p && Number.isFinite(p.x) && Number.isFinite(p.y));
+            if (pts.length < 3) continue;
+            // 扇形三角化（按法线着色，呈现立体明暗）
+            for (let i = 1; i + 1 < pts.length; i++) addTriangle(pts[0], pts[i], pts[i + 1], col, xf);
+            // 面边界（线框）
+            addPolyline(pts, true, col, xf);
+          }
+        }
+        break;
+      }
       case EntityType.MTEXT:
       case EntityType.ATTRIB:
       case EntityType.ATTDEF:

@@ -3,6 +3,7 @@ import { DxfParserState, parseCommon } from './parserState';
 import { consumeEntityGroups } from './groupValue';
 import { formatGroupCode } from '@/io/dxf/groupCodes';
 import { parseAcisMetadataEntity, parseRegionMetadata } from './metadataEntityParser';
+import { parseMesh } from './meshEntityParser';
 import { parseHatch } from './hatchEntityParser';
 import { parseText } from './textEntityParser';
 import { parseAcadTable, parseDimension, parseInsert } from './blockEntityParser';
@@ -112,5 +113,6 @@ const ENTITY_PARSERS: Record<string, EntityParser> = {
     BODY: (state, common) => parseAcisMetadataEntity(state, common, EntityType.BODY),
     SURFACE: (state, common) => parseAcisMetadataEntity(state, common, EntityType.SURFACE),
     REGION: (state, common) => parseRegionMetadata(state, common),
+    MESH: (state, common) => parseMesh(state, common),
 };
 

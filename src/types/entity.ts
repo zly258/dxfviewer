@@ -33,7 +33,8 @@ export enum EntityType {
   HELIX = 'HELIX',
   TOLERANCE = 'TOLERANCE',
   VIEWPORT = 'VIEWPORT',
-  SHAPE = 'SHAPE'
+  SHAPE = 'SHAPE',
+  MESH = 'MESH'
 }
 
 /** 保真往返用：实体源文件组码快照（code + 原始文本值），仅 preserveRaw 解析时采集。 */
@@ -81,6 +82,16 @@ export interface DxfLeader extends DxfEntity { type: EntityType.LEADER; points: 
 export interface DxfMLeader extends DxfEntity { type: EntityType.MLEADER; leaderLines: Point2D[][]; text?: string; textPosition?: Point2D; textHeight?: number; textWidth?: number; textStyleName?: string; textAttachment?: number; textLeftAttachment?: number; textRightAttachment?: number; textAlignment?: number; doglegVector?: Point2D; arrowSize?: number; doglegLength?: number; enableLanding?: boolean; enableDogleg?: boolean; contentType?: number; }
 export interface DxfMLine extends DxfEntity { type: EntityType.MLINE; vertices: Point2D[]; closed?: boolean; }
 
+/**
+ * 多面网格（三维模型）：POLYLINE 多面网格（PFACE）与 MESH 实体共用。
+ * vertices 保留真实 z；faces 为顶点索引（0 基）。
+ */
+export interface DxfMesh extends DxfEntity {
+  type: EntityType.MESH;
+  vertices: Point3D[];
+  faces: number[][];
+}
+
 export interface HatchEdge { type: 'LINE' | 'ARC' | 'ELLIPSE' | 'SPLINE'; start?: Point2D; end?: Point2D; center?: Point2D; radius?: number; startAngle?: number; endAngle?: number; ccw?: boolean; majorAxis?: Point2D; ratio?: number; controlPoints?: Point2D[]; knots?: number[]; weights?: number[]; degree?: number; calculatedPoints?: Point2D[]; }
 export interface HatchLoop { type: number; edges: HatchEdge[]; isPolyline?: boolean; points?: Point2D[]; bulges?: number[]; }
 export interface DxfHatch extends DxfEntity { type: EntityType.HATCH; patternName: string; solid: boolean; scale?: number; angle?: number; loops: HatchLoop[]; isFlipped?: boolean; }
@@ -96,4 +107,4 @@ export interface DxfTolerance extends DxfEntity { type: EntityType.TOLERANCE; po
 export interface DxfViewport extends DxfEntity { type: EntityType.VIEWPORT; center: Point2D; width: number; height: number; viewCenter?: Point2D; viewHeight?: number; twistAngle?: number; viewportId?: number; status?: number; }
 export interface DxfShape extends DxfEntity { type: EntityType.SHAPE; position: Point2D; name: string; size: number; rotation?: number; xScale?: number; oblique?: number; }
 
-export type AnyEntity = DxfLine | DxfRay | DxfXLine | DxfPoint | DxfCircle | DxfArc | DxfPolyline | DxfText | DxfEllipse | DxfSpline | DxfSolid | Dxf3DFace | DxfInsert | DxfDimension | DxfHatch | DxfRegion | DxfLeader | DxfMLeader | DxfMLine | DxfTable | DxfImage | DxfWipeout | Dxf3DSolid | DxfBody | DxfSurface | DxfHelix | DxfTolerance | DxfViewport | DxfShape;
+export type AnyEntity = DxfLine | DxfRay | DxfXLine | DxfPoint | DxfCircle | DxfArc | DxfPolyline | DxfText | DxfEllipse | DxfSpline | DxfSolid | Dxf3DFace | DxfInsert | DxfDimension | DxfHatch | DxfRegion | DxfLeader | DxfMLeader | DxfMLine | DxfTable | DxfImage | DxfWipeout | Dxf3DSolid | DxfBody | DxfSurface | DxfHelix | DxfTolerance | DxfViewport | DxfShape | DxfMesh;

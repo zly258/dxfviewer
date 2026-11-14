@@ -311,6 +311,12 @@ export const getEntityExtents = (
         case EntityType.THREEDFACE:
             ent.points.forEach(point => bounds.update(point.x, point.y));
             break;
+        case EntityType.MESH: {
+            // 三维网格（PFACE / MESH）：按全部顶点计算范围，保证“充满视图”正确。
+            const meshEnt = ent as unknown as { vertices?: { x: number; y: number }[] };
+            (meshEnt.vertices || []).forEach(point => bounds.update(point.x, point.y));
+            break;
+        }
         case EntityType.HATCH:
             // 采样所有填充环的点来计算范围
             ent.loops.forEach(loop => sampleHatchLoop(loop).forEach(point => bounds.update(point.x, point.y)));
