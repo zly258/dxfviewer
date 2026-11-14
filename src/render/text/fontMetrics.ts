@@ -86,14 +86,35 @@ export const canvasFontScaleFactor = (): number => 1;
 const CJK_CHAR = /[\u2e80-\u9fff\uf900-\ufaff]/;
 
 /**
- * 单个字符的 em / 字高。
- * - 汉字：AutoCAD 里汉字是「方格」，字号 = 字高（墨迹约 0.88em，且字宽≈字号，
- *   乘宽度因子后正好等于格子宽度，材料表单行名称不会溢出邻格）。
- * - 英文数字：不额外放大到比汉字还高；按与汉字相同的墨迹高度换算
- *   （font = cjkHeightRatio / capHeightRatio），中英文视觉高度一致。
- * 注意：不能把汉字放大到 1.14，否则单行名称会撑破表格列宽。
+ * 各系统字体的真实「大写高度 / em」比例（实测，100px 下 measureText 的
+ * actualBoundingBoxAscent）。差别很大：仿宋 0.67、宋体 0.68、雅黑/无衬线 0.76。
+ * 若统一用一个系数，同字高的英文在仿宋里就明显比雅黑小 —— 这正是
+ * 「部分偏大、部分偏小」的来源。这里按实际字体族归一。
  */
-export const canvasCharFontScaleFactor = (ch?: string): number => {
+const LATIN_CAP_RATIO_BY_FAMILY: Array<[RegExp, number]> = [
+  [/fangsong|仿宋|stfangsong/i, 0.67],
+  [/simsun|宋体|stsong/i, 0.68],
+  [/yahei|雅黑|simhei|黑体/i, 0.76],
+  [/arial|helvetica|inter|roboto|segoe/i, 0.72],
+];
+
+/** 汉字墨迹高度目标（各系统字体约 0.90~0.92em，取 0.91 作为统一目标）。 */
+const CJK_INK_TARGET = 0.91;
+
+const detectLatinCapRatio = (font: string): number => {
+  for (const [re, ratio] of LATIN_CAP_RATIO_BY_FAMILY) {
+    if (re.test(font)) return ratio;
+  }
+  return 0.76; // 无衬线兜底
+};
+
+/**
+ * 单个字符的 em / 字高。
+ * - 汉字：字号 = 字高（字宽≈字号，乘宽度因子后等于格子宽，不撑破表格列宽）。
+ * - 英文数字：按当前字体族的真实大写比例放大，使墨迹高度与汉字一致（≈0.91em），
+ *   从而同一字高下中英文、不同字体之间视觉高度统一。
+ */
+export const canvasCharFontScaleFactor = (ch?: string, font?: string): number => {
   if (ch && CJK_CHAR.test(ch)) return 1;
-  return SYSTEM_FONT_METRICS.cjkHeightRatio / SYSTEM_FONT_METRICS.capHeightRatio;
+  return CJK_INK_TARGET / detectLatinCapRatio(font || '');
 };

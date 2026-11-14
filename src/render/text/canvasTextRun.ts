@@ -29,13 +29,13 @@ const measureNative = (ctx: VectorContext, value: string): number => {
  * 全角一段、西文一段，而不是每个字都改一次 ctx.font。
  * 中文说明通常整段同字号，测量和绘制都从 O(字符) 次字体切换降到 O(段)。
  */
-const splitScaledRuns = (value: string, cadPx: number): Array<{ text: string; px: number }> => {
+const splitScaledRuns = (value: string, cadPx: number, font: string): Array<{ text: string; px: number }> => {
   const runs: Array<{ text: string; px: number }> = [];
   let text = '';
   let px = 0;
   let key = 0;
   for (const ch of Array.from(value)) {
-    const nextPx = Math.max(0.1, cadPx * canvasCharFontScaleFactor(ch));
+    const nextPx = Math.max(0.1, cadPx * canvasCharFontScaleFactor(ch, font));
     const nextKey = Math.round(nextPx * 100);
     if (!text || nextKey !== key) {
       if (text) runs.push({ text, px });
@@ -65,7 +65,7 @@ export const measureCadTextVertical = (
   const original = ctx.font;
   let ascent = 0;
   let descent = 0;
-  for (const run of splitScaledRuns(value || 'Mg', cadPx)) {
+  for (const run of splitScaledRuns(value || 'Mg', cadPx, original)) {
     ctx.font = fontWithSize(original, run.px);
     const metrics = ctx.measureText(run.text);
     ascent = Math.max(ascent, metrics.actualBoundingBoxAscent || 0);
@@ -84,7 +84,7 @@ export const measureCadTextRun = (ctx: VectorContext, value: string): number => 
 
   const original = ctx.font;
   let width = 0;
-  for (const run of splitScaledRuns(value, cadPx)) {
+  for (const run of splitScaledRuns(value, cadPx, original)) {
     ctx.font = fontWithSize(original, run.px);
     width += ctx.measureText(run.text).width || 0;
   }
@@ -106,10 +106,11 @@ export const fillCadTextRun = (ctx: VectorContext, value: string, x: number, y: 
 
   const original = ctx.font;
   let cursor = x;
-  for (const run of splitScaledRuns(value, cadPx)) {
+  for (const run of splitScaledRuns(value, cadPx, original)) {
     ctx.font = fontWithSize(original, run.px);
     ctx.fillText(run.text, cursor, y);
     cursor += ctx.measureText(run.text).width || 0;
   }
   ctx.font = original;
 };
+
