@@ -102,6 +102,8 @@ export const parseTable = (
                 state.next();
                 break;
             }
+            // 表没有正常收尾时不能继续吞掉后面的段。
+            if (p.value === 'ENDSEC' || p.value === 'EOF' || p.value === 'SECTION') break;
             if (tableName === 'LAYER' && p.value === 'LAYER') {
                 state.next();
                 const layer = parseLayer(state);
@@ -168,6 +170,10 @@ export const parseBlock = (
                 state.next();
                 break;
             }
+            // 块定义被截断、缺少 ENDBLK 时，必须在段边界停住。
+            // 否则会把后面的 ENTITIES 整段吞进这个块，模型空间变成空图，
+            // 再被「缺少 EOF」误判成无法打开。
+            if (p.value === 'ENDSEC' || p.value === 'EOF' || p.value === 'SECTION' || p.value === 'BLOCK') break;
             state.next(); // 消耗实体类型组。
             const entity = parseEntityDispatcher(p.value, state, blockHandleMap, preserveRaw);
             if (entity) block.entities.push(entity);

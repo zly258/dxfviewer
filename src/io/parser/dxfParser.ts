@@ -481,6 +481,18 @@ export const parseDxf = async (
     }
   });
 
+  // ENTITIES 段被截断时，模型空间往往还完整地留在 *MODEL_SPACE 块里。
+  // 用块里的实体顶上，否则画布上只有被截断的那一个 INSERT。
+  if (truncatedHint) {
+    const modelBlock = Object.values(blocks).find(block => block.isModelSpace && block.entities.length > 0);
+    if (modelBlock && modelBlock.entities.length >= 32 && allEntities.length < modelBlock.entities.length / 2) {
+      allEntities.length = 0;
+      for (const entity of modelBlock.entities) {
+        allEntities.push(structuredClone(entity));
+      }
+    }
+  }
+
   const offset = calculateStableOffset(allEntities, blocks, styles);
 
   allEntities.forEach(entity => offsetEntity(entity, offset));
@@ -493,11 +505,12 @@ export const parseDxf = async (
 
   precomputeBlockExtents(blocks, styles);
 
-  // 疑似截断的文件：若解析出的实体极少（相对文件体量不成比例），说明内容
-  // 真的缺失了。此时明确报错，避免用户在画布上只看到一张白图。
-  // 判据：文件很大（> 256 KB）却只解析出寥寥数个实体 —— 只可能是被截断。
+  // 文件很大，但模型空间几乎是空的：内容在写 ENTITIES 时被截断。
+  // 块段里的图元只是图块库，不能当成这张图。上面已尝试用 *MODEL_SPACE 块补上。
   if (truncatedHint && dxfString.length > 256 * 1024 && allEntities.length < 32) {
-    throw new Error(`DXF 文件不完整：${truncatedHint}。请重新导出或拷贝该图纸后再打开。`);
+    throw new Error(
+      `DXF 文件不完整：模型空间没有写完（只读到 ${allEntities.length} 个图元），文件在结尾被截断。请用 AutoCAD 重新打开原图，另存为 DXF 后再打开。`,
+    );
   }
 
   const layouts = buildLayouts(allEntities, layoutRecords, blocks, styles, blockHandleMap);
