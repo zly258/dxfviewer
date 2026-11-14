@@ -3,7 +3,7 @@ import type { CanvasTheme, DrawingColorMode, DxfData, ViewPort } from '@/types';
 import { CANVAS_THEME_COLORS, INTERACTION_CONFIG, ZOOM_CONFIG } from '@/config/viewerConfig';
 import { calculateExtents, calculatePaperLayoutExtents } from '@/core/geometry/extents';
 import { fitExtentsToBox } from '@/render/viewportFitting';
-import { RenderEngine } from '@/render/webgl/renderEngine';
+import { ThreeRenderEngine as RenderEngine } from '@/render/three/ThreeRenderEngine';
 import { CanvasRenderEngine } from '@/render/canvas/CanvasRenderEngine';
 import type { EngineKind, InteractiveRenderEngine } from '@/render/engine';
 import { hasOutlineFont, loadOutlineFont } from '@/render/text/outlineText';

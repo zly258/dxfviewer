@@ -1,7 +1,7 @@
 import React, { useRef, useState, WheelEvent, MouseEvent, useEffect, useCallback } from 'react';
 import { AnyEntity, ViewPort, DxfLayer, DxfBlock, DxfStyle, DxfLineType, Point2D, CanvasTheme, DrawingColorMode } from '@/types';
 import { hitTest, hitTestBox } from '@/render/picking/hitTest';
-import { RenderEngine } from '@/render/webgl/renderEngine';
+import { ThreeRenderEngine as RenderEngine } from '@/render/three/ThreeRenderEngine';
 import { CanvasRenderEngine } from '@/render/canvas/CanvasRenderEngine';
 import type { EngineKind, InteractiveRenderEngine } from '@/render/engine';
 import { hasOutlineFont, loadOutlineFont } from '@/render/text/outlineText';
@@ -222,6 +222,12 @@ const ViewerCanvas: React.FC<ViewerCanvasProps> = ({
     }
     // 调试句柄：控制台可用 __dxfEngine.stats 查看引擎状态。
     (window as unknown as { __dxfEngine?: InteractiveRenderEngine }).__dxfEngine = engine;
+    // Three 引擎三维视角调试句柄（控制台可调用 setOrbit 观察三维构件）。
+    (window as unknown as { __dxfEngine3d?: unknown }).__dxfEngine3d = engine;
+    (window as unknown as { __dxfSetOrbit?: (az: number, el: number) => void }).__dxfSetOrbit = (az: number, el: number) => {
+      const e = engine as unknown as { setOrbit?: (a: number, b: number) => void };
+      if (e.setOrbit) { e.setOrbit(az, el); dirtyRef.current = true; }
+    };
     // 调试句柄：设置/读取视口，便于双引擎在完全相同的视口下对比。
     (window as unknown as { __dxfViewport?: {
       get: () => ViewPort;

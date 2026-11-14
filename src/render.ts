@@ -1,13 +1,14 @@
 /**
  * 渲染入口（不依赖 React / 不引入样式）。
  *
- * - 交互渲染：WebGL2 引擎（`RenderEngine`）
+ * - 交互渲染：Three.js 引擎（`RenderEngine`，支持三维相机与全部 DXF 图元）
  * - 矢量导出：场景写入器（`renderVectorScene`，SVG / PDF 后端共用）
  * - 拾取：CPU 命中测试（`hitTest` / `hitTestBox`，与渲染后端无关）
  * - SHX 形字体：宿主可注册真实 .shx 文件提升文字保真度
  */
-export { RenderEngine } from '@/render/webgl/renderEngine';
-export type { RenderParams, Viewport } from '@/render/webgl/renderEngine';
+export { ThreeRenderEngine as RenderEngine } from '@/render/three/ThreeRenderEngine';
+export type { EngineRenderParams as RenderParams, EngineSceneOptions } from '@/render/engine';
+export type { ViewPort as Viewport } from '@/types';
 
 /** 场景构建（高级用法 / 测试：不依赖 React，可配合自定义宿主使用）。 */
 export { buildScene } from '@/render/scene/sceneBuilder';

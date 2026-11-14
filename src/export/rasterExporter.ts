@@ -9,7 +9,7 @@
  */
 
 import type { CanvasTheme, DrawingColorMode, DxfData, ViewPort } from '@/types';
-import { RenderEngine } from '@/render/webgl/renderEngine';
+import { ThreeRenderEngine as RenderEngine } from '@/render/three/ThreeRenderEngine';
 import { CanvasRenderEngine } from '@/render/canvas/CanvasRenderEngine';
 
 import { resolveSceneView } from './sceneView';
@@ -102,9 +102,9 @@ export const renderSceneToRasterCanvas = (
       hiddenLayers: new Set(hiddenLayers ?? []),
       // 导出补偿：以 1280 物理像素为基准放大线宽（与旧导出管线语义一致）。
       lineWidthScale: Math.max(1, pixelWidth / 1280),
-      // overlay 模式下文字由 Canvas 层合成；sdf 模式下文字已在 GPU 网格里。
+      // overlay 模式下文字由 Canvas 层合成；Three 引擎本身不绘制文字。
       skipText: textOverlayActive,
-    });
+    } as never);
     engine.render({
       viewPort: scene.viewPort,
       cssWidth: width,
