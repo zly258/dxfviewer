@@ -225,7 +225,19 @@ const ViewerCanvas: React.FC<ViewerCanvasProps> = ({
                 selectedIds: selectedRef.current,
               };
               engine.render(renderParams);
-              if (textEngine && !is3DRef.current) textEngine.render(renderParams);
+              if (textEngine) textEngine.render(renderParams);
+              // 三维：把文字覆盖层按相机平面仿射变换贴合倾斜平面（正交投影精确）。
+              const teCanvas = textCanvasRef.current;
+              if (teCanvas) {
+                teCanvas.style.transformOrigin = '0 0';
+                if (is3DRef.current) {
+                  const e3t = engine as unknown as { getTextTransform?: () => number[] | null };
+                  const m = e3t.getTextTransform ? e3t.getTextTransform() : null;
+                  teCanvas.style.transform = m ? `matrix(${m.join(',')})` : '';
+                } else if (teCanvas.style.transform) {
+                  teCanvas.style.transform = '';
+                }
+              }
               if (errorReported) {
                 errorReported = false;
                 onRenderError?.(null);
@@ -979,7 +991,7 @@ const ViewerCanvas: React.FC<ViewerCanvasProps> = ({
     >
       <canvas key={engineKind} ref={canvasRef} />
       {engineKind === 'webgl' && textOverlayActive && (
-        <canvas key={`text-${engineKind}`} ref={textCanvasRef} className="viewer-text-layer" style={{ display: is3D ? 'none' : undefined }} />
+        <canvas key={`text-${engineKind}`} ref={textCanvasRef} className="viewer-text-layer" style={{ transformOrigin: '0 0' }} />
       )}
 
       {isBoxSelecting && (

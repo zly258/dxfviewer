@@ -32,6 +32,13 @@ export class ThreeRenderEngine implements InteractiveRenderEngine {
   private azimuth = 90;   // 绕 Z 轴
   private elevation = 90; // 90 = 俯视（2D）
 
+  // 最近一帧视口参数（用于计算文字覆盖层的平面仿射变换）。
+  private lastW = 0;
+  private lastH = 0;
+  private lastTargetX = 0;
+  private lastTargetY = 0;
+  private lastZoom = 1;
+
   private statLineVerts = 0;
   private statTriVerts = 0;
   private statPointVerts = 0;
@@ -52,8 +59,7 @@ export class ThreeRenderEngine implements InteractiveRenderEngine {
   }
 
   /** 相机方位（度）。elevation=90 为俯视。 */
-  setOrbit(azimuth: number, elevation: number): void {
-    this.azimuth = azimuth;
+  setOrbit(azimuth: number, elevation: number): void {    this.azimuth = azimuth;
     this.elevation = Math.max(-89.9, Math.min(89.999, elevation === 90 ? 89.999 : elevation));
     // 允许精确 90：单独处理（用 89.999 避免 lookAt 退化）
     if (elevation >= 90) this.elevation = 89.999;
@@ -66,6 +72,52 @@ export class ThreeRenderEngine implements InteractiveRenderEngine {
   resetOrbit(): void {
     this.azimuth = 90;
     this.elevation = 89.999;
+  }
+
+  /**
+   * 计算「俯视文字覆盖层屏幕坐标 → 当前相机屏幕坐标」的平面仿射变换（CSS matrix）。
+   * 正交投影下 z=0 平面到屏幕是仿射映射，故用 CSS 变换即可让 2D 文字随三维平面正确倾斜。
+   * 返回 null 表示当前为俯视（无需变换）。
+   */
+  getTextTransform(): number[] | null {
+    const W = this.lastW;
+    const H = this.lastH;
+    if (!W || !H) return null;
+    const isTop = Math.abs(this.elevation - 89.999) < 1e-6 && Math.abs(this.azimuth - 90) < 1e-9;
+    if (isTop) return null;
+    const tx = this.lastTargetX;
+    const ty = this.lastTargetY;
+    const zoom = this.lastZoom;
+    const cam = this.camera;
+    const project = (x: number, y: number) => {
+      const v = new THREE.Vector3(x, y, 0).project(cam);
+      return { x: (v.x * 0.5 + 0.5) * W, y: (-v.y * 0.5 + 0.5) * H };
+    };
+    const A = project(tx, ty);
+    const B = project(tx + 1, ty);
+    const C = project(tx, ty + 1);
+    const dx = { x: B.x - A.x, y: B.y - A.y };
+    const dy = { x: C.x - A.x, y: C.y - A.y };
+    // 当前 世界→屏幕 仿射
+    const a2 = dx.x, c2 = dy.x, e2 = A.x - dx.x * tx - dy.x * ty;
+    const b2 = dx.y, d2 = dy.y, f2 = A.y - dx.y * tx - dy.y * ty;
+    // 俯视 世界→屏幕 仿射
+    const a1 = zoom, c1 = 0, e1 = -zoom * tx + W / 2;
+    const b1 = 0, d1 = -zoom, f1 = zoom * ty + H / 2;
+    const det = a1 * d1 - b1 * c1;
+    if (Math.abs(det) < 1e-12) return null;
+    // inv(Ptop)
+    const ia = d1 / det, ic = -c1 / det, ie = (c1 * f1 - d1 * e1) / det;
+    const ib = -b1 / det, id = a1 / det, iff = (b1 * e1 - a1 * f1) / det;
+    // M = Pcur ∘ inv(Ptop)
+    return [
+      a2 * ia + c2 * ib,
+      b2 * ia + d2 * ib,
+      a2 * ic + c2 * id,
+      b2 * ic + d2 * id,
+      a2 * ie + c2 * iff + e2,
+      b2 * ie + d2 * iff + f2,
+    ];
   }
 
   setScene(options: EngineSceneOptions): void {
@@ -132,6 +184,12 @@ export class ThreeRenderEngine implements InteractiveRenderEngine {
   render(params: EngineRenderParams): void {
     const { viewPort, cssWidth, cssHeight, dpr } = params;
     if (cssWidth <= 0 || cssHeight <= 0) return;
+
+    this.lastW = cssWidth;
+    this.lastH = cssHeight;
+    this.lastTargetX = viewPort.targetX;
+    this.lastTargetY = viewPort.targetY;
+    this.lastZoom = viewPort.zoom;
 
     this.renderer.setPixelRatio(dpr || 1);
     this.renderer.setSize(cssWidth, cssHeight, false);

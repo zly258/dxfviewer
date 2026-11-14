@@ -62,6 +62,9 @@ const hexToRgb = (hex: string): [number, number, number] => {
 const zOf = (p: Point2D | undefined): number =>
   p && Number.isFinite((p as Point3D).z) ? (p as Point3D).z : 0;
 
+const samePoint = (a: Point2D, b: Point2D): boolean =>
+  Math.abs(a.x - b.x) < 1e-9 && Math.abs(a.y - b.y) < 1e-9 && Math.abs(zOf(a) - zOf(b)) < 1e-9;
+
 export const buildThreeGeometry = (opts: BuildThreeGeometryOptions): ThreeGeometryData => {
   const { entities, blocks, layers, theme, drawingColorMode, hiddenLayers, hiddenEntityIds, isolatedEntityIds } = opts;
 
@@ -81,6 +84,9 @@ export const buildThreeGeometry = (opts: BuildThreeGeometryOptions): ThreeGeomet
     if (y > data.bounds.maxY) data.bounds.maxY = y;
   };
 
+  /** 当前块递归的 z 缩放（插入块 scale.z 累积，用于三维实体的高度正确）。 */
+  let activeZScale = 1;
+
   const pushVertexColor = (col: [number, number, number], colArr: number[]) => {
     colArr.push(col[0], col[1], col[2]);
   };
@@ -92,7 +98,7 @@ export const buildThreeGeometry = (opts: BuildThreeGeometryOptions): ThreeGeomet
 
   const addSegment = (a: Point2D, b: Point2D, col: [number, number, number], xf: (p: Point2D) => Point2D) => {
     const pa = xf(a); const pb = xf(b);
-    const za = zOf(a); const zb = zOf(b);
+    const za = zOf(a) * activeZScale; const zb = zOf(b) * activeZScale;
     if (!sanitize(pa.x, pa.y, pb.x, pb.y)) return;
     data.linePos.push(pa.x, pa.y, za, pb.x, pb.y, zb);
     pushVertexColor(col, data.lineCol);
@@ -109,7 +115,7 @@ export const buildThreeGeometry = (opts: BuildThreeGeometryOptions): ThreeGeomet
   const addTriangle = (a: Point2D, b: Point2D, c: Point2D, col: [number, number, number], xf: (p: Point2D) => Point2D) => {
     const pa = xf(a), pb = xf(b), pc = xf(c);
     if (!sanitize(pa.x, pa.y, pb.x, pb.y, pc.x, pc.y)) return;
-    data.triPos.push(pa.x, pa.y, zOf(a), pb.x, pb.y, zOf(b), pc.x, pc.y, zOf(c));
+    data.triPos.push(pa.x, pa.y, zOf(a) * activeZScale, pb.x, pb.y, zOf(b) * activeZScale, pc.x, pc.y, zOf(c) * activeZScale);
     for (let k = 0; k < 3; k++) pushVertexColor(col, data.triCol);
     updateBounds(pa.x, pa.y); updateBounds(pb.x, pb.y); updateBounds(pc.x, pc.y);
   };
@@ -187,7 +193,7 @@ export const buildThreeGeometry = (opts: BuildThreeGeometryOptions): ThreeGeomet
       }
       case EntityType.POINT: {
         const p = xf(ent.position);
-        data.ptPos.push(p.x, p.y, zOf(ent.position));
+        data.ptPos.push(p.x, p.y, zOf(ent.position) * activeZScale);
         pushVertexColor(col, data.ptCol);
         updateBounds(p.x, p.y);
         break;
@@ -225,13 +231,20 @@ export const buildThreeGeometry = (opts: BuildThreeGeometryOptions): ThreeGeomet
         addPolyline(pts, false, col, xf);
         break;
       }
-      case EntityType.SOLID:
-      case EntityType.THREEDFACE: {
+      case EntityType.SOLID: {
+        // 2D 实心填充（实心块/箭头/LOGO 等）：填充 + 外形描边。
         const p = ent.points;
         if (p && p.length >= 3) {
           addTriangle(p[0], p[1], p[2], col, xf);
-          if (p.length >= 4) addTriangle(p[0], p[2], p[3], col, xf);
+          if (p.length >= 4 && !samePoint(p[2], p[3])) addTriangle(p[0], p[2], p[3], col, xf);
+          addPolyline(p, true, col, xf);
         }
+        break;
+      }
+      case EntityType.THREEDFACE: {
+        // 三维面片：按线框（边界）渲染，正确显示三维外形轮廓（避免整片黑色填充遮挡）。
+        const p = ent.points;
+        if (p && p.length >= 3) addPolyline(p, true, col, xf);
         break;
       }
       case EntityType.HATCH: {
@@ -269,6 +282,8 @@ export const buildThreeGeometry = (opts: BuildThreeGeometryOptions): ThreeGeomet
         const block = blocks[ins.blockName];
         if (!block || blockStack.includes(ins.blockName)) break;
         const childXf = (p: Point2D) => xf(createBlockPointTransform(block, ins.position, ins.scale || { x: 1, y: 1, z: 1 }, ins.rotation || 0)(p));
+        const prevZ = activeZScale;
+        activeZScale *= Math.abs(ins.scale?.z ?? 1) || 1;
         blockStack.push(ins.blockName);
         for (const child of block.entities) {
           if (child.type === EntityType.ATTDEF) continue;
@@ -277,6 +292,7 @@ export const buildThreeGeometry = (opts: BuildThreeGeometryOptions): ThreeGeomet
           emit(child, childXf, childColor, layerName, depth + 1);
         }
         blockStack.pop();
+        activeZScale = prevZ;
         break;
       }
       case EntityType.DIMENSION: {
@@ -288,6 +304,7 @@ export const buildThreeGeometry = (opts: BuildThreeGeometryOptions): ThreeGeomet
           ? createBlockPointTransform(block, dim.definitionPoint, { x: 1, y: 1, z: 1 }, 0)
           : identity;
         const childXf = (p: Point2D) => xf(baseXf(p));
+        const prevZ = activeZScale;
         blockStack.push(dim.blockName);
         for (const child of block.entities) {
           if (hiddenEntityIds && hiddenEntityIds.has(child.id)) continue;
@@ -295,17 +312,21 @@ export const buildThreeGeometry = (opts: BuildThreeGeometryOptions): ThreeGeomet
           emit(child, childXf, childColor, layerName, depth + 1);
         }
         blockStack.pop();
+        activeZScale = prevZ;
         break;
       }
       case EntityType.ACAD_TABLE: {
         const block = blocks[(ent as { blockName?: string }).blockName || ''];
         if (!block) break;
         const childXf = (p: Point2D) => xf(createBlockPointTransform(block, (ent as { position: Point2D }).position, (ent as { scale?: { x: number; y: number; z: number } }).scale || { x: 1, y: 1, z: 1 }, (ent as { rotation?: number }).rotation || 0)(p));
+        const prevZ = activeZScale;
+        activeZScale *= Math.abs((ent as { scale?: { z?: number } }).scale?.z ?? 1) || 1;
         for (const child of block.entities) {
           if (hiddenEntityIds && hiddenEntityIds.has(child.id)) continue;
           const childColor = resolveEntityColor(child, layers[child.layer], color, drawingColorMode, theme);
           emit(child, childXf, childColor, layerName, depth + 1);
         }
+        activeZScale = prevZ;
         break;
       }
       case EntityType.VIEWPORT: {
