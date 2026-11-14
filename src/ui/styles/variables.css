@@ -1,245 +1,184 @@
 /*
- * 设计令牌 —— Material Design 3（Material You）体系。
+ * 设计令牌 —— 唯一来源。
  *
- * 颜色：采用 M3 色彩角色（primary / secondary / tertiary / error / surface 容器层级 /
- *   outline），浅色与深色各一套；额外暴露 --md-* 角色供 md3.css 使用。
- * 形状：M3 圆角阶梯 4 / 8 / 12 / 16 / 28 / 全圆。
- * 高度：M3 elevation 1~5 阴影。
- * 字体：M3 字体阶梯（body 14 / label 12 / title 16 / headline 22）。
- * 兼容：下方仍保留历史变量名（指向新令牌），旧样式自动跟随新主题。
+ * 严格对齐 web-ui-style（浅色 Fluent 工业 CAD 网页端）：
+ * - 背景四层：--bg-app（页面底）→ --bg-band（工具条带）→ --bg-panel/--bg-chrome（内容面）；
+ * - 边框三级：--border-sub（表格内线）→ --border-main（控件描边）→ --border-strong（顶栏下沿/弹窗轮廓）；
+ * - 文字三级：--text-main 17.82:1 / --text-sec 11.67:1 / --text-muted 6.08:1（白底）；
+ * - 强调色 --accent #0b5fa5；语义色 --danger/--success/--warn 只用于语义；
+ * - 紧凑尺寸：控件 26px、小号 22px、工具条行 32px、顶栏 42px、底栏 30px、树行 26px、属性行 22px；
+ * - 字号阶梯：11 / 11.5 / 12 / 12.5 / 13 / 15 / 16 / 18（禁止 14px、17px）；
+ * - 圆角：3px / 4px / 999px（门户卡片 10px 例外不适用于本组件库）。
+ *
+ * R2：业务样式只用 --bg-app / --bg-chrome / --bg-band / --bg-panel（及 --bg-hover /
+ * --bg-input / --bg-viewport）；文件末尾的旧别名仅作兼容，禁止在新代码中引用。
  */
 :root {
   color-scheme: light;
 
-  /* ── M3 色彩角色（浅色） ── */
-  --md-primary: #6750a4;
-  --md-on-primary: #ffffff;
-  --md-primary-container: #eaddff;
-  --md-on-primary-container: #21005d;
-  --md-secondary: #625b71;
-  --md-on-secondary: #ffffff;
-  --md-secondary-container: #e8def8;
-  --md-on-secondary-container: #1d192b;
-  --md-tertiary: #7d5260;
-  --md-tertiary-container: #ffd8e4;
-  --md-on-tertiary-container: #31111d;
-  --md-error: #b3261e;
-  --md-on-error: #ffffff;
-  --md-error-container: #f9dedc;
-  --md-on-error-container: #410e0b;
-  --md-surface: #fef7ff;
-  --md-on-surface: #1d1b20;
-  --md-surface-variant: #e7e0ec;
-  --md-on-surface-variant: #49454f;
-  --md-outline: #79747e;
-  --md-outline-variant: #cac4d0;
-  --md-surface-container-lowest: #ffffff;
-  --md-surface-container-low: #f7f2fa;
-  --md-surface-container: #f3edf7;
-  --md-surface-container-high: #ece6f0;
-  --md-surface-container-highest: #e6e0e9;
-  --md-inverse-surface: #322f35;
-  --md-inverse-on-surface: #f5eff7;
-  --md-scrim: rgba(0, 0, 0, 0.32);
+  /* ── 背景四层 ── */
+  --bg-app: #e8ebef;        /* 页面底、三栏之间的缝隙 */
+  --bg-chrome: #ffffff;     /* 顶栏、按钮底、卡片 */
+  --bg-band: #f0f2f5;       /* 工具条、分组头、表头、KPI 条 */
+  --bg-panel: #ffffff;      /* 侧栏与弹窗内容面 */
+  --bg-hover: #e3e8ee;      /* 悬停底 */
+  --bg-input: #ffffff;      /* 输入框底 */
+  --bg-viewport: #eef1f5;   /* 视口底、启动遮罩 */
 
-  /* ── 背景层级（映射到 M3 surface 容器） ── */
-  --bg-app: #f3edf7;        /* 页面底 / 三栏缝隙 */
-  --bg-chrome: #fef7ff;     /* 顶栏、按钮底、卡片 */
-  --bg-band: #f3edf7;       /* 工具条、分组头、表头 */
-  --bg-panel: #fef7ff;      /* 侧栏与弹窗内容面 */
-  --bg-hover: #ece6f0;      /* 悬停底（M3 state layer） */
-  --bg-input: #fef7ff;      /* 输入框底 */
-  --bg-viewport: #f3edf7;   /* 视口底、启动遮罩 */
+  /* ── 边框三级 ── */
+  --border-sub: #e2e6eb;
+  --border-main: #cdd3da;
+  --border-strong: #b3bac3;
+  --border-hover: #c7ccd3;
 
-  /* ── 描边（M3 outline） ── */
-  --border-sub: #e7e0ec;
-  --border-main: #cac4d0;
-  --border-strong: #79747e;
-  --border-hover: #b0aab4;
+  /* ── 文字三级 ── */
+  --text-main: #14181d;
+  --text-sec: #333940;
+  --text-muted: #5c636c;
 
-  /* ── 文字（M3 on-surface） ── */
-  --text-main: #1d1b20;
-  --text-sec: #49454f;
-  --text-muted: #625e6a;
-
-  /* ── 强调与语义（映射 M3 primary / error） ── */
-  --accent: #6750a4;
-  --accent-hover: #7f67be;
-  --accent-soft: #eaddff;
-  --accent-line: #cac4d0;
+  /* ── 强调与语义 ── */
+  --accent: #0b5fa5;
+  --accent-hover: #094e88;
+  --accent-soft: #e3eef9;
+  --accent-line: #8fbde6;
   --on-accent: #ffffff;
 
   --danger: #b3261e;
-  --danger-soft: #f9dedc;
-  --danger-line: #f2b8b5;
-  --danger-bg: #fff8f7;
+  --danger-soft: #fbeceb;
+  --danger-line: #e6b8b2;
+  --danger-bg: #fff7f6;
 
-  --success: #1e6b3a;
-  --success-soft: #e6f4ea;
-  --success-line: #a8d5b5;
+  --success: #0b6b3a;
+  --success-soft: #edf8ee;
+  --success-line: #b7dfb7;
 
-  --warn: #7a5900;
+  --warn: #8a5b00;
   --warn-line: #e8d4a8;
 
   /* ── 表格 / 树 ── */
-  --bg-table-head: #f3edf7;
-  --bg-table-alt: #f7f2fa;
-  --tree-match-bg: #ffe08a;
-  --tree-match-fg: #1d1b20;
+  --bg-table-head: #f5f7fa;
+  --bg-table-alt: #f7f9fb;
+  --tree-match-bg: #fef08a;
+  --tree-match-fg: #0f172a;
 
   /* ── 滚动条 ── */
-  --scroll-thumb: #cac4d0;
-  --scroll-thumb-hover: #79747e;
-  --scroll-track: #f3edf7;
+  --scroll-thumb: #b6bdc7;
+  --scroll-thumb-hover: #8f97a3;
+  --scroll-track: #f2f4f7;
 
-  /* ── 形状（M3 shape scale） ── */
-  --radius-xs: 4px;
-  --radius-sm: 8px;
-  --radius: 12px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-xl: 28px;
+  /* ── 形与阴影 ── */
+  --radius: 3px;
+  --radius-lg: 4px;
   --radius-pill: 999px;
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.08);
+  --shadow-overlay: 0 6px 24px rgba(0, 0, 0, 0.18);
+  --scrim: rgba(0, 0, 0, 0.34);
 
-  /* ── 高度（M3 elevation） ── */
-  --elev-1: 0 1px 2px rgba(0, 0, 0, 0.10), 0 1px 3px 1px rgba(0, 0, 0, 0.06);
-  --elev-2: 0 1px 2px rgba(0, 0, 0, 0.12), 0 2px 6px 2px rgba(0, 0, 0, 0.08);
-  --elev-3: 0 4px 8px 3px rgba(0, 0, 0, 0.10), 0 1px 3px rgba(0, 0, 0, 0.12);
-  --elev-4: 0 6px 10px 4px rgba(0, 0, 0, 0.12), 0 2px 3px rgba(0, 0, 0, 0.14);
-  --elev-5: 0 8px 12px 6px rgba(0, 0, 0, 0.14), 0 4px 4px rgba(0, 0, 0, 0.16);
-  --shadow-card: var(--elev-1);
-  --shadow-overlay: var(--elev-3);
-  --scrim: var(--md-scrim);
-
-  /* ── 状态层（M3 state layer 透明度） ── */
-  --state-hover-opacity: 0.08;
-  --state-press-opacity: 0.12;
-  --state-drag-opacity: 0.16;
-
-  /* ── 字体（M3 type scale） ── */
-  --font-sans: "Roboto", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
-  --font-mono: "Roboto Mono", "Cascadia Code", Consolas, monospace;
-  --fs-body: 14px;
-  --fs-small: 12px;
-  --fs-caption: 11px;
-  --fs-micro: 11px;
-  --fs-title: 16px;
-  --fs-page: 22px;
-  --fs-kpi: 24px;
-  --lh-body: 1.43;
+  /* ── 字体 ── */
+  --font-sans: "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+  --font-mono: var(--font-sans);
+  --fs-body: 12.5px;      /* 正文 / 按钮 / 输入 */
+  --fs-small: 12px;       /* 表格 / 标签 / 树行 */
+  --fs-caption: 11.5px;   /* 小号按钮 / 脚注 */
+  --fs-micro: 11px;       /* 计数 / 角标 */
+  --fs-title: 13px;       /* 弹窗与卡片标题 */
+  --fs-page: 16px;        /* 顶栏页标题 */
+  --fs-kpi: 18px;         /* KPI 数值 */
+  --lh-body: 1.45;
   --lh-table: 1.35;
-  --tracking-body: 0.017em;
 
-  /* ── 尺寸阶梯（M3 compact / dense） ── */
-  --control-h: 32px;
-  --control-h-sm: 28px;
-  --row-h: 30px;
-  --prop-row-h: 26px;
-  --header-h: 52px;
-  --footer-h: 32px;
-  --toolbar-h: 40px;
-  --filter-h: 32px;
-  --modal-head-h: 44px;
-  --icon-size: 20px;
-  --icon-size-sm: 18px;
-  --icon-btn: 32px;
-  --side-left-w: clamp(260px, 22vw, 340px);
+  /* ── 尺寸阶梯 ── */
+  --control-h: 26px;
+  --control-h-sm: 22px;
+  --row-h: 26px;
+  --prop-row-h: 22px;
+  --header-h: 42px;
+  --footer-h: 30px;
+  --toolbar-h: 32px;
+  --filter-h: 28px;
+  --modal-head-h: 38px;
+  /* 图标视觉尺寸：按钮边长保持不变（--icon-btn 24px），图标占满内框以显得更大更清楚 */
+  --icon-size: 18px;        /* 工具条 / 顶栏图标 */
+  --icon-size-sm: 16px;     /* 面板内紧凑图标 */
+  --icon-btn: 24px;         /* 纯图标按钮边长（图标 18px → 内边距 3px） */
+  --side-left-w: clamp(250px, 22vw, 320px);
   --side-right-w: clamp(320px, 27vw, 440px);
   --canvas-bg: var(--bg-viewport);
+  /* 极简预览组件（DxfPreview）画布底色：由组件按 theme 属性写入（白底/黑底），
+     此处只提供与默认主题一致的兜底值。 */
   --dxf-preview-bg: var(--bg-viewport);
 
-  /* ── 动效（M3 motion） ── */
-  --t-fast: 0.15s cubic-bezier(0.2, 0, 0, 1);
-  --t-med: 0.25s cubic-bezier(0.2, 0, 0, 1);
-  --easing-standard: cubic-bezier(0.2, 0, 0, 1);
+  /* ── 动效 ── */
+  --t-fast: 0.12s ease;
 }
 
 /*
- * 深色主题：M3 dark color roles。
+ * 深色主题：同体系低饱和工业配色。
+ *
+ * 优化要点（对比度与层次）：
+ * - 背景仍保持「app 最暗 → viewport/input → chrome → panel → band → hover」的清晰阶梯，
+ *   每层至少相差 6~10 个亮度级，避免整屏糊成一片；
+ * - 边框整体提亮（sub/main/strong 三级），面板与工具条边界一眼可辨；
+ * - 文字三级在 panel / band / app 上均 ≥ 5.3:1（见 ui-audit 的暗色对比度检查）；
+ * - 强调色提亮为浅蓝 #79b8ea（深底上 7.3:1），选中态 accent-soft 用实色而非半透明。
  */
 .theme-dark {
   color-scheme: dark;
 
-  --md-primary: #d0bcff;
-  --md-on-primary: #381e72;
-  --md-primary-container: #4f378b;
-  --md-on-primary-container: #eaddff;
-  --md-secondary: #ccc2dc;
-  --md-on-secondary: #332d41;
-  --md-secondary-container: #4a4458;
-  --md-on-secondary-container: #e8def8;
-  --md-tertiary: #efb8c8;
-  --md-tertiary-container: #633b48;
-  --md-on-tertiary-container: #ffd8e4;
-  --md-error: #f2b8b5;
-  --md-on-error: #601410;
-  --md-error-container: #8c1d18;
-  --md-on-error-container: #f9dedc;
-  --md-surface: #141218;
-  --md-on-surface: #e6e0e9;
-  --md-surface-variant: #49454f;
-  --md-on-surface-variant: #cac4d0;
-  --md-outline: #938f99;
-  --md-outline-variant: #49454f;
-  --md-surface-container-lowest: #0f0d13;
-  --md-surface-container-low: #1d1b20;
-  --md-surface-container: #211f26;
-  --md-surface-container-high: #2b2930;
-  --md-surface-container-highest: #36343b;
-  --md-inverse-surface: #e6e0e9;
-  --md-inverse-on-surface: #322f35;
+  --bg-app: #0f1216;
+  --bg-viewport: #12161b;
+  --bg-input: #151a20;
+  --bg-chrome: #1b2027;
+  --bg-panel: #1e242c;
+  --bg-band: #272e38;
+  --bg-hover: #333b46;
 
-  --bg-app: #121016;
-  --bg-viewport: #0f0d13;
-  --bg-input: #1d1b20;
-  --bg-chrome: #1d1b20;
-  --bg-panel: #211f26;
-  --bg-band: #211f26;
-  --bg-hover: #2b2930;
+  --border-sub: #2c333d;
+  --border-main: #3a434f;
+  --border-strong: #55606e;
+  --border-hover: #5f6b7a;
 
-  --border-sub: #2b2930;
-  --border-main: #49454f;
-  --border-strong: #938f99;
-  --border-hover: #6f6b76;
+  --text-main: #eef2f7;
+  --text-sec: #c8d1db;
+  --text-muted: #98a3af;
 
-  --text-main: #e6e0e9;
-  --text-sec: #cac4d0;
-  --text-muted: #9b95a1;
+  --accent: #79b8ea;
+  --accent-hover: #9ccbf2;
+  --accent-soft: #16324a;
+  --accent-line: #4a7ea8;
+  --on-accent: #0f1a24;
 
-  --accent: #d0bcff;
-  --accent-hover: #e0d2ff;
-  --accent-soft: #4f378b;
-  --accent-line: #7f67be;
-  --on-accent: #21005d;
+  --danger: #ef9a92;
+  --danger-soft: #3a2321;
+  --danger-line: #74453f;
+  --danger-bg: #2a1e1d;
 
-  --danger: #f2b8b5;
-  --danger-soft: #601410;
-  --danger-line: #8c1d18;
-  --danger-bg: #2a1614;
-
-  --success: #8ed8a8;
-  --success-soft: #12321f;
-  --success-line: #2f6b47;
+  --success: #86d3a6;
+  --success-soft: #1d3328;
+  --success-line: #3f6b52;
 
   --warn: #e5bc74;
   --warn-line: #6f5a36;
 
-  --bg-table-head: #2b2930;
-  --bg-table-alt: #25232a;
+  --bg-table-head: #2a313b;
+  --bg-table-alt: #232932;
   --tree-match-bg: #7a6a1f;
   --tree-match-fg: #fdfbe8;
 
-  --scroll-thumb: #49454f;
-  --scroll-thumb-hover: #938f99;
-  --scroll-track: #17151b;
+  --scroll-thumb: #4a5462;
+  --scroll-thumb-hover: #5f6a78;
+  --scroll-track: #1c222a;
 
-  --shadow-card: var(--elev-1);
-  --shadow-overlay: var(--elev-4);
-  --scrim: rgba(0, 0, 0, 0.55);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.55);
+  --shadow-overlay: 0 8px 28px rgba(0, 0, 0, 0.68);
+  --scrim: rgba(0, 0, 0, 0.62);
 }
 
 /* ─────────────────────────────────────────────────────────────
- * 历史变量别名（兼容层）：全部指向新令牌，旧样式自动跟随。
+ * 旧令牌别名（兼容层）。
+ *
+ * 仅用于让尚未迁移的历史引用继续生效；新代码禁止使用。
+ * 全部指向上面的标准令牌，因此深色主题自动跟随。
  * ───────────────────────────────────────────────────────────── */
 :root,
 .theme-dark {
@@ -281,8 +220,8 @@
   --brush-selection: var(--accent-soft);
   --brush-selection-hover: var(--accent-soft);
   --brush-focus: var(--accent);
-  --brush-tooltip-bg: var(--md-inverse-surface);
-  --brush-tooltip-fg: var(--md-inverse-on-surface);
+  --brush-tooltip-bg: #1f2429;
+  --brush-tooltip-fg: #ffffff;
   --brush-scroll-thumb: var(--scroll-thumb);
   --brush-scroll-thumb-hover: var(--scroll-thumb-hover);
 
@@ -314,8 +253,8 @@
   --shadow-menu: var(--shadow-overlay);
   --shadow-panel: var(--shadow-overlay);
 
-  --radius-small: var(--radius-sm);
-  --radius-medium: var(--radius);
+  --radius-small: var(--radius);
+  --radius-medium: var(--radius-lg);
   --radius-large: var(--radius-lg);
   --radius-full: var(--radius-pill);
 
@@ -325,11 +264,11 @@
   --header-height: var(--header-h);
   --toolbar-height: var(--toolbar-h);
   --icon-size-small: var(--icon-size-sm);
-  --icon-button-size: var(--icon-btn);
+  --icon-button-size: var(--control-h);
   --icon-button-gap: 4px;
-  --icon-button-radius: var(--radius-pill);
-  --layer-panel-width: 280px;
-  --properties-width: 360px;
+  --icon-button-radius: var(--radius);
+  --layer-panel-width: 260px;
+  --properties-width: 340px;
   --status-bar-height: var(--footer-h);
   --status-bar-bg: var(--bg-band);
   --status-bar-text: var(--text-muted);
@@ -340,25 +279,34 @@
 @keyframes cadSpin {
   to { transform: rotate(360deg); }
 }
+
 @keyframes cadToastIn {
-  from { transform: translateY(-8px); opacity: 0; }
+  from { transform: translateY(-6px); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
 }
+
 @keyframes cadFadeIn {
   from { opacity: 0; }
   to { opacity: 1; }
 }
+
 @keyframes cadSkeleton {
   from { transform: translateX(-100%); }
   to { transform: translateX(100%); }
 }
-@keyframes mdRippleIn {
-  from { transform: scale(0); opacity: var(--state-press-opacity); }
-  to { transform: scale(1); opacity: 0; }
-}
 
 @media (prefers-reduced-motion: reduce) {
-  .cad-spinner { animation-duration: 1.6s; }
-  .cad-toast, .modal-backdrop, .app-modal { animation: none; }
-  .skeleton::after { animation: none; }
+  .cad-spinner {
+    animation-duration: 1.6s;
+  }
+
+  .cad-toast,
+  .modal-backdrop,
+  .app-modal {
+    animation: none;
+  }
+
+  .skeleton::after {
+    animation: none;
+  }
 }
