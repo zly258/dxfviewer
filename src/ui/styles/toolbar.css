@@ -239,6 +239,27 @@
   padding: 0;
 }
 
+/* 图标 + 文字按钮（桌面端）：自适应宽度，图标 16px + 8px 间距 + 文字 */
+.toolbar-button-label {
+  width: auto;
+  min-width: 0;
+  padding: 0 10px;
+  gap: 6px;
+}
+
+.toolbar-button-label .toolbar-icon,
+.toolbar-button-label .toolbar-icon svg {
+  width: var(--icon-size-sm);
+  height: var(--icon-size-sm);
+}
+
+.toolbar-label {
+  font-size: var(--fs-small);
+  line-height: 1;
+  white-space: nowrap;
+  color: inherit;
+}
+
 .toolbar-button:hover:not(:disabled) {
   background-color: var(--bg-hover);
   border-color: transparent;

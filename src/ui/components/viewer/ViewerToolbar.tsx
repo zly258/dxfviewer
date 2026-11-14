@@ -33,6 +33,10 @@ interface ViewerToolbarProps {
   /** 三维视图开关。 */
   is3D: boolean;
   onToggle3D: () => void;
+  /** 是否在按钮上显示文字标签（桌面端 true，移动端 false）。 */
+  showLabels?: boolean;
+  /** 帮助 / 关于入口（桌面端工具条右侧）。 */
+  onShowAbout?: () => void;
 }
 export type ExportKind = 'png' | 'svg' | 'pdf' | 'pdfVector' | 'dxf' | 'pngView' | 'svgView';
 
@@ -71,6 +75,8 @@ const ViewerToolbar: React.FC<ViewerToolbarProps> = ({
   canExport = false,
   is3D,
   onToggle3D,
+  showLabels = true,
+  onShowAbout,
 }) => {
   const [activeMenu, setActiveMenu] = useState<MenuKey | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -111,6 +117,8 @@ const ViewerToolbar: React.FC<ViewerToolbarProps> = ({
     if (files.length > 0) onImport(files);
   };
 
+  /** 桌面端按钮显示「图标 + 文字」；移动端只用图标（由父级在移动端不渲染本组件保证）。 */
+  const showLabel = showLabels;
   const renderToolButton = (
     icon: ViewerIconName,
     label: string,
@@ -120,7 +128,7 @@ const ViewerToolbar: React.FC<ViewerToolbarProps> = ({
   ) => (
     <button
       type="button"
-      className={`toolbar-button toolbar-icon-button ${active ? 'active' : ''}`}
+      className={`toolbar-button ${showLabel ? 'toolbar-button-label' : 'toolbar-icon-button'} ${active ? 'active' : ''}`}
       onClick={onClick}
       title={label}
       aria-label={label}
@@ -128,6 +136,7 @@ const ViewerToolbar: React.FC<ViewerToolbarProps> = ({
       disabled={disabled}
     >
       <span className="toolbar-icon" aria-hidden="true"><ViewerIcon name={icon} /></span>
+      {showLabel && <span className="toolbar-label">{label}</span>}
     </button>
   );
 
@@ -150,23 +159,23 @@ const ViewerToolbar: React.FC<ViewerToolbarProps> = ({
       {renderToolButton('search', t(lang, 'searchText'), onToggleSearch, false, isSearchActive)}
       <button
         type="button"
-        className={`tb-btn tb-btn-sm ${is3D ? 'active' : ''}`}
+        className={`toolbar-button ${showLabel ? 'toolbar-button-label' : 'toolbar-icon-button'} ${is3D ? 'active' : ''}`}
         onClick={onToggle3D}
         title={is3D ? '切换为俯视（2D）' : '三维视图（倾斜/旋转观察）'}
         aria-label={is3D ? '切换为俯视（2D）' : '三维视图'}
         aria-pressed={is3D}
-        style={{ minWidth: 40 }}
       >
-        {is3D ? '3D' : '2D'}
+        <span className="toolbar-icon" aria-hidden="true"><ViewerIcon name="layout" /></span>
+        {showLabel && <span className="toolbar-label">{is3D ? '三维' : '二维'}</span>}
       </button>
 
       <span className="tb-sep" role="separator" />
 
-      {/* 视图菜单：纯图标按钮（无文字、无下拉箭头），tooltip 说明用途 */}
+      {/* 视图菜单 */}
       <div className={`toolbar-menu ${activeMenu === 'view' ? 'active' : ''}`}>
         <button
           type="button"
-          className="toolbar-button toolbar-icon-button"
+          className={`toolbar-button ${showLabel ? 'toolbar-button-label' : 'toolbar-icon-button'}`}
           onClick={(event) => toggleMenu(event, 'view')}
           title={tt.view}
           aria-label={tt.view}
@@ -174,6 +183,7 @@ const ViewerToolbar: React.FC<ViewerToolbarProps> = ({
           aria-expanded={activeMenu === 'view'}
         >
           <span className="toolbar-icon" aria-hidden="true"><ViewerIcon name="view" /></span>
+          {showLabel && <span className="toolbar-label">{tt.view}</span>}
         </button>
         {activeMenu === 'view' && (
           <div className="dropdown-menu" role="menu" onClick={(event) => event.stopPropagation()}>
@@ -228,7 +238,7 @@ const ViewerToolbar: React.FC<ViewerToolbarProps> = ({
         <div className={`toolbar-menu ${activeMenu === 'export' ? 'active' : ''}`}>
           <button
             type="button"
-            className="toolbar-button toolbar-icon-button"
+            className={`toolbar-button ${showLabel ? 'toolbar-button-label' : 'toolbar-icon-button'}`}
             onClick={(event) => toggleMenu(event, 'export')}
             title={t(lang, 'exportMenu')}
             aria-label={t(lang, 'exportMenu')}
@@ -237,6 +247,7 @@ const ViewerToolbar: React.FC<ViewerToolbarProps> = ({
             disabled={!canExport}
           >
             <span className="toolbar-icon" aria-hidden="true"><ViewerIcon name="export" /></span>
+            {showLabel && <span className="toolbar-label">{t(lang, 'exportMenu')}</span>}
           </button>
           {activeMenu === 'export' && (
             <div className="dropdown-menu" role="menu" onClick={(event) => event.stopPropagation()}>
@@ -260,6 +271,22 @@ const ViewerToolbar: React.FC<ViewerToolbarProps> = ({
             </div>
           )}
         </div>
+      )}
+
+      {onShowAbout && (
+        <>
+          <span className="tb-sep" role="separator" />
+          <button
+            type="button"
+            className={`toolbar-button ${showLabel ? 'toolbar-button-label' : 'toolbar-icon-button'}`}
+            onClick={onShowAbout}
+            title={t(lang, 'about')}
+            aria-label={t(lang, 'about')}
+          >
+            <span className="toolbar-icon" aria-hidden="true"><ViewerIcon name="about" /></span>
+            {showLabel && <span className="toolbar-label">{t(lang, 'about')}</span>}
+          </button>
+        </>
       )}
     </div>
   );

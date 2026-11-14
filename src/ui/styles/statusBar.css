@@ -63,3 +63,14 @@
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum" 1;
 }
+
+/* 状态栏（任务栏）中的文件名 */
+.status-filename {
+  max-width: 320px;
+  margin-right: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-sec);
+  font-weight: 600;
+}
