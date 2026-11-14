@@ -71,7 +71,10 @@ const BUILTIN_FONT_NAMES = new Set([
 const ITALIC_HINTS = ['italic', 'rombit', 'gmtk', 'gbeite', 'simplex-italic'];
 
 export interface StrokeFontResolution {
+  /** 西文 / 主字体。没有注册文件时是内置单线字。 */
   font: StrokeFont;
+  /** 大字体（hztxt 等）。没有注册文件时为空，汉字退回方格里的系统字体。 */
+  bigFont?: StrokeFont;
   /** 字体名暗示斜体时给定的默认斜切角（度）。 */
   obliqueAngle: number | undefined;
 }
@@ -92,17 +95,22 @@ export const resolveStrokeFont = (
   allowBuiltin = false,
 ): StrokeFontResolution | undefined => {
   const primary = normalizeFontName(fontFileName);
-  const bigFont = normalizeFontName(bigFontFileName);
-  if (!primary && !bigFont) return undefined;
+  const bigName = normalizeFontName(bigFontFileName);
+  if (!primary && !bigName) return undefined;
 
-  // 1. 用户注册的真实字体（主字体优先，其次 bigfont）。
-  const registered = (primary && registeredFonts.get(primary)) || (bigFont && registeredFonts.get(bigFont));
-  if (registered) return { font: registered, obliqueAngle: undefined };
+  const primaryFont = primary ? registeredFonts.get(primary) : undefined;
+  const bigFont = bigName ? registeredFonts.get(bigName) : undefined;
+  // 1. fonts 目录里注册过的真实 SHX。主字体和大字体可以同时存在。
+  if (primaryFont || bigFont) {
+    const western = primaryFont && !primaryFont.isBigFont ? primaryFont : getBuiltinStrokeFont();
+    const cjk = bigFont?.isBigFont ? bigFont : (primaryFont?.isBigFont ? primaryFont : undefined);
+    return { font: western, bigFont: cjk, obliqueAngle: undefined };
+  }
   if (!allowBuiltin) return undefined;
 
   // 2. 内置单线字体（含 CJK 大字体名映射：工程图 hztxt 等的 ASCII 部分与
   //    simplex 同风格，CJK 字符仍回退图集，因此整样式按内置字体处理）。
-  const candidate = primary || bigFont;
+  const candidate = primary || bigName;
   if (!candidate) return undefined;
   const stem = candidate.replace(/\d+$/, '');
   if (BUILTIN_FONT_NAMES.has(candidate) || BUILTIN_FONT_NAMES.has(stem)) {

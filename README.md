@@ -266,6 +266,8 @@ Common props: `initFile`, `fileName`, `active`, `showOpenMenu`, `uiTheme`, `draw
 
 Only one viewer is mounted. Opening another file replaces the current drawing. Close asks for confirmation so a mis-click does not wipe the view.
 
+Drop SHX fonts into `dxfviewer-example/public/fonts/` (`hztxt.shx`, `tssdeng.shx`, …). A file whose name matches the drawing style is used as real stroke text. If it is missing, Latin falls back to a built-in simplex and Chinese characters are drawn with a system font inside the same square cell. `.shx` files are not committed.
+
 ```tsx
 import { DxfWorkspace } from '@zhangly1403/dxfviewer';
 import '@zhangly1403/dxfviewer/style.css';

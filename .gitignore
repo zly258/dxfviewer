@@ -21,6 +21,8 @@ artifacts
 
 # DXF 文件一律不入库（用户要求）：夹具由 scripts/fixtures.mjs 运行时生成
 *.dxf
+# AutoCAD 形字体由使用者放进 public/fonts，不入库
+*.shx
 !**/*.dxf.ignore
 samples/dxf-output
 

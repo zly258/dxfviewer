@@ -253,6 +253,8 @@ export default function Page() {
 
 一次只挂一套查看器。再打开文件会替换当前图纸；点关闭会先确认，避免误触清掉画面。
 
+形字体放到 `dxfviewer-example/public/fonts/`（例如 `hztxt.shx`、`tssdeng.shx`）。文件名和图纸样式一致就会用真实单线字；没有文件时，西文用内置单线字，汉字用系统字体放进同样大小的方格。这些 `.shx` 不入库。
+
 ```tsx
 import { DxfWorkspace } from '@zhangly1403/dxfviewer';
 import '@zhangly1403/dxfviewer/style.css';

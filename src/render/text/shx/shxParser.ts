@@ -1,78 +1,106 @@
 /**
- * SHX 形字体（编译后的 AutoCAD shape 文件）二进制解析器。
+ * SHX 形字体解析。
  *
- * 输出统一的「描边字形」表示：每个字形 = 若干条折线（字形坐标空间，
- * 基线 y=0，向上为正），供 strokeTextShaper 缩放排布后写入线段网格。
+ * 支持：
+ * - AutoCAD-86 shapes 1.0 / 1.1
+ * - AutoCAD-86 unifont 1.0（tssdeng.shx 这一类）
+ * - AutoCAD-86 bigfont 1.0（hztxt.shx 这一类）
  *
- * 支持 AutoCAD shape 指令的常用子集：
- * - 八分向量 (0x00-0x0E)、十六方向向量、
- * - 008/009 x-y 位移、003/004 缩放、005/006 位置栈、007 子形引用、
- * - 001/002 落笔/抬笔、00A/00B/00C/00D 圆弧（含分数八分弧）。
- *
- * 文件布局：'AutoCAD-86 shapes 1.1\r\n\x1a\x00' 头 + 记录序列
- * [code:u8][len:u8][definition:len-2]。code 0 的首记录为字体元数据。
+ * 字形坐标：基线 y = 0，Y 向上。advance 是字形坐标里的步进。
  */
-
 export interface StrokeGlyph {
-  /** 字形宽度（相对大写字高的比例；基线 y=0，Y 向上） */
   advance: number;
-  /** 折线段（扁平坐标数组 [x0,y0,x1,y1,...]），Y 向上，基线 0 */
   strokes: number[][];
 }
 
 export interface StrokeFontData {
-  /** 字形表：键 = 字符代码（ASCII）或 bigfont 代码 */
   glyphs: Map<number, StrokeGlyph>;
-  /** 大写字高（字形坐标单位，通常 = 21） */
   capHeight: number;
-  /** 下延深度（正数，向下） */
   descender: number;
   isBigFont: boolean;
 }
 
-const HEADER_SHAPES = 'AutoCAD-86 shapes 1.1';
-const HEADER_BIGFONT = 'AutoCAD-86 bigfont 1.1';
-
-interface Reader {
-  data: Uint8Array;
-  pos: number;
-}
-
-const readU8 = (r: Reader): number => r.data[r.pos++] ?? 0;
-const readI8 = (r: Reader): number => {
-  const v = readU8(r);
-  return v >= 128 ? v - 256 : v;
-};
-
-/** 八分方向表：16 个半八分方向（22.5° 步进），单位向量。 */
 const DIRECTIONS: Array<[number, number]> = (() => {
   const table: Array<[number, number]> = [];
   for (let i = 0; i < 16; i++) {
     const angle = (i * Math.PI) / 8;
-    // 八分向量长度以「直段」为单位：斜方向的位移需按 1/cos(22.5°) 校正。
     const len = (i % 2 === 1) ? 1 / Math.cos(Math.PI / 8) : 1;
     table.push([Math.cos(angle) * len, Math.sin(angle) * len]);
   }
   return table;
 })();
 
-/** 解析单条 shape 记录的定义字节 → 折线集合（字形坐标，基线 0，Y 向上）。 */
-const decodeShapeDefinition = (bytes: Uint8Array): { strokes: number[][]; xExtent: number } => {
+const signed = (v: number): number => (v >= 128 ? v - 256 : v);
+
+/** 跳过一条形指令（垂直文字标志 14 用）。 */
+const skipCommand = (bytes: Uint8Array, i: number): number => {
+  if (i >= bytes.length) return i;
+  const code = bytes[i++];
+  if (code === 0 || code === 1 || code === 2 || code === 5 || code === 6 || code === 14) return i;
+  if (code === 3 || code === 4) return i + 1;
+  if (code === 7) return bytes[i] === 0 ? i + 3 : i + 1;
+  if (code === 8 || code === 10) return i + 2;
+  if (code === 9) {
+    while (i + 1 < bytes.length) {
+      const dx = bytes[i++];
+      const dy = bytes[i++];
+      if (dx === 0 && dy === 0) break;
+    }
+    return i;
+  }
+  if (code === 11) return i + 5;
+  if (code === 12) return i + 3;
+  if (code === 13) {
+    while (i + 2 < bytes.length) {
+      const dx = bytes[i++];
+      const dy = bytes[i++];
+      i++;
+      if (dx === 0 && dy === 0) break;
+    }
+    return i;
+  }
+  return i;
+};
+
+const arcPoints = (
+  cx: number, cy: number, radius: number, start: number, end: number,
+): number[] => {
+  const points: number[] = [];
+  let sweep = end - start;
+  while (sweep <= -Math.PI * 2) sweep += Math.PI * 2;
+  while (sweep >= Math.PI * 2) sweep -= Math.PI * 2;
+  const steps = Math.max(2, Math.ceil(Math.abs(sweep) / (Math.PI / 10)));
+  for (let s = 1; s <= steps; s++) {
+    const a = start + sweep * (s / steps);
+    points.push(cx + Math.cos(a) * radius, cy + Math.sin(a) * radius);
+  }
+  return points;
+};
+
+/** 解析形定义字节。笔落下开始。 */
+export const decodeShapeDefinition = (bytes: Uint8Array): { strokes: number[][]; xExtent: number } => {
   const strokes: number[][] = [];
   let cur: number[] | null = null;
   let x = 0;
   let y = 0;
   let penDown = true;
-  let lengthScale = 1;
+  let scale = 1;
   let maxX = 0;
   const stack: Array<[number, number]> = [];
 
-  const lineTo = (nx: number, ny: number) => {
-    x = nx; y = ny;
-    maxX = Math.max(maxX, Math.abs(x));
+  const move = (nx: number, ny: number) => {
+    const px = x;
+    const py = y;
+    x = nx;
+    y = ny;
+    maxX = Math.max(maxX, x);
     if (penDown) {
-      if (!cur) { cur = [x, y]; strokes.push(cur); }
-      else cur.push(x, y);
+      if (!cur) {
+        cur = [px, py, x, y];
+        strokes.push(cur);
+      } else {
+        cur.push(x, y);
+      }
     } else {
       cur = null;
     }
@@ -81,251 +109,250 @@ const decodeShapeDefinition = (bytes: Uint8Array): { strokes: number[][]; xExten
   let i = 0;
   while (i < bytes.length) {
     const code = bytes[i++];
-    if (code === 0) break; // 形定义结束
-
-    if (code <= 0x0E) {
-      // 八分向量：高 4 位长度，低 4 位方向（0-15，22.5° 步进）。
-      const len = (code >> 4) & 0xF;
-      const dir = code & 0xF;
-      if (len === 0) continue;
-      const vec = DIRECTIONS[dir];
-      lineTo(x + vec[0] * len * lengthScale, y + vec[1] * len * lengthScale);
+    if (code === 0) break;
+    if (code === 1) { penDown = true; cur = null; continue; }
+    if (code === 2) { penDown = false; cur = null; continue; }
+    if (code === 3) { const d = bytes[i++] || 1; scale /= d; continue; }
+    if (code === 4) { scale *= bytes[i++] || 1; continue; }
+    if (code === 5) { stack.push([x, y]); continue; }
+    if (code === 6) {
+      const top = stack.pop();
+      if (top) { x = top[0]; y = top[1]; maxX = Math.max(maxX, x); }
+      cur = null;
       continue;
     }
-
-    if (code >= 0x20 && code <= 0x3F) {
-      // 32-63：多方向向量：(code-32)>>2 = 方向八分位 0-7，(code-32)&3 + 1 = 长度 1-4。
-      const idx = code - 0x20;
-      const oct = (idx >> 2) & 0x7;
-      const len = (idx & 0x3) + 1;
-      const angle = oct * Math.PI / 4;
-      lineTo(x + Math.cos(angle) * len * lengthScale, y + Math.sin(angle) * len * lengthScale);
+    if (code === 7) {
+      if (bytes[i] === 0) i += 3;
+      else i += 1;
       continue;
     }
-
-    if (code === 0x0A || code === 0x0C || code === 0x0B || code === 0x0D) {
-      // 八分弧 / 分数弧。
-      const arc = decodeArc(code, bytes, i, x, y);
-      if (arc) {
-        i += arc.consumed;
-        x = arc.endX;
-        y = arc.endY;
-        maxX = Math.max(maxX, Math.abs(x), ...arc.points.filter((_, idx) => idx % 2 === 0));
-        if (arc.points.length >= 4) {
-          if (penDown) {
-            if (cur) cur.push(...arc.points.slice(2));
-            else { cur = arc.points; strokes.push(arc.points); }
-          } else {
-            cur = null;
-          }
+    if (code === 8) {
+      const dx = signed(bytes[i++]);
+      const dy = signed(bytes[i++]);
+      move(x + dx * scale, y + dy * scale);
+      continue;
+    }
+    if (code === 9) {
+      while (i + 1 < bytes.length) {
+        const dxb = bytes[i];
+        const dyb = bytes[i + 1];
+        const dx = signed(bytes[i++]);
+        const dy = signed(bytes[i++]);
+        if (dxb === 0 && dyb === 0) break;
+        move(x + dx * scale, y + dy * scale);
+      }
+      continue;
+    }
+    if (code === 10 || code === 11) {
+      let startOct = 0;
+      let span = 8;
+      let ccw = true;
+      let radius = 0;
+      let startBias = 0;
+      let endBias = 0;
+      if (code === 10) {
+        radius = (bytes[i++] || 0) * scale;
+        const flag = signed(bytes[i++]);
+        const abs = Math.abs(flag);
+        span = abs & 7;
+        if (span === 0) span = 8;
+        startOct = (abs >> 4) & 7;
+        ccw = flag >= 0;
+      } else {
+        const so = bytes[i++] || 0;
+        const eo = bytes[i++] || 0;
+        const hi = bytes[i++] || 0;
+        const lo = bytes[i++] || 0;
+        radius = (hi * 256 + lo) * scale;
+        const flag = signed(bytes[i++]);
+        const abs = Math.abs(flag);
+        span = abs & 7;
+        if (span === 0) span = 8;
+        startOct = (abs >> 4) & 7;
+        ccw = flag >= 0;
+        startBias = so / 256;
+        endBias = eo / 256;
+      }
+      const start = (startOct + startBias) * Math.PI / 4;
+      const sweepOct = ccw ? span : -span;
+      const end = (startOct + sweepOct + (ccw ? endBias : -endBias)) * Math.PI / 4;
+      const cx = x - Math.cos(start) * radius;
+      const cy = y - Math.sin(start) * radius;
+      const pts = arcPoints(cx, cy, radius, start, end);
+      for (let k = 0; k < pts.length; k += 2) move(pts[k], pts[k + 1]);
+      continue;
+    }
+    if (code === 12 || code === 13) {
+      const once = code === 12;
+      while (i + 2 < bytes.length) {
+        const dxb = bytes[i];
+        const dyb = bytes[i + 1];
+        const dx = signed(bytes[i++]) * scale;
+        const dy = signed(bytes[i++]) * scale;
+        const bulge = signed(bytes[i++]);
+        if (!once && dxb === 0 && dyb === 0) break;
+        const ex = x + dx;
+        const ey = y + dy;
+        if (bulge === 0 || dx === 0 && dy === 0) {
+          move(ex, ey);
+        } else {
+          const theta = 4 * Math.atan(bulge / 127);
+          const dist = Math.hypot(dx, dy);
+          const radius = dist / (2 * Math.sin(theta / 2) || 1);
+          const mx = (x + ex) / 2;
+          const my = (y + ey) / 2;
+          const h = Math.sqrt(Math.max(0, radius * radius - (dist / 2) * (dist / 2)));
+          const ux = -dy / (dist || 1);
+          const uy = dx / (dist || 1);
+          const sign = theta > 0 ? 1 : -1;
+          const cx = mx + ux * h * sign;
+          const cy = my + uy * h * sign;
+          const a0 = Math.atan2(y - cy, x - cx);
+          const a1 = Math.atan2(ey - cy, ex - cx);
+          const pts = arcPoints(cx, cy, Math.abs(radius), a0, a1);
+          for (let k = 0; k < pts.length; k += 2) move(pts[k], pts[k + 1]);
         }
+        if (once) break;
       }
       continue;
     }
-
-    switch (code) {
-      case 0x0F: { // 16 位长度向量：15, lenHi, lenLo, dir
-        const len = ((bytes[i] << 8) | bytes[i + 1]) * lengthScale;
-        const dir = bytes[i + 2] & 0xF;
-        i += 3;
-        const vec = DIRECTIONS[dir];
-        lineTo(x + vec[0] * len, y + vec[1] * len);
-        break;
-      }
-      case 0x10: { // 缩放后续向量长度：10, scale
-        lengthScale = (bytes[i++] || 1) / 255;
-        break;
-      }
-      case 0x11: { // 恢复默认长度
-        lengthScale = 1;
-        break;
-      }
-      case 0x13: { // 子形引用（16 位）：13, codeLo, codeHi —— v1 忽略组合形
-        i += 2;
-        break;
-      }
-      case 0x14: { // 位置栈：压栈
-        stack.push([x, y]);
-        break;
-      }
-      case 0x15: { // 位置栈：弹栈
-        const top = stack.pop();
-        if (top) { x = top[0]; y = top[1]; cur = null; }
-        break;
-      }
-      case 0x16: { // 除法缩放：16, divisor
-        const d = bytes[i++];
-        if (d > 0) lengthScale /= d;
-        break;
-      }
-      case 0x17: { // 乘法缩放：17, factor
-        lengthScale *= bytes[i++];
-        break;
-      }
-      case 0x18: { // 位移向量：18, dx(带符号), dy(带符号)
-        const dx = bytes[i++] << 24 >> 24;
-        const dy = bytes[i++] << 24 >> 24;
-        lineTo(x + dx * lengthScale, y + dy * lengthScale);
-        break;
-      }
-      case 0x19: { // 弹栈（同 0x15）
-        const top = stack.pop();
-        if (top) { x = top[0]; y = top[1]; cur = null; }
-        break;
-      }
-      case 0x1A: case 0x12: { // 组合形控制标记——忽略
-        break;
-      }
-      case 0x1B: { // bulge 弧：1B, radius, bulge —— 近似为位移处理
-        i += 2;
-        break;
-      }
-      case 0x1C: case 0x1D: case 0x1E: case 0x1F: { // 扩展位移对
-        i += 2;
-        break;
-      }
-      default:
-        // 未知指令：单字节跳过，尽力保持同步。
-        break;
+    if (code === 14) {
+      i = skipCommand(bytes, i);
+      continue;
+    }
+    if ((code & 0xF0) !== 0) {
+      const len = (code >> 4) * scale;
+      const dir = code & 0x0F;
+      const vec = DIRECTIONS[dir];
+      move(x + vec[0] * len, y + vec[1] * len);
     }
   }
 
-  return { strokes: strokes.filter(s => s.length >= 4), xExtent: maxX };
+  return {
+    strokes: strokes.filter(s => s.length >= 4),
+    xExtent: Math.max(maxX, 0),
+  };
 };
 
-/** 八分弧：从当前点出发、圆心在当前点八分角向内的圆弧。 */
-const arcStroke = (
-  cx: number,
-  cy: number,
-  radius: number,
-  startAngle: number,
-  endAngle: number,
-): number[] => {
-  const points: number[] = [];
-  let sweep = endAngle - startAngle;
-  while (sweep <= -Math.PI * 2) sweep += Math.PI * 2;
-  while (sweep >= Math.PI * 2) sweep -= Math.PI * 2;
-  const segCount = Math.max(2, Math.ceil(Math.abs(sweep) / (Math.PI / 12)));
-  for (let s = 0; s <= segCount; s++) {
-    const t = s / segCount;
-    const a = startAngle + sweep * t;
-    points.push(cx + Math.cos(a) * radius, cy + Math.sin(a) * radius);
+const glyphFromDefinition = (def: Uint8Array, advance: number): StrokeGlyph | null => {
+  let body = def;
+  if (body.length && body[0] === 0) body = body.subarray(1);
+  else {
+    const z = body.indexOf(0);
+    if (z >= 0 && z < 32) body = body.subarray(z + 1);
   }
-  return points;
+  if (body.length >= 4 && body[0] === 0x30 && body[1] === 0x00 && body[2] === 0x07) {
+    body = body.subarray(4);
+  }
+  const decoded = decodeShapeDefinition(body);
+  if (!decoded.strokes.length) return null;
+  return {
+    advance: advance > 0 ? advance : Math.max(decoded.xExtent, 1),
+    strokes: decoded.strokes,
+  };
 };
 
-/** 解析 00A/00C 八分弧与 00B 分数弧指令，返回弧线点列（字形坐标）。 */
-const decodeArc = (
-  code: number,
-  bytes: Uint8Array,
-  offset: number,
-  x: number,
-  y: number,
-): { points: number[]; consumed: number; endX: number; endY: number } | null => {
-  if (code === 0x0A || code === 0x0C) {
-    // 00A/00C: radius, octantByte（低 3 位 = 跨越八分数，符号位 = 逆时针）。
-    const radius = bytes[offset] ?? 0;
-    const octantByte = readI8({ data: bytes, pos: offset + 1 });
-    const count = Math.abs(octantByte) & 0x7;
-    const ccw = octantByte >= 0;
-    // 起始八分角：当前点所在的八分边界。
-    const startOctant = Math.round(Math.atan2(y, x) / (Math.PI / 4));
-    const startAngle = startOctant * (Math.PI / 4);
-    // 圆心：从起点沿半径方向指向弧心（起点在圆上，圆心在八分角反向延长线上）。
-    const cx = x - Math.cos(startAngle) * radius;
-    const cy = y - Math.sin(startAngle) * radius;
-    const sweep = (ccw ? 1 : -1) * count * (Math.PI / 4);
-    const points = arcStroke(cx, cy, radius, startAngle, startAngle + sweep);
-    const endAngle = startAngle + sweep;
-    return {
-      points,
-      consumed: 2,
-      endX: cx + Math.cos(endAngle) * radius,
-      endY: cy + Math.sin(endAngle) * radius,
-    };
-  }
-  if (code === 0x0B || code === 0x0D) {
-    // 00B/00D 分数弧：startInt, startFrac, endInt, endFrac, radius, octantByte
-    const startOff = ((bytes[offset] ?? 0) + (bytes[offset + 1] ?? 0) / 256) * (Math.PI / 4);
-    const endOff = ((bytes[offset + 2] ?? 0) + (bytes[offset + 3] ?? 0) / 256) * (Math.PI / 4);
-    const radius = bytes[offset + 4] ?? 0;
-    const octantByte = readI8({ data: bytes, pos: offset + 5 });
-    const startOctant = octantByte & 0x7;
-    const ccw = octantByte >= 0;
-    const startAngle = startOctant * (Math.PI / 4) + startOff;
-    const sweep = (ccw ? 1 : -1) * endOff;
-    const cx = x - Math.cos(startAngle) * radius;
-    const cy = y - Math.sin(startAngle) * radius;
-    const points = arcStroke(cx, cy, radius, startAngle, startAngle + sweep);
-    const endAngle = startAngle + sweep;
-    return {
-      points,
-      consumed: 6,
-      endX: cx + Math.cos(endAngle) * radius,
-      endY: cy + Math.sin(endAngle) * radius,
-    };
-  }
-  return null;
+const readHeaderEnd = (bytes: Uint8Array): number => {
+  const mark = bytes.indexOf(0x1a);
+  return mark < 0 ? 25 : mark + 1;
 };
 
-/** 解析 SHX 字体文件（ArrayBuffer）→ 描边字体数据。 */
+const parseShapesOrUnifont = (bytes: Uint8Array, isUnifont: boolean): StrokeFontData => {
+  let pos = readHeaderEnd(bytes);
+  let capHeight = isUnifont ? 26 : 21;
+  let descender = isUnifont ? 7 : 5;
+  const glyphs = new Map<number, StrokeGlyph>();
+
+  if (isUnifont) {
+    // uint32 字形数，uint16 信息长度，信息块末尾是 above/below。
+    if (pos + 6 <= bytes.length) {
+      pos += 4;
+      const infoLen = bytes[pos] | (bytes[pos + 1] << 8);
+      pos += 2;
+      const info = bytes.subarray(pos, pos + infoLen);
+      pos += infoLen;
+      const nul = info.indexOf(0);
+      if (nul >= 0 && nul + 2 < info.length) {
+        capHeight = info[nul + 1] || capHeight;
+        descender = info[nul + 2] || descender;
+      }
+    }
+    while (pos + 4 <= bytes.length) {
+      const code = bytes[pos] | (bytes[pos + 1] << 8);
+      const len = bytes[pos + 2] | (bytes[pos + 3] << 8);
+      pos += 4;
+      if (len <= 0 || pos + len > bytes.length) break;
+      const def = bytes.subarray(pos, pos + len);
+      pos += len;
+      const decoded = glyphFromDefinition(def, 0);
+      if (decoded) {
+        decoded.advance = Math.max(decoded.advance, 1);
+        glyphs.set(code, decoded);
+      }
+    }
+    return { glyphs, capHeight, descender, isBigFont: false };
+  }
+
+  // shapes 1.0 / 1.1：记录是 [code:u8][len:u8][bytes]
+  while (pos + 2 <= bytes.length) {
+    const code = bytes[pos++];
+    const len = bytes[pos++];
+    if (len < 2 || pos + len - 2 > bytes.length) break;
+    const def = bytes.subarray(pos, pos + len - 2);
+    pos += len - 2;
+    if (code === 0) {
+      if (def.length >= 3) {
+        capHeight = def[1] || capHeight;
+        descender = Math.abs(def[2] || descender);
+      }
+      continue;
+    }
+    const decoded = glyphFromDefinition(def, 0);
+    if (decoded) glyphs.set(code, decoded);
+  }
+  return { glyphs, capHeight, descender, isBigFont: false };
+};
+
+const parseBigFont = (bytes: Uint8Array): StrokeFontData => {
+  let pos = readHeaderEnd(bytes);
+  // 有的文件在字符数前多一个 uint16。
+  const maybeCount = bytes[pos + 2] | (bytes[pos + 3] << 8);
+  const maybeRanges = bytes[pos + 4] | (bytes[pos + 5] << 8);
+  if (maybeCount > 50 && maybeRanges > 0 && maybeRanges < 16) pos += 2;
+  const nChars = bytes[pos] | (bytes[pos + 1] << 8);
+  const nRanges = bytes[pos + 2] | (bytes[pos + 3] << 8);
+  pos += 4 + nRanges * 4;
+
+  let capHeight = 127;
+  let descender = 0;
+  const glyphs = new Map<number, StrokeGlyph>();
+  for (let i = 0; i < nChars && pos + 8 <= bytes.length; i++) {
+    const code = bytes[pos] | (bytes[pos + 1] << 8);
+    const len = bytes[pos + 2] | (bytes[pos + 3] << 8);
+    const off = (bytes[pos + 4] | (bytes[pos + 5] << 8) | (bytes[pos + 6] << 16) | (bytes[pos + 7] << 24)) >>> 0;
+    pos += 8;
+    if (len < 2 || off <= 0 || off + len > bytes.length) continue;
+    const def = bytes.subarray(off, off + len);
+    if (code === 0) {
+      const nul = def.indexOf(0);
+      if (nul >= 0 && nul + 1 < def.length) capHeight = def[nul + 1] || capHeight;
+      if (nul >= 0 && nul + 2 < def.length) descender = def[nul + 2] || 0;
+      continue;
+    }
+    const decoded = glyphFromDefinition(def, capHeight);
+    if (decoded) glyphs.set(code, decoded);
+  }
+  // 方格步进用字体的 above，而不是某一笔的外接宽度。
+  for (const glyph of glyphs.values()) glyph.advance = capHeight;
+  return { glyphs, capHeight, descender, isBigFont: true };
+};
+
+/** 解析 SHX（ArrayBuffer）→ 描边字体。 */
 export const parseShxFont = (buffer: ArrayBuffer): StrokeFontData => {
   const bytes = new Uint8Array(buffer);
-  const headerText = new TextDecoder('ascii').decode(bytes.subarray(0, 24));
-  const isBigFont = headerText.includes('bigfont');
-  if (!headerText.includes(HEADER_SHAPES) && !headerText.includes(HEADER_BIGFONT)) {
-    throw new Error('不是有效的 SHX 字体文件（缺少 AutoCAD-86 头）');
-  }
-
-  // 跳过头（\x1a 之后 1 字节类型标记 0x00）。
-  let pos = headerText.indexOf('\x1a');
-  if (pos < 0) pos = 23;
-  pos += 2; // \x1a + 类型字节
-
-  const glyphs = new Map<number, StrokeGlyph>();
-  let capHeight = 21;
-  let descender = 5;
-
-  if (isBigFont) {
-    // bigfont 扩展头：子码页记录数（2 字节）+ 每记录 4 字节，跳过。
-    const records = bytes[pos] | (bytes[pos + 1] << 8);
-    pos += 2 + records * 4;
-  }
-
-  const reader: Reader = { data: bytes, pos };
-  while (reader.pos + 2 <= bytes.length) {
-    const rawCode = readU8(reader);
-    const recordLen = readU8(reader);
-    if (recordLen < 2 || reader.pos + recordLen - 2 > bytes.length) break;
-    const defBytes = bytes.subarray(reader.pos, reader.pos + recordLen - 2);
-    reader.pos += recordLen - 2;
-
-    let code = rawCode & 0x7F;
-    if (rawCode & 0x80) {
-      // 扩展记录（bigfont 纵排等）：首字节为真实代码 + 纵排标志。
-      code = defBytes[0] & 0x7F;
-      // 纵排/其他标志：忽略，按水平字形解码。
-      const decoded = decodeShapeDefinition(defBytes.subarray(1));
-      if (decoded.strokes.length) {
-        glyphs.set(code, { advance: Math.max(decoded.xExtent, 6), strokes: decoded.strokes });
-      }
-      continue;
-    }
-
-    if (code === 0) {
-      // 字体元数据：type, above, below, mode, width(2字节), ...
-      if (defBytes.length >= 3) {
-        capHeight = defBytes[1] || 21;
-        descender = Math.abs(defBytes[2] || 5);
-      }
-      continue;
-    }
-
-    const decoded = decodeShapeDefinition(defBytes);
-    if (decoded.strokes.length) {
-      glyphs.set(code, { advance: Math.max(decoded.xExtent + 1, 4), strokes: decoded.strokes });
-    }
-  }
-
-  return { glyphs, capHeight, descender, isBigFont };
+  const header = new TextDecoder('ascii').decode(bytes.subarray(0, 32)).toLowerCase();
+  if (header.includes('bigfont')) return parseBigFont(bytes);
+  if (header.includes('unifont')) return parseShapesOrUnifont(bytes, true);
+  if (header.includes('shapes')) return parseShapesOrUnifont(bytes, false);
+  throw new Error('不是有效的 SHX 字体文件');
 };

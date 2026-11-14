@@ -75,7 +75,9 @@ export const drawShxText = (
 
   lines.forEach((line, index) => {
     if (!line) return;
-    const shaping = shapeStrokeText(line, font, { height: screenTextHeight, widthFactor, oblique });
+    const shaping = shapeStrokeText(line, font, {
+      height: screenTextHeight, widthFactor, oblique, bigFont: resolved?.bigFont,
+    });
     let align = 0;
     if (isMText) {
       if (attachment % 3 === 2) align = -shaping.advance / 2;

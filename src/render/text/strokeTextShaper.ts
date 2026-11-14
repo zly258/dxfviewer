@@ -13,11 +13,14 @@
  */
 
 import type { StrokeFont } from './shx/strokeFontRegistry';
+import { unicodeToGbk } from './shx/gbkCjk';
 
 export interface StrokeShaperOptions {
   height: number;
   widthFactor: number;
   oblique: number;
+  /** 大字体。有字形时汉字走真实单线，没有则仍用方格占位。 */
+  bigFont?: StrokeFont | null;
 }
 
 export type ShapedItem =
@@ -44,17 +47,37 @@ export const shapeStrokeText = (
   font: StrokeFont,
   options: StrokeShaperOptions,
 ): StrokeShapingResult => {
-  const { height, widthFactor, oblique } = options;
+  const { height, widthFactor, oblique, bigFont } = options;
   const shear = Math.tan((oblique * Math.PI) / 180);
   const scaleX = widthFactor;
   const capScale = height / (font.capHeight || 1);
+  const bigScale = height / (bigFont?.capHeight || font.capHeight || 1);
 
   const items: ShapedItem[] = [];
   let x = 0;
   let hasCjk = false;
-
   let pendingStrokes: number[][] | null = null;
   let pendingStart = 0;
+
+  const pushGlyph = (
+    glyph: { advance: number; strokes: number[][] },
+    glyphScale: number,
+  ) => {
+    if (!pendingStrokes) {
+      pendingStrokes = [];
+      pendingStart = x;
+    }
+    for (const stroke of glyph.strokes) {
+      const pts: number[] = [];
+      for (let k = 0; k < stroke.length; k += 2) {
+        const gx = stroke[k] * glyphScale;
+        const gy = stroke[k + 1] * glyphScale;
+        pts.push(x + gx * scaleX + gy * shear, gy);
+      }
+      pendingStrokes.push(pts);
+    }
+    x += glyph.advance * glyphScale * scaleX;
+  };
 
   const flushPending = () => {
     if (pendingStrokes && pendingStrokes.length) {
@@ -70,9 +93,30 @@ export const shapeStrokeText = (
       continue;
     }
 
+    const codePoint = ch.codePointAt(0) ?? 0;
+    const primary = font.glyphs.get(codePoint);
+    if (primary && !font.isBigFont && !isCjkChar(ch)) {
+      pushGlyph(primary, capScale);
+      continue;
+    }
+
+    const gbk = unicodeToGbk(codePoint);
+    const bigGlyph = bigFont && gbk != null ? bigFont.glyphs.get(gbk) : undefined;
+    if (bigGlyph && bigFont) {
+      pushGlyph(bigGlyph, bigScale);
+      hasCjk = true;
+      continue;
+    }
+
+    if (primary) {
+      pushGlyph(primary, font.isBigFont ? bigScale : capScale);
+      if (isCjkChar(ch)) hasCjk = true;
+      continue;
+    }
+
     if (isCjkChar(ch)) {
       flushPending();
-      // 大字体汉字占一个方格：边长 = 字高，宽度再乘宽度因子（只压 X）。
+      // 没有大字体文件时：汉字仍占一个方格，高度 = 字高，宽度再乘宽度因子。
       const w = estimateCjkAdvance(height) * Math.abs(scaleX);
       items.push({ kind: 'cjk', char: ch, x, advance: w, height });
       x += w;
@@ -80,29 +124,8 @@ export const shapeStrokeText = (
       continue;
     }
 
-    const glyph = font.glyphs.get(ch.charCodeAt(0));
-    if (!glyph) {
-      // 缺字形：按空格处理，避免错位。
-      flushPending();
-      x += 0.55 * scaleX * height;
-      continue;
-    }
-
-    if (!pendingStrokes) {
-      pendingStrokes = [];
-      pendingStart = x;
-    }
-    for (const stroke of glyph.strokes) {
-      const pts: number[] = [];
-      for (let k = 0; k < stroke.length; k += 2) {
-        const gx = stroke[k] * capScale;
-        const gy = stroke[k + 1] * capScale;
-        // X = 字形 x × 宽度系数 + 斜切；Y 直接缩放。
-        pts.push(x + gx * scaleX + gy * shear, gy);
-      }
-      pendingStrokes.push(pts);
-    }
-    x += glyph.advance * capScale * scaleX;
+    flushPending();
+    x += 0.55 * scaleX * height;
   }
   flushPending();
 

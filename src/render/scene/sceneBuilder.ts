@@ -1289,7 +1289,7 @@ class SceneBaker {
       if (resolution) {
         // ── SHX 描边路径（含 CJK 混排） ──
         const shaping = shapeStrokeText(lineText, resolution.font, {
-          height: effectiveHeight, widthFactor, oblique,
+          height: effectiveHeight, widthFactor, oblique, bigFont: resolution.bigFont,
         });
         if (shaping.advance <= 0 && !shaping.hasCjk) return;
         const bounds = strokeShapingBounds(shaping);

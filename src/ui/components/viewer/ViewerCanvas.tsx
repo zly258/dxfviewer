@@ -6,6 +6,7 @@ import { CanvasRenderEngine } from '@/render/canvas/CanvasRenderEngine';
 import type { EngineKind, InteractiveRenderEngine } from '@/render/engine';
 import { TEXT_RENDER_MODE } from '@/config/viewerConfig';
 import { hasOutlineFont, hasOutlineFontCjkCoverage, loadOutlineFont } from '@/render/text/outlineText';
+import { loadBundledShxFonts } from '@/render/text/shx/loadShxFonts';
 import { Language, t } from '@/ui/i18n';
 import { CANVAS_THEME_COLORS, SELECTION_CONFIG, SHORTCUT_CONFIG, VIEWER_DEFAULTS, ZOOM_CONFIG, BREAKPOINTS, INTERACTION_CONFIG, CONTEXT_MENU_CONFIG } from '@/config/viewerConfig';
 import { boxQueryBounds, createSceneIndex, pointQueryBounds, SceneBounds, SceneIndex } from '@/render/picking/sceneIndex';
@@ -161,6 +162,9 @@ const ViewerCanvas: React.FC<ViewerCanvasProps> = ({
           break;
         }
       }
+      // public/fonts 里如果放了 hztxt.shx、tssdeng.shx 等，注册后按真实单线字绘制。
+      const shxCount = await loadBundledShxFonts();
+      if (!cancelled && shxCount > 0) setOutlineFontVersion(v => v + 1);
     };
     tryLoad();
     return () => { cancelled = true; };
