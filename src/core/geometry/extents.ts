@@ -1,0 +1,753 @@
+import { AnyEntity, DxfBlock, DxfStyle, DxfText, DxfTable, EntityType, Point2D } from '@/types';
+import { EXTENTS_CONFIG, TABLE_EXTENTS_CONFIG, LEADER_RENDER_CONFIG } from '@/config/viewerConfig';
+import { sampleBulgeSegment } from './bulge';
+import { sampleEllipsePoints, sampleHatchLoop, sampleSplinePoints } from './curveSampling';
+import { getCadTextExtents, pointsToExtents, cleanMText } from '@/utils/textUtils';
+import { isDimensionBlockLocal, transformExtentsCorners, transformPoint } from './transform';
+import {
+    isPlaceholderAttributeText,
+    isTextLikeEntity,
+    isGuideEntity,
+    isShapeEntity,
+    isDefpointsLayer,
+    hasDrawableBlockGeometry,
+    isPrimaryGeometryEntity,
+    isTableWithDrawableBlock,
+    isBlockInsertWithDrawableExtents,
+} from '@/utils/entityClassify';
+import { getMLeaderTextPosition, getMLeaderTextAttachment } from '@/utils/mleaderUtils';
+
+// ─── 包围盒更新器 ────────────────────────────────────────────────────
+
+/** 创建一个累积式包围盒更新器，用于逐步收集坐标并计算最终 AABB。 */
+export const createBoundsUpdater = () => {
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+
+    /** 添加一个坐标点到包围盒 */
+    const update = (x: number, y: number) => {
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+        if (Math.abs(x) > EXTENTS_CONFIG.maxFiniteCoordinate || Math.abs(y) > EXTENTS_CONFIG.maxFiniteCoordinate) return;
+        minX = Math.min(minX, x);
+        minY = Math.min(minY, y);
+        maxX = Math.max(maxX, x);
+        maxY = Math.max(maxY, y);
+    };
+
+    /** 合并已有的包围盒范围 */
+    const updateExtents = (extents: { min: Point2D; max: Point2D } | null) => {
+        if (!extents) return;
+        update(extents.min.x, extents.min.y);
+        update(extents.max.x, extents.max.y);
+    };
+
+    /** 返回最终的包围盒，无有效数据时返回 null */
+    const finish = (): { min: Point2D; max: Point2D } | null => {
+        if (minX === Infinity || minY === Infinity || maxX === -Infinity || maxY === -Infinity) return null;
+        return { min: { x: minX, y: minY }, max: { x: maxX, y: maxY } };
+    };
+
+    return { update, updateExtents, finish };
+};
+
+// ─── 弧段极值计算 ─────────────────────────────────────────────────
+
+/** 判断角度 a 是否在给定弧段的角度范围内。 */
+const isAngleBetween = (a: number, start: number, end: number, ccw: boolean): boolean => {
+    const norm = (v: number) => {
+        let t = v;
+        while (t < 0) t += Math.PI * 2;
+        while (t >= Math.PI * 2) t -= Math.PI * 2;
+        return t;
+    };
+    const A = norm(a);
+    const S = norm(start);
+    const E = norm(end);
+    if (ccw) return S > E ? (A >= S || A <= E) : (A >= S && A <= E);
+    return S > E ? (A <= S && A >= E) : (A <= S && A >= E);
+};
+
+/** 更新弧段在四个象限极值点处的包围盒。 */
+const updateArcExtrema = (update: (x: number, y: number) => void, cx: number, cy: number, r: number, start: number, end: number, ccw: boolean) => {
+    const pts = [
+        { a: 0, x: cx + r, y: cy },
+        { a: Math.PI / 2, x: cx, y: cy + r },
+        { a: Math.PI, x: cx - r, y: cy },
+        { a: Math.PI * 1.5, x: cx, y: cy - r },
+    ];
+    pts.forEach(p => {
+        if (isAngleBetween(p.a, start, end, ccw)) update(p.x, p.y);
+    });
+};
+
+/** 通过采样凸度弧段来更新包围盒。 */
+const updateBulgeSegmentExtents = (update: (x: number, y: number) => void, p1: Point2D, p2: Point2D, bulge: number, isFlipped: boolean) => {
+    const effectiveBulge = isFlipped ? -bulge : bulge;
+    sampleBulgeSegment(p1, p2, effectiveBulge).forEach(point => update(point.x, point.y));
+};
+
+// ─── 表格辅助函数 ────────────────────────────────────────────────
+
+/** 限制表格行/列数在合理范围内。 */
+const clampTableCount = (value: unknown, fallback: number, maxCount: number): number => {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n < 1) return fallback;
+    return Math.max(1, Math.min(maxCount, Math.floor(n)));
+};
+
+/** 规范化表格的行高/列宽数组，确保数量与行列数一致。 */
+const normalizeTableDimensionArray = (
+    values: number[] | undefined,
+    count: number,
+    fallback: number,
+    minValue: number,
+    maxValue: number,
+): number[] => {
+    const source = Array.isArray(values) ? values : [];
+    const valid = source.filter(value => Number.isFinite(value) && value >= minValue && value <= maxValue);
+    if (valid.length === count) return valid.slice(0, count);
+    if (valid.length > 0 && valid.length < count) {
+        const result = valid.slice();
+        while (result.length < count) result.push(fallback);
+        return result;
+    }
+    return new Array(count).fill(fallback);
+};
+
+/** 规范化表格实体的行列几何参数（行数/列数/行高/列宽）。 */
+export const normalizeAcadTableGeometry = (table: DxfTable): void => {
+    const explicitColumns = clampTableCount(table.columnCount, 1, TABLE_EXTENTS_CONFIG.maxFallbackColumns);
+    const cellCount = table.cells?.length || 0;
+    table.columnCount = explicitColumns;
+    table.rowCount = cellCount > 0
+        ? clampTableCount(Math.ceil(cellCount / explicitColumns), 1, TABLE_EXTENTS_CONFIG.maxFallbackRows)
+        : clampTableCount(table.rowCount, 1, TABLE_EXTENTS_CONFIG.maxFallbackRows);
+
+    const rowSpacing = Number(table.rowSpacing);
+    const columnSpacing = Number(table.columnSpacing);
+    table.rowSpacing = Number.isFinite(rowSpacing) && rowSpacing >= TABLE_EXTENTS_CONFIG.minRowHeight && rowSpacing <= TABLE_EXTENTS_CONFIG.maxRowHeight
+        ? rowSpacing
+        : TABLE_EXTENTS_CONFIG.defaultRowHeight;
+    table.columnSpacing = Number.isFinite(columnSpacing) && columnSpacing >= TABLE_EXTENTS_CONFIG.minColumnWidth && columnSpacing <= TABLE_EXTENTS_CONFIG.maxColumnWidth
+        ? columnSpacing
+        : TABLE_EXTENTS_CONFIG.defaultColumnWidth;
+
+    table.rowHeights = normalizeTableDimensionArray(
+        table.rowHeights, table.rowCount, table.rowSpacing,
+        TABLE_EXTENTS_CONFIG.minRowHeight, TABLE_EXTENTS_CONFIG.maxRowHeight,
+    );
+    table.colWidths = normalizeTableDimensionArray(
+        table.colWidths, table.columnCount, table.columnSpacing,
+        TABLE_EXTENTS_CONFIG.minColumnWidth, TABLE_EXTENTS_CONFIG.maxColumnWidth,
+    );
+};
+
+/** 判断表格是否包含可显示的文字内容。 */
+const hasTableTextContent = (table: DxfTable): boolean => {
+    return Array.isArray(table.cells) && table.cells.some(cell => cleanMText(String(cell || '')).trim().length > 0);
+};
+
+/** 获取表格的兜底渲染几何参数（宽度/高度/行列数），用于无块定义时的表格绘制。 */
+const getTableFallbackGeometry = (table: DxfTable): { width: number; height: number; rowCount: number; colCount: number } | null => {
+    normalizeAcadTableGeometry(table);
+    const rowCount = clampTableCount(table.rowCount, 1, TABLE_EXTENTS_CONFIG.maxFallbackRows);
+    const colCount = clampTableCount(table.columnCount, 1, TABLE_EXTENTS_CONFIG.maxFallbackColumns);
+    const rowHeights = normalizeTableDimensionArray(table.rowHeights, rowCount, table.rowSpacing || TABLE_EXTENTS_CONFIG.defaultRowHeight, TABLE_EXTENTS_CONFIG.minRowHeight, TABLE_EXTENTS_CONFIG.maxRowHeight);
+    const colWidths = normalizeTableDimensionArray(table.colWidths, colCount, table.columnSpacing || TABLE_EXTENTS_CONFIG.defaultColumnWidth, TABLE_EXTENTS_CONFIG.minColumnWidth, TABLE_EXTENTS_CONFIG.maxColumnWidth);
+    const width = colWidths.reduce((sum, value) => sum + Math.abs(value), 0);
+    const height = rowHeights.reduce((sum, value) => sum + Math.abs(value), 0);
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return null;
+    if (width > TABLE_EXTENTS_CONFIG.maxFallbackTotalWidth || height > TABLE_EXTENTS_CONFIG.maxFallbackTotalHeight) return null;
+    const aspectRatio = Math.max(width / height, height / width);
+    if (aspectRatio > TABLE_EXTENTS_CONFIG.maxFallbackAspectRatio) return null;
+    return { width, height, rowCount, colCount };
+};
+
+/** 计算表格的兜底范围（在块缺失或为空时使用）。 */
+const getTableFallbackExtents = (table: DxfTable): { min: Point2D; max: Point2D } | null => {
+    if (!hasTableTextContent(table)) return null;
+    const geometry = getTableFallbackGeometry(table);
+    if (!geometry) return null;
+    const scale = table.scale || { x: 1, y: 1, z: 1 };
+    const rotation = table.rotation || 0;
+    return pointsToExtents([
+        { x: 0, y: 0 },
+        { x: geometry.width, y: 0 },
+        { x: 0, y: -geometry.height },
+        { x: geometry.width, y: -geometry.height },
+    ].map(point => transformPoint(point, table.position, scale, rotation)));
+};
+
+// ─── 标注块范围计算 ──────────────────────────────────────────────
+
+/** 获取标注实体关联块的范围（处理局部坐标系偏移）。 */
+const getDimensionBlockExtents = (ent: AnyEntity, blocks: Record<string, DxfBlock>): { min: Point2D; max: Point2D } | null => {
+    if (ent.type !== EntityType.DIMENSION || !ent.blockName) return null;
+    const block = blocks[ent.blockName];
+    if (!block?.extents) return null;
+
+    const definitionPoint = ent.definitionPoint;
+    const isLocalBlock = isDimensionBlockLocal(block, definitionPoint, EXTENTS_CONFIG.dimensionLocalBlockDistanceFactor);
+
+    if (!isLocalBlock) return block.extents;
+
+    // 使用局部坐标系时，将块范围平移到定义点附近
+    return transformExtentsCorners(block.extents, block.basePoint, definitionPoint, { x: 1, y: 1, z: 1 }, 0);
+};
+
+// ─── 单个实体范围计算 ────────────────────────────────────────────
+
+/** 计算单个实体的轴对齐包围盒（AABB）。 */
+export const getEntityExtents = (
+    ent: AnyEntity,
+    blocks: Record<string, DxfBlock>,
+    styles?: Record<string, DxfStyle>,
+): { min: Point2D; max: Point2D } | null => {
+    if (ent.visible === false || ent.type === EntityType.ATTDEF || isPlaceholderAttributeText(ent)) return null;
+
+    const bounds = createBoundsUpdater();
+
+    switch (ent.type) {
+        case EntityType.LINE:
+            bounds.update(ent.start.x, ent.start.y);
+            bounds.update(ent.end.x, ent.end.y);
+            break;
+        case EntityType.RAY:
+        case EntityType.XLINE: {
+            // 无限线使用有限的引导长度来计算范围
+            const length = EXTENTS_CONFIG.infiniteGuideLength;
+            const dirLen = Math.hypot(ent.direction.x, ent.direction.y) || 1;
+            const ux = ent.direction.x / dirLen;
+            const uy = ent.direction.y / dirLen;
+            if (ent.type === EntityType.RAY) {
+                bounds.update(ent.basePoint.x, ent.basePoint.y);
+                bounds.update(ent.basePoint.x + ux * length, ent.basePoint.y + uy * length);
+            } else {
+                bounds.update(ent.basePoint.x - ux * length, ent.basePoint.y - uy * length);
+                bounds.update(ent.basePoint.x + ux * length, ent.basePoint.y + uy * length);
+            }
+            break;
+        }
+        case EntityType.CIRCLE:
+            if (Number.isFinite(ent.radius) && ent.radius >= 0) {
+                bounds.update(ent.center.x - ent.radius, ent.center.y - ent.radius);
+                bounds.update(ent.center.x + ent.radius, ent.center.y + ent.radius);
+            }
+            break;
+        case EntityType.ARC: {
+            if (!Number.isFinite(ent.radius) || ent.radius < 0) break;
+            const startAngle = ent.startAngle * Math.PI / 180;
+            const endAngle = ent.endAngle * Math.PI / 180;
+            const start = { x: ent.center.x + ent.radius * Math.cos(startAngle), y: ent.center.y + ent.radius * Math.sin(startAngle) };
+            const end = { x: ent.center.x + ent.radius * Math.cos(endAngle), y: ent.center.y + ent.radius * Math.sin(endAngle) };
+            bounds.update(start.x, start.y);
+            bounds.update(end.x, end.y);
+            // 检查弧段是否经过象限极值点
+            updateArcExtrema(bounds.update, ent.center.x, ent.center.y, ent.radius, startAngle, endAngle, ent.isCounterClockwise ?? true);
+            break;
+        }
+        case EntityType.LWPOLYLINE:
+        case EntityType.POLYLINE:
+        case EntityType.MLINE: {
+            const points = ent.type === EntityType.MLINE ? ent.vertices : ent.points;
+            if (!points || points.length === 0) break;
+            if (ent.type === EntityType.MLINE) {
+                points.forEach(point => bounds.update(point.x, point.y));
+                break;
+            }
+            // 多段线需要考虑凸度弧段的极值
+            const isFlipped = (ent.extrusion?.z || 1) < 0;
+            const segmentCount = ent.closed ? points.length : Math.max(0, points.length - 1);
+            for (let i = 0; i < segmentCount; i++) {
+                const p1 = points[i];
+                const p2 = points[(i + 1) % points.length];
+                const bulge = ent.bulges?.[i] || 0;
+                updateBulgeSegmentExtents(bounds.update, p1, p2, bulge, isFlipped);
+            }
+            points.forEach(point => bounds.update(point.x, point.y));
+            break;
+        }
+        case EntityType.POINT:
+            bounds.update(ent.position.x, ent.position.y);
+            break;
+        case EntityType.SHAPE: {
+            const size = Math.max(Math.abs(ent.size || 1), EXTENTS_CONFIG.minDrawableEntityExtent);
+            bounds.update(ent.position.x - size, ent.position.y - size);
+            bounds.update(ent.position.x + size, ent.position.y + size);
+            break;
+        }
+        case EntityType.VIEWPORT: {
+            const halfWidth = Math.abs(ent.width || 0) / 2;
+            const halfHeight = Math.abs(ent.height || 0) / 2;
+            bounds.update(ent.center.x - halfWidth, ent.center.y - halfHeight);
+            bounds.update(ent.center.x + halfWidth, ent.center.y + halfHeight);
+            break;
+        }
+        case EntityType.TEXT:
+        case EntityType.MTEXT:
+        case EntityType.ATTRIB:
+            bounds.updateExtents(getCadTextExtents(ent, styles));
+            break;
+        case EntityType.ELLIPSE: {
+            // 通过采样椭圆来计算范围
+            const points = sampleEllipsePoints(ent.center, ent.majorAxis, ent.ratio, ent.startParam, ent.endParam, true);
+            if (points.length === 0) bounds.update(ent.center.x, ent.center.y);
+            points.forEach(point => bounds.update(point.x, point.y));
+            break;
+        }
+        case EntityType.SPLINE: {
+            // 样条曲线优先使用预计算点，否则通过采样生成
+            const points = ent.calculatedPoints && ent.calculatedPoints.length > 0
+                ? ent.calculatedPoints
+                : ent.fitPoints && ent.fitPoints.length > 1
+                    ? ent.fitPoints
+                    : sampleSplinePoints(ent.controlPoints || [], ent.degree || 3, ent.knots, ent.weights);
+            points.forEach(point => bounds.update(point.x, point.y));
+            break;
+        }
+        case EntityType.SOLID:
+        case EntityType.THREEDFACE:
+            ent.points.forEach(point => bounds.update(point.x, point.y));
+            break;
+        case EntityType.MESH: {
+            // 三维网格（PFACE / MESH）：按全部顶点计算范围，保证“充满视图”正确。
+            const meshEnt = ent as unknown as { vertices?: { x: number; y: number }[] };
+            (meshEnt.vertices || []).forEach(point => bounds.update(point.x, point.y));
+            break;
+        }
+        case EntityType.HATCH:
+            // 采样所有填充环的点来计算范围
+            ent.loops.forEach(loop => sampleHatchLoop(loop).forEach(point => bounds.update(point.x, point.y)));
+            break;
+        case EntityType.INSERT: {
+            const block = blocks[ent.blockName];
+            const insertExtents: { min: Point2D; max: Point2D }[] = [];
+            if (!block?.extents) {
+                bounds.update(ent.position.x, ent.position.y);
+            } else {
+                // 处理阵列插入（行列重复）
+                const rowCount = Math.max(1, ent.rowCount || 1);
+                const colCount = Math.max(1, ent.colCount || 1);
+                for (let row = 0; row < rowCount; row++) {
+                    for (let col = 0; col < colCount; col++) {
+                        const position = {
+                            x: ent.position.x + col * (ent.colSpacing || 0),
+                            y: ent.position.y + row * (ent.rowSpacing || 0),
+                        };
+                        const transformed = transformExtentsCorners(block.extents, block.basePoint, position, ent.scale || { x: 1, y: 1, z: 1 }, ent.rotation || 0);
+                        if (transformed) {
+                            insertExtents.push(transformed);
+                            bounds.updateExtents(transformed);
+                        }
+                    }
+                }
+            }
+            // 处理块属性文字的范围
+            ent.attributes?.forEach(attribute => {
+                if (isPlaceholderAttributeText(attribute)) return;
+                const text = cleanMText(String((attribute as DxfText).value || '')).trim();
+                if (text.length === 0) return;
+                const attrExtents = getCadTextExtents(attribute as DxfText, styles);
+                if (!attrExtents) return;
+                // 仅在属性文字靠近块几何范围时才纳入计算
+                if (insertExtents.length === 0 || insertExtents.some(item => isAnnotationExtentsNearGeometry(attrExtents, item))) {
+                    bounds.updateExtents(attrExtents);
+                }
+            });
+            break;
+        }
+        case EntityType.ACAD_TABLE: {
+            const block = blocks[ent.blockName];
+            if (hasDrawableBlockGeometry(block) && block?.extents) {
+                bounds.updateExtents(transformExtentsCorners(block.extents, block.basePoint, ent.position, ent.scale || { x: 1, y: 1, z: 1 }, ent.rotation || 0));
+            } else {
+                // 块缺失或为空时使用兜底范围
+                bounds.updateExtents(getTableFallbackExtents(ent));
+            }
+            break;
+        }
+        case EntityType.DIMENSION: {
+            const blockExtents = getDimensionBlockExtents(ent, blocks);
+            if (blockExtents) {
+                bounds.updateExtents(blockExtents);
+                break;
+            }
+            // 无块定义时使用标注的关键点
+            bounds.update(ent.definitionPoint.x, ent.definitionPoint.y);
+            if (ent.textMidPoint) bounds.update(ent.textMidPoint.x, ent.textMidPoint.y);
+            if (ent.linearP1) bounds.update(ent.linearP1.x, ent.linearP1.y);
+            if (ent.linearP2) bounds.update(ent.linearP2.x, ent.linearP2.y);
+            if (ent.arcP1) bounds.update(ent.arcP1.x, ent.arcP1.y);
+            if (ent.arcP2) bounds.update(ent.arcP2.x, ent.arcP2.y);
+            break;
+        }
+        case EntityType.LEADER:
+            ent.points.forEach(point => bounds.update(point.x, point.y));
+            break;
+        case EntityType.IMAGE: {
+            bounds.update(ent.position.x, ent.position.y);
+            const ux = ent.uVector || { x: 1, y: 0, z: 0 };
+            const vy = ent.vVector || { x: 0, y: 1, z: 0 };
+            const width = ent.imageSize.x;
+            const height = ent.imageSize.y;
+            bounds.update(ent.position.x + ux.x * width, ent.position.y + ux.y * width);
+            bounds.update(ent.position.x + vy.x * height, ent.position.y + vy.y * height);
+            bounds.update(ent.position.x + ux.x * width + vy.x * height, ent.position.y + ux.y * width + vy.y * height);
+            break;
+        }
+        case EntityType.WIPEOUT:
+            ent.points.forEach(point => bounds.update(point.x, point.y));
+            break;
+        case EntityType.TOLERANCE:
+            bounds.update(ent.position.x, ent.position.y);
+            break;
+        case EntityType.MLEADER:
+            // 引线点
+            ent.leaderLines.forEach(line => line.forEach(point => bounds.update(point.x, point.y)));
+            {
+                // 文字范围
+                const textPosition = getMLeaderTextPosition(ent);
+                if (ent.text && textPosition) {
+                    bounds.updateExtents(getCadTextExtents({
+                        ...ent,
+                        type: EntityType.MTEXT,
+                        position: textPosition,
+                        value: ent.text,
+                        height: ent.textHeight || LEADER_RENDER_CONFIG.defaultMLeaderTextHeight,
+                        width: ent.textWidth || LEADER_RENDER_CONFIG.defaultMLeaderTextWidth,
+                        attachmentPoint: getMLeaderTextAttachment(ent, textPosition),
+                        styleName: ent.textStyleName,
+                    } as DxfText, styles));
+                }
+            }
+            break;
+        default:
+            break;
+    }
+
+    return bounds.finish();
+};
+
+// ─── 块范围预计算 ────────────────────────────────────────────────
+
+/** 预计算所有块定义的包围盒（递归处理嵌套块）。 */
+export const precomputeBlockExtents = (blocks: Record<string, DxfBlock>, styles?: Record<string, DxfStyle>): void => {
+    const visited = new Set<string>();
+    const computing = new Set<string>();
+
+    const compute = (name: string) => {
+        if (visited.has(name) || computing.has(name)) return;
+        const block = blocks[name];
+        if (!block) return;
+
+        computing.add(name);
+
+        // 确保子块先被计算
+        block.entities.forEach(ent => {
+            if ((ent.type === EntityType.INSERT || ent.type === EntityType.ACAD_TABLE || ent.type === EntityType.DIMENSION) && ent.blockName) {
+                compute(ent.blockName);
+            }
+        });
+
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        block.entities.forEach(ent => {
+            if (ent.visible === false) return;
+            // 属性定义和表格在块范围计算中不考虑
+            if (ent.type === EntityType.ATTDEF || ent.type === EntityType.ATTRIB) return;
+            if (ent.type === EntityType.ACAD_TABLE) return;
+            const ext = getEntityExtents(ent, blocks, styles);
+            if (ext) {
+                ent.extents = ext;
+                const isValid = (v: number) => isFinite(v) && Math.abs(v) < EXTENTS_CONFIG.maxFiniteExtent;
+                if (isValid(ext.min.x) && ext.min.x < minX) minX = ext.min.x;
+                if (isValid(ext.max.x) && ext.max.x > maxX) maxX = ext.max.x;
+                if (isValid(ext.min.y) && ext.min.y < minY) minY = ext.min.y;
+                if (isValid(ext.max.y) && ext.max.y > maxY) maxY = ext.max.y;
+            }
+        });
+
+        if (minX !== Infinity && minY !== Infinity && maxX !== -Infinity && maxY !== -Infinity) {
+            block.extents = { min: { x: minX, y: minY }, max: { x: maxX, y: maxY } };
+        }
+
+        computing.delete(name);
+        visited.add(name);
+    };
+
+    Object.keys(blocks).forEach(compute);
+};
+
+// ─── 图纸范围计算 ────────────────────────────────────────────────
+
+/** 判断实体集合中是否存在非点几何实体（用于决定是否忽略孤立点）。 */
+const hasNonPointGeometryForExtents = (entities: AnyEntity[], blocks: Record<string, DxfBlock>): boolean => {
+    return entities.some(ent => {
+        if (ent.visible === false || ent.type === EntityType.ATTDEF) return false;
+        if (isDefpointsLayer(ent.layer)) return false;
+        return isPrimaryGeometryEntity(ent, blocks);
+    });
+};
+
+/** 判断实体是否应纳入图纸范围计算。 */
+const shouldUseEntityForDrawingExtents = (ent: AnyEntity, hasPrimaryGeometry: boolean, blocks: Record<string, DxfBlock>): boolean => {
+    if (ent.visible === false || ent.type === EntityType.ATTDEF) return false;
+    if (isDefpointsLayer(ent.layer)) return false;
+    if (EXTENTS_CONFIG.ignoreGuideLinesInDrawingExtents && isGuideEntity(ent)) return false;
+    // SHAPE 不渲染（无 .shx 字形）且常残留于主图之外，纳入范围会把适配视口拉偏
+    if (isShapeEntity(ent)) return false;
+    if (!EXTENTS_CONFIG.includePointsInDrawingExtents && ent.type === EntityType.POINT && hasPrimaryGeometry) return false;
+    if (ent.type === EntityType.ACAD_TABLE && !isTableWithDrawableBlock(ent, blocks)) return false;
+    if (ent.type === EntityType.INSERT && !isBlockInsertWithDrawableExtents(ent, blocks)) return false;
+    return true;
+};
+
+/** 验证包围盒是否有效（值有限且尺寸大于最小阈值）。 */
+const isValidExtents = (ext: { min: Point2D; max: Point2D }): boolean => {
+    const values = [ext.min.x, ext.min.y, ext.max.x, ext.max.y];
+    if (!values.every(value => Number.isFinite(value) && Math.abs(value) < EXTENTS_CONFIG.maxFiniteExtent)) return false;
+    const width = Math.abs(ext.max.x - ext.min.x);
+    const height = Math.abs(ext.max.y - ext.min.y);
+    return width >= EXTENTS_CONFIG.minDrawableEntityExtent || height >= EXTENTS_CONFIG.minDrawableEntityExtent;
+};
+
+/** 合并多个包围盒为一个总范围。 */
+const mergeExtentsList = (items: { min: Point2D; max: Point2D }[]): { center: Point2D; width: number; height: number; min: Point2D; max: Point2D } => {
+    if (items.length === 0) {
+        return { center: { x: 0, y: 0 }, width: 0, height: 0, min: { x: 0, y: 0 }, max: { x: 0, y: 0 } };
+    }
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    items.forEach(ext => {
+        minX = Math.min(minX, ext.min.x);
+        minY = Math.min(minY, ext.min.y);
+        maxX = Math.max(maxX, ext.max.x);
+        maxY = Math.max(maxY, ext.max.y);
+    });
+    const width = maxX - minX;
+    const height = maxY - minY;
+    return {
+        center: { x: minX + width / 2, y: minY + height / 2 },
+        width: isFinite(width) ? width : 0,
+        height: isFinite(height) ? height : 0,
+        min: { x: minX, y: minY },
+        max: { x: maxX, y: maxY },
+    };
+};
+
+/** 判断注释实体的范围是否靠近主几何体范围（防止远离主体的文字拉大显示范围）。 */
+const isAnnotationExtentsNearGeometry = (annotationExtents: { min: Point2D; max: Point2D }, geometryExtents: { min: Point2D; max: Point2D }): boolean => {
+    const geometryWidth = Math.abs(geometryExtents.max.x - geometryExtents.min.x);
+    const geometryHeight = Math.abs(geometryExtents.max.y - geometryExtents.min.y);
+    const padding = Math.max(
+        EXTENTS_CONFIG.annotationNearGeometryMinimumPadding,
+        geometryWidth * EXTENTS_CONFIG.annotationNearGeometryFactor,
+        geometryHeight * EXTENTS_CONFIG.annotationNearGeometryFactor,
+    );
+    return annotationExtents.max.x >= geometryExtents.min.x - padding
+        && annotationExtents.min.x <= geometryExtents.max.x + padding
+        && annotationExtents.max.y >= geometryExtents.min.y - padding
+        && annotationExtents.min.y <= geometryExtents.max.y + padding;
+};
+
+/**
+ * 快速选择：使 values[0..n-1] 中第 k 小的元素落在返回时的 values[k]。
+ * 原地 Hoare 分区（含重复元素处理），平均 O(n)。
+ * 仅用于"取中位数值"场景——调用方只关心第 k 小的值，不依赖数组最终顺序。
+ */
+const quickselectValue = (values: number[], k: number): number => {
+    let lo = 0;
+    let hi = values.length - 1;
+    while (lo < hi) {
+        const pivot = values[(lo + hi) >> 1];
+        let i = lo;
+        let j = hi;
+        while (i <= j) {
+            while (values[i] < pivot) i++;
+            while (values[j] > pivot) j--;
+            if (i <= j) {
+                const t = values[i];
+                values[i] = values[j];
+                values[j] = t;
+                i++;
+                j--;
+            }
+        }
+        if (k <= j) hi = j;
+        else if (k >= i) lo = i;
+        else break;
+    }
+    return values[k];
+};
+
+/**
+ * 获取数组的中位数。
+ *
+ * **不修改入参**：内部 quickselect 为原地分区，若直接改写入参会打乱
+ * 调用方的下标对应关系（离群过滤用 distances[index] 对应实体，
+ * 中位数计算把数组重排后距离与实体错位，离群过滤随之失效）。
+ */
+const getMedian = (values: number[]): number => {
+    if (values.length === 0) return 0;
+    // 含非有限值时先过滤（罕见路径）；全有限时用 quickselect 取中位，
+    // 平均 O(n)，免去 O(n log n) 的全量排序（大图纸上该路径调用多次）。
+    let allFinite = true;
+    for (let i = 0; i < values.length; i++) {
+        if (!Number.isFinite(values[i])) { allFinite = false; break; }
+    }
+    // 复制后再原地分区，保证入参顺序不变（O(n) 拷贝，远快于 O(n log n) 排序）
+    const pool = allFinite ? values.slice() : values.filter(Number.isFinite);
+    if (pool.length === 0) return 0;
+    const lowIndex = (pool.length - 1) >> 1;
+    const a = quickselectValue(pool, lowIndex);
+    if (pool.length % 2 === 1) return a;
+    const b = quickselectValue(pool, pool.length >> 1);
+    return (a + b) / 2;
+};
+
+/** 计算包围盒的度量指标（宽度、高度、对角线、宽高比、中心点）。 */
+const getExtentsMetrics = (ext: { min: Point2D; max: Point2D }) => {
+    const width = Math.abs(ext.max.x - ext.min.x);
+    const height = Math.abs(ext.max.y - ext.min.y);
+    return {
+        width, height,
+        diagonal: Math.hypot(width, height),
+        aspectRatio: width > 0 && height > 0 ? Math.max(width / height, height / width) : 1,
+        center: { x: (ext.min.x + ext.max.x) / 2, y: (ext.min.y + ext.max.y) / 2 },
+    };
+};
+
+/**
+ * 过滤离群实体的包围盒（残留引导线 / 跑到图纸外的杂散图元）。
+ *
+ * **必须是「只剪极少数尾巴」的保守过滤**：图纸内容本身（图框、标题栏、
+ * 尺寸标注、明细表）天然分布在很大的范围里，而"离群"与"图纸内容"在
+ * 中心距离上并没有清晰分界。旧实现用「中位距离 + 8×MAD」与
+ * 「中位对角线 × 80」作阈值，在两个真实场景下会误杀整张图纸：
+ *
+ * 1. 图框/标注把中心距离拉开后中位距离本身很大 —— A3 图纸只剩 ISO 视图；
+ * 2. 中位对角线由尺寸箭头等微小实体的包围盒决定（0.7mm 级），
+ *    ×80 仍远小于图纸跨度，于是 388 个实体被裁到 132×88
+ *    （实测「充满视图」只显示轴测图）。
+ *
+ * 因此改为两条同时成立的判据：
+ * - **数量预算**：最多剔除 outlierMaxDropRatio 比例的实体（离群物必然是极少数）；
+ * - **距离断层**：只在距离排序尾部存在明显跳变（≥ outlierMinimumDistanceGapRatio 倍）
+ *   时才在那里截断；平滑分布的距离（正常图纸）一律不剪。
+ */
+const filterOutlierExtents = (items: { min: Point2D; max: Point2D }[]): { min: Point2D; max: Point2D }[] => {
+    if (items.length < EXTENTS_CONFIG.outlierFilterMinEntityCount) return items;
+    const metrics = items.map(getExtentsMetrics);
+    const medianX = getMedian(metrics.map(item => item.center.x));
+    const medianY = getMedian(metrics.map(item => item.center.y));
+    const distances = metrics.map(item => Math.hypot(item.center.x - medianX, item.center.y - medianY));
+    const medianDiagonal = Math.max(getMedian(metrics.map(item => item.diagonal)), EXTENTS_CONFIG.minDrawableEntityExtent);
+
+    const maxDropCount = Math.min(
+        items.length - 1,
+        Math.max(1, Math.floor(items.length * EXTENTS_CONFIG.outlierMaxDropRatio)),
+    );
+    const dropped = new Set<number>();
+
+    // ① 超长瘦高包围盒（残留引导线/无限长引线）：在预算内按对角线从大到小剔除。
+    //    必须同时「离主体足够远」——否则会误删图纸里正常的长线（如地形/管线的长直段）。
+    const hugeSizeLimit = medianDiagonal * EXTENTS_CONFIG.outlierSizeMedianMultiplier;
+    const strayDistanceLimit = getMedian(distances) * EXTENTS_CONFIG.outlierStrayDistanceFactor;
+    metrics
+        .map((metric, index) => ({ metric, index }))
+        .filter(({ metric, index }) => metric.aspectRatio > EXTENTS_CONFIG.outlierAspectRatioLimit
+            && metric.diagonal > hugeSizeLimit
+            && distances[index] > strayDistanceLimit)
+        .sort((a, b) => b.metric.diagonal - a.metric.diagonal)
+        .slice(0, maxDropCount)
+        .forEach(({ index }) => dropped.add(index));
+
+    // ② 远离主体且与主体之间存在明显距离断层的实体（预算内的尾部截断）。
+    if (dropped.size < maxDropCount) {
+        const order = distances
+            .map((distance, index) => ({ distance, index }))
+            .filter(({ index }) => !dropped.has(index))
+            .sort((a, b) => a.distance - b.distance);
+        const budget = Math.min(maxDropCount - dropped.size, order.length - 1);
+        let cutAt = -1;
+        let bestRatio = 1;
+        for (let offset = 1; offset <= budget; offset++) {
+            const cut = order.length - offset;
+            const previous = order[cut - 1].distance;
+            const next = order[cut].distance;
+            const ratio = previous > 1e-9 ? next / previous : Number.POSITIVE_INFINITY;
+            if (ratio > bestRatio) {
+                bestRatio = ratio;
+                cutAt = cut;
+            }
+        }
+        if (cutAt > 0 && bestRatio >= EXTENTS_CONFIG.outlierMinimumDistanceGapRatio) {
+            for (let i = cutAt; i < order.length; i++) dropped.add(order[i].index);
+        }
+    }
+
+    if (dropped.size === 0) return items;
+    const filtered = items.filter((_item, index) => !dropped.has(index));
+    return filtered.length > 0 ? filtered : items;
+};
+
+/**
+ * 计算图纸范围：将实体分为主几何、注释、后备三类，
+ * 过滤离群值后合并近距离注释，得到稳定的显示范围。
+ */
+export const calculateExtents = (entities: AnyEntity[], blocks: Record<string, DxfBlock>, styles?: Record<string, DxfStyle>): { center: Point2D; width: number; height: number; min: Point2D; max: Point2D } => {
+    const primaryExtents: { min: Point2D; max: Point2D }[] = [];
+    const annotationExtents: { min: Point2D; max: Point2D }[] = [];
+    const fallbackExtents: { min: Point2D; max: Point2D }[] = [];
+    const hasPrimaryGeometry = hasNonPointGeometryForExtents(entities, blocks);
+
+    entities.forEach(ent => {
+        if (!shouldUseEntityForDrawingExtents(ent, hasPrimaryGeometry, blocks)) return;
+        // 复用已有范围：解析期 calculateStableOffset 已计算、offsetEntity 已同步平移，
+        // 且所有范围对平移线性（平移后的值与重算一致）。失效/缺失时才重算。
+        const ext = ent.extents && isValidExtents(ent.extents)
+            ? ent.extents
+            : getEntityExtents(ent, blocks, styles);
+        if (!ext || !isValidExtents(ext)) return;
+        ent.extents = ext;
+
+        if (isPrimaryGeometryEntity(ent, blocks)) primaryExtents.push(ext);
+        else if (isTextLikeEntity(ent)) annotationExtents.push(ext);
+        else fallbackExtents.push(ext);
+    });
+
+    if (primaryExtents.length === 0) {
+        return mergeExtentsList(filterOutlierExtents([...fallbackExtents, ...annotationExtents]));
+    }
+
+    const stablePrimaryExtents = filterOutlierExtents(primaryExtents);
+    const primaryBounds = mergeExtentsList(stablePrimaryExtents);
+    const nearbyAnnotations = annotationExtents.filter(ext => isAnnotationExtentsNearGeometry(ext, primaryBounds));
+    const nearbyFallback = fallbackExtents.filter(ext => isAnnotationExtentsNearGeometry(ext, primaryBounds));
+    return mergeExtentsList(filterOutlierExtents([...stablePrimaryExtents, ...nearbyFallback, ...nearbyAnnotations]));
+};
+
+/**
+ * 纸张空间布局的取景范围。
+ *
+ * 视口（VIEWPORT）是模型空间的窗口，其纸张矩形可能远大于图纸本身
+ * （AutoCAD 初始布局会创建一个覆盖全图的 1:1 视口），若按视口矩形取景，
+ * 画面会被大量空白拉小。AutoCAD 打印按图纸范围出图，超出部分不打印——
+ * 因此这里优先用图框/标题栏等非视口实体的范围；只有当这些实体
+ * 面积不足总量一半时（说明图纸空间本就没有图框），才退回全量范围。
+ */
+export const calculatePaperLayoutExtents = (
+  entities: AnyEntity[],
+  blocks: Record<string, DxfBlock>,
+  styles?: Record<string, DxfStyle>,
+): { center: Point2D; width: number; height: number; min: Point2D; max: Point2D } => {
+  const total = calculateExtents(entities, blocks, styles);
+  if (!total || total.width <= 0 || total.height <= 0) return total;
+  const paperEntities = entities.filter(entity => entity.type !== EntityType.VIEWPORT);
+  if (paperEntities.length === 0) return total;
+  const sheet = calculateExtents(paperEntities, blocks, styles);
+  if (!sheet || sheet.width <= 0 || sheet.height <= 0) return total;
+  const sheetArea = sheet.width * sheet.height;
+  const totalArea = total.width * total.height;
+  return sheetArea >= totalArea * 0.5 ? sheet : total;
+};

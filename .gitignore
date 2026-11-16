@@ -1,0 +1,52 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Dependencies
+node_modules
+
+# Build outputs
+dist
+dist-ssr
+playwright-report
+test-results
+coverage
+*.local
+artifacts
+
+# DXF 文件一律不入库（用户要求）：夹具由 scripts/fixtures.mjs 运行时生成
+*.dxf
+# AutoCAD 形字体由使用者放进 public/fonts，不入库
+*.shx
+!**/*.dxf.ignore
+samples/dxf-output
+
+# CLI conversion test outputs (scripts/dxfviewer-cli.mjs)
+samples/cli-out*
+
+# Editors and system files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Hidden directories (dot-prefixed folders, e.g. .workbuddy)；.github 需要纳入版本管理
+.*/
+!.github/
+
+
+# Local bundled fonts
+**/public/fonts/*.ttf
+**/public/fonts/*.otf
+**/public/fonts/*.ttc
+

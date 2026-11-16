@@ -1,0 +1,212 @@
+/**
+ * 矢量导出冒烟测试。
+ *
+ * 没有浏览器时验证导出链路的纯 JS 部分：
+ * parseDxf → exportSvg / exportPdfVectorBytes（矢量写出不依赖 WebGL）。
+ * PNG 栅格导出走 WebGL（浏览器专属），不在 Node 冒烟范围内。
+ *
+ * 校验内容：
+ * - SVG：根元素/闭合/非法数值/图元存在性
+ * - 矢量 PDF：结构合法（文件头、trailer、交叉引用表偏移逐项回查）、
+ *   内容流几何操作符、Flate 流用 node:zlib 实际解压验证（SMask 尺寸/非空）
+ *
+ * 运行：node scripts/render-smoke.mjs（需先 npm run build:lib）
+ */
+import { inflateSync } from 'node:zlib';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { materializeFixtures } from './fixtures.mjs';
+import { createFakeCanvas } from './canvas-mock.mjs';
+
+const here = fileURLToPath(new URL('.', import.meta.url));
+
+const { parseDxf } = await import(new URL('../dist/parser.js', import.meta.url).href);
+const { exportSvg, exportPdfVectorBytes } = await import(new URL('../dist/export.js', import.meta.url).href);
+
+/** 按字节校验 PDF 交叉引用表：每个 n 项偏移必须正好指向 "N 0 obj"。 */
+const validatePdfStructure = (bytes, { expectPages }) => {
+  const text = new TextDecoder('latin1').decode(bytes);
+
+  if (!text.startsWith('%PDF-1.4')) throw new Error('缺少 %PDF-1.4 文件头');
+  if (text.lastIndexOf('%%EOF') < 0) throw new Error('缺少 %%EOF');
+
+  const startxref = /startxref\s+(\d+)\s+%%EOF/.exec(text.slice(text.lastIndexOf('trailer')));
+  if (!startxref) throw new Error('startxref 缺失或格式错误');
+  const xrefPosition = Number(startxref[1]);
+  if (!text.startsWith('xref', xrefPosition)) {
+    throw new Error(`startxref 指向的位置不是 xref：偏移 ${xrefPosition}`);
+  }
+
+  const trailer = /trailer\s*<<\s*\/Size\s+(\d+)\s*\/Root\s+(\d+) 0 R\s*\/Info\s+(\d+) 0 R/.exec(text);
+  if (!trailer) throw new Error('trailer 缺少 /Size /Root /Info');
+  const size = Number(trailer[1]);
+  const rootNumber = Number(trailer[2]);
+
+  // xref 段：'xref' / '0 N' / N 条 20 字节条目（19 字符 + 换行）。
+  const lines = text.slice(xrefPosition).split('\n');
+  if (lines[0].trim() !== 'xref') throw new Error(`startxref 指向的位置不是 xref：偏移 ${xrefPosition}`);
+  const range = /^0 (\d+)$/.exec(lines[1].trim());
+  if (!range) throw new Error(`xref 段头异常："${lines[1]}"`);
+  if (Number(range[1]) !== size) throw new Error(`xref 段头条目数 ${range[1]} 与 /Size ${size} 不一致`);
+
+  for (let objectNumber = 0; objectNumber < size; objectNumber++) {
+    const rawEntry = lines[2 + objectNumber];
+    if (rawEntry === undefined) throw new Error(`xref 缺少对象 ${objectNumber} 的条目`);
+    if (rawEntry.length !== 19) throw new Error(`对象 ${objectNumber} 的 xref 条目不是 20 字节：${JSON.stringify(rawEntry)}`);
+    const match = /^(\d{10}) (\d{5}) ([nf])$/.exec(rawEntry.trim());
+    if (!match) throw new Error(`对象 ${objectNumber} 的 xref 条目格式非法：${JSON.stringify(rawEntry)}`);
+    if (objectNumber === 0) {
+      if (match[3] !== 'f' || match[1] !== '0000000000') throw new Error('xref 首项必须是空闲表头');
+      continue;
+    }
+    if (match[3] !== 'n') throw new Error(`对象 ${objectNumber} 未被标记为在用`);
+    const offset = Number(match[1]);
+    const expected = `${objectNumber} 0 obj`;
+    if (!text.startsWith(expected, offset)) {
+      throw new Error(`对象 ${objectNumber} 偏移错误：${offset} 处不是 "${expected}"`);
+    }
+  }
+
+  if (!text.includes(`/Root ${rootNumber} 0 R`)) throw new Error('/Root 指向的对象不存在');
+
+  const pageCount = (text.match(/\/Type \/Page[^s]/g) ?? []).length;
+  if (pageCount !== expectPages) throw new Error(`页数不符：期望 ${expectPages}，实际 ${pageCount}`);
+
+  return { pageCount, size };
+};
+
+// 夹具运行时生成到临时目录（DXF 不入库）
+const fixtures = await materializeFixtures('dxfviewer-smoke-');
+const files = Object.keys(fixtures.files).sort();
+if (files.length === 0) {
+  console.error('夹具生成失败');
+  process.exit(1);
+}
+
+let failed = 0;
+const rows = [];
+
+for (const name of files) {
+  const text = readFileSync(fixtures.files[name], 'utf8');
+  try {
+    const data = await parseDxf(text, undefined, { yieldIntervalMs: 0 });
+
+    // SVG：结构校验（矢量导出不依赖 WebGL，直接可用）
+    const svg = exportSvg(data, { width: 800, height: 600 });
+    if (!svg.startsWith('<svg xmlns="http://www.w3.org/2000/svg"')) {
+      throw new Error('SVG 缺少正确的根元素');
+    }
+    if (!svg.trimEnd().endsWith('</svg>')) throw new Error('SVG 未正确闭合');
+    if (/NaN|undefined|Infinity/.test(svg)) throw new Error('SVG 含非法数值（NaN/undefined/Infinity）');
+    if (!/<path /.test(svg) && !/<text /.test(svg)) {
+      throw new Error('SVG 未包含任何图元（path/text）');
+    }
+    if (/transform="matrix\([^"]*[^-\d.\s][^"]*\)"/.test(svg)) {
+      throw new Error('SVG matrix 变换含非数值');
+    }
+
+    // 矢量 PDF：单页 A4（文字图层用影子 2D 画布光栅化）
+    const pdfBytes = await exportPdfVectorBytes(data, {
+      paperSize: 'A4',
+      orientation: 'landscape',
+      createCanvas: () => createFakeCanvas(64, 64).canvas,
+    });
+    validatePdfStructure(pdfBytes, { expectPages: 1 });
+
+    rows.push({ name, svgSize: svg.length, pdfSize: pdfBytes.length });
+  } catch (error) {
+    failed++;
+    console.error(`✘ ${name}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+const pad = (value, width) => String(value).padEnd(width);
+console.log(`${pad('夹具', 22)}${pad('svg', 9)}pdf`);
+for (const row of rows) {
+  console.log(`${pad(row.name, 22)}${pad(`${row.svgSize}B`, 9)}${row.pdfSize}B`);
+}
+
+// ---- 矢量 PDF 几何/SMask 深度校验 ----
+const validateVectorPdf = (bytes, { expectPages }) => {
+  const structure = validatePdfStructure(bytes, { expectPages });
+  const text = new TextDecoder('latin1').decode(bytes);
+
+  // 内容流校验：底色矩形（re f）必须存在；线/圆夹具还应有路径操作符
+  const rectFills = (text.match(/\d(?:\.\d+)? re f/g) ?? []).length;
+  if (rectFills < expectPages) throw new Error(`矢量内容流缺少底色矩形（仅 ${rectFills} 处）`);
+  const moveToOps = (text.match(/\d\.\d+ m\n/g) ?? []).length;
+  const curveOps = (text.match(/\d\.\d+ c\n/g) ?? []).length;
+
+  // 矢量 PDF 的 SMask（文字 alpha 图层）：找到 /SMask N 0 R 的对象，解压验证
+  const smaskRefs = [...text.matchAll(/\/SMask (\d+) 0 R/g)].map(m => Number(m[1]));
+  const xrefPos = Number(/startxref\s+(\d+)/.exec(text.slice(text.lastIndexOf('trailer')))[1]);
+  const lines = text.slice(xrefPos).split('\n');
+  const offsets = new Map();
+  for (let i = 1; i < lines.length - 3; i++) {
+    const entry = (lines[2 + i] ?? '').trim();
+    const match = /^(\d{10}) (\d{5}) n$/.exec(entry);
+    if (match) offsets.set(i, Number(match[1]));
+  }
+
+  let smaskChecked = 0;
+  for (const objectNumber of smaskRefs) {
+    const offset = offsets.get(objectNumber);
+    if (!offset) throw new Error(`SMask 对象 ${objectNumber} 不在 xref 中`);
+    const objectText = text.slice(offset, offset + 400);
+    const widthMatch = /\/Width (\d+)/.exec(objectText);
+    const heightMatch = /\/Height (\d+)/.exec(objectText);
+    const lengthMatch = /\/Length (\d+)/.exec(objectText);
+    if (!widthMatch || !heightMatch || !lengthMatch) throw new Error(`SMask ${objectNumber} 缺少尺寸/长度`);
+    const declared = Number(lengthMatch[1]);
+    const pixels = Number(widthMatch[1]) * Number(heightMatch[1]);
+
+    const streamStart = text.indexOf('stream\n', offset) + 'stream\n'.length;
+    const payload = bytes.subarray(streamStart, streamStart + declared);
+
+    let decoded;
+    try {
+      decoded = inflateSync(Buffer.from(payload));
+    } catch {
+      continue; // 未压缩流跳过解压验证
+    }
+    if (decoded.length !== pixels) {
+      throw new Error(`SMask ${objectNumber} 解压长度 ${decoded.length} ≠ 宽×高 ${pixels}`);
+    }
+    smaskChecked++;
+  }
+
+  return { ...structure, smaskChecked, moveToOps, curveOps };
+};
+
+let vectorStats;
+try {
+  // line-circle 含直线与整圆（贝塞尔化后应有 m/c 操作符）
+  const sampleData = await parseDxf(
+    readFileSync(fixtures.files['line-circle.dxf'], 'utf8'),
+    undefined,
+    { yieldIntervalMs: 0 },
+  );
+
+  const vectorBytes = await exportPdfVectorBytes(sampleData, {
+    paperSize: 'A4',
+    orientation: 'portrait',
+    textRasterScale: 2,
+    createCanvas: () => createFakeCanvas(64, 64).canvas,
+  });
+  vectorStats = validateVectorPdf(vectorBytes, { expectPages: 1 });
+  if (vectorStats.moveToOps < 2 || vectorStats.curveOps < 4) {
+    throw new Error(
+      `矢量几何不符：move=${vectorStats.moveToOps}（期望≥2），curve=${vectorStats.curveOps}（期望≥4，整圆=8 段贝塞尔）`,
+    );
+  }
+  console.log(
+    `\n矢量 PDF：页数 ${vectorStats.pageCount}，move ${vectorStats.moveToOps} / curve ${vectorStats.curveOps}，SMask 校验 ${vectorStats.smaskChecked} 处 ✔`,
+  );
+} catch (error) {
+  failed++;
+  console.error(`✘ 矢量 PDF: ${error instanceof Error ? error.message : String(error)}`);
+}
+
+console.log(`共 ${files.length} 个夹具，失败 ${failed} 项。`);
+await fixtures.cleanup();
+process.exit(failed === 0 ? 0 : 1);

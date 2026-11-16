@@ -1,0 +1,76 @@
+/*
+ * 底栏 30px（--bg-band 底、--text-muted 字、12px）。
+ *
+ * R9：底栏 flex:0 0 auto，永不参与收缩。
+ */
+.status-bar {
+  height: var(--footer-h);
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 10px;
+  box-sizing: border-box;
+  border-top: 1px solid var(--border-main);
+  background-color: var(--bg-band);
+  color: var(--text-muted);
+  font-size: var(--fs-small);
+  line-height: 1;
+  user-select: none;
+}
+
+.status-left,
+.status-center,
+.status-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.status-left {
+  flex: 0 1 auto;
+  justify-content: flex-start;
+}
+
+.status-center {
+  flex: 1 1 auto;
+  justify-content: center;
+  color: var(--text-muted);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.status-right {
+  flex: 0 0 auto;
+  justify-content: flex-end;
+}
+
+.status-coords,
+.status-summary,
+.status-selection {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.status-value {
+  margin-left: 2px;
+  color: var(--text-sec);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* 状态栏（任务栏）中的文件名 */
+.status-filename {
+  max-width: 320px;
+  margin-right: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-sec);
+  font-weight: 600;
+}

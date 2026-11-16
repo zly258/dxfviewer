@@ -1,0 +1,72 @@
+name: Build and Deploy Example
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: 固定 npm 官方源
+        run: |
+          npm config delete proxy --location=user || true
+          npm config delete https-proxy --location=user || true
+          npm config set registry https://registry.npmjs.org/
+          npm config set replace-registry-host always
+          npm config get registry
+
+      - name: 安装依赖
+        run: npm ci --registry=https://registry.npmjs.org/ --prefer-offline=false --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000
+
+      - name: 类型检查
+        run: npm run typecheck
+
+      - name: 构建库和示例
+        run: npm run build:all
+
+      - name: 构建 Pages 产物
+        if: github.event_name != 'pull_request'
+        run: npm --workspace dxfviewer-example run build
+        env:
+          VITE_BASE_PATH: /${{ github.event.repository.name }}/
+
+      - name: 配置 GitHub Pages
+        if: github.event_name != 'pull_request'
+        uses: actions/configure-pages@v6
+
+      - name: 上传示例站点产物
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: dxfviewer-example/dist
+
+      - name: 发布 Live Demo
+        if: github.event_name != 'pull_request'
+        id: deployment
+        uses: actions/deploy-pages@v5

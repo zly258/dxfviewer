@@ -1,0 +1,119 @@
+{
+  "name": "@zhangly1403/dxfviewer",
+  "version": "2.0.0",
+  "description": "React DXF viewer with WebGL / Canvas dual engines, built for very large drawings.",
+  "author": "DXF Viewer contributors",
+  "license": "MIT",
+  "homepage": "https://github.com/zly258/dxfviewer#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zly258/dxfviewer.git"
+  },
+  "bugs": {
+    "url": "https://github.com/zly258/dxfviewer/issues"
+  },
+  "keywords": [
+    "dxf",
+    "cad",
+    "viewer",
+    "webgl",
+    "canvas",
+    "react",
+    "drawing"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "main": "./dist/dxfviewer.js",
+  "module": "./dist/dxfviewer.js",
+  "types": "./dist/dxfviewer.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/dxfviewer.d.ts",
+      "import": "./dist/dxfviewer.js"
+    },
+    "./preview": {
+      "types": "./dist/preview.d.ts",
+      "import": "./dist/preview.js"
+    },
+    "./parser": {
+      "types": "./dist/parser.d.ts",
+      "import": "./dist/parser.js"
+    },
+    "./writer": {
+      "types": "./dist/writer.d.ts",
+      "import": "./dist/writer.js"
+    },
+    "./render": {
+      "types": "./dist/render.d.ts",
+      "import": "./dist/render.js"
+    },
+    "./export": {
+      "types": "./dist/export.d.ts",
+      "import": "./dist/export.js"
+    },
+    "./style.css": "./dist/style.css"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "README_zh.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "dev": "npm --workspace dxfviewer-example run dev",
+    "dev:example": "npm run build:lib && npm --workspace dxfviewer-example run dev",
+    "typecheck": "tsc --noEmit",
+    "build": "npm run build:lib",
+    "build:lib": "npm run typecheck && vite build && node scripts/check-dist-imports.mjs",
+    "check:dist": "node scripts/check-dist-imports.mjs",
+    "check:fixtures": "node scripts/check-fixtures.mjs",
+    "check:render": "node scripts/render-smoke.mjs",
+    "check:roundtrip": "node scripts/roundtrip.mjs",
+    "check:visibility": "node scripts/check-visibility.mjs",
+    "check:symbols": "node scripts/check-symbols.mjs",
+    "check:preview": "node scripts/check-preview.mjs",
+    "check:large": "node scripts/check-large.mjs",
+    "check:ui": "node scripts/ui-audit.mjs --strict",
+    "check:ui-style": "node scripts/ui-style-check.mjs",
+    "check": "npm run build:lib && npm run check:fixtures && npm run check:render && npm run check:accuracy && npm run check:text-scale && npm run check:symbols && npm run check:visibility && npm run check:roundtrip && npm run check:ui",
+    "convert": "node scripts/dxfviewer-cli.mjs",
+    "test:real": "node scripts/real-dxf-test.mjs",
+    "build:example": "npm run build:lib && npm --workspace dxfviewer-example run build",
+    "build:all": "npm run build:lib && npm --workspace dxfviewer-example run build",
+    "preview:example": "npm --workspace dxfviewer-example run preview",
+    "check:accuracy": "node scripts/check-accuracy.mjs",
+    "check:text-scale": "node scripts/check-text-scale.mjs"
+  },
+  "devDependencies": {
+    "@types/earcut": "^3.0.0",
+    "@types/node": "^22.14.0",
+    "@types/opentype.js": "^1.3.10",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.0.0",
+    "playwright-core": "^1.64.1",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "terser": "^5.46.0",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0",
+    "vite-plugin-dts": "^4.5.4"
+  },
+  "peerDependencies": {
+    "react": "^18.2.0 || ^19.0.0",
+    "react-dom": "^18.2.0 || ^19.0.0"
+  },
+  "sideEffects": [
+    "./dist/style.css",
+    "./src/styles/index.css"
+  ],
+  "workspaces": [
+    "dxfviewer-example"
+  ],
+  "dependencies": {
+    "earcut": "^3.2.4",
+    "opentype.js": "^2.0.0"
+  }
+}

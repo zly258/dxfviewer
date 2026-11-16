@@ -1,0 +1,524 @@
+/*
+ * 页面骨架（web-ui-style R9）。
+ *
+ * ┌ app-header 42px ── 品牌 | 文件标题 [类型] | 视图 导出 关于 ┐
+ * ├ ui-toolbar-row 32px ── 打开 导航 充满 搜索 ─────────────────┤
+ * ├────────────┬──────────────────────────────┬────────────────┤
+ * │ 左栏        │ 视口（flex:1 min-width:0）    │ 右栏            │
+ * │ clamp(250,  │ canvas 100%×100%              │ clamp(320,     │
+ * │ 22vw,320)   │                               │ 27vw,440)      │
+ * ├────────────┴──────────────────────────────┴────────────────┤
+ * └ app-footer 30px ── 坐标 | 选择 | 空间 实体 ──────────────────┘
+ *
+ * 页面本身永不滚动；滚动只发生在侧栏内部容器。
+ */
+.app-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+  background-color: var(--bg-app);
+  color: var(--text-main);
+}
+
+/* ── 顶栏 42px：左侧文件标题 + 类型角标、右侧操作（不放 logo） ── */
+.app-header {
+  height: var(--header-h);
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  box-sizing: border-box;
+  background-color: var(--bg-chrome);
+  border-bottom: 1px solid var(--border-strong);
+  z-index: 50;
+  user-select: none;
+}
+
+.app-header-title {
+  min-width: 0;
+  flex: 0 1 auto;
+  max-width: 46vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-main);
+  font-size: var(--fs-page);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+/* 类型角标（对应 .header-type-tag）：11px/600、2px 圆角、浅蓝底蓝字。 */
+.app-header-tag {
+  flex: 0 0 auto;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 5px;
+  border-radius: 2px;
+  background-color: var(--accent-soft);
+  color: var(--accent);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  line-height: 1;
+}
+
+.app-header-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+
+/* ── 工具条行 32px ── */
+.ui-toolbar-row {
+  height: var(--toolbar-h);
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 0 4px;
+  box-sizing: border-box;
+  background-color: var(--bg-band);
+  border-bottom: 1px solid var(--border-main);
+  user-select: none;
+}
+
+.app-main-container > .app-container {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
+}
+
+/* ── 三栏主体 ── */
+.app-body {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  position: relative;
+  background-color: var(--bg-app);
+}
+
+/* 兼容旧类名：原 .main-content 即三栏主体。 */
+.main-content {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.side-panel-shell {
+  display: flex;
+  flex-shrink: 0;
+  height: 100%;
+  position: relative;
+  z-index: 20;
+  background-color: var(--bg-panel);
+}
+
+.side-panel-frame {
+  flex-shrink: 0;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.viewer-container {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+  background-color: var(--bg-viewport);
+}
+
+/* ── 空间切换条（图纸/模型），28px 过滤行高度 ── */
+.space-switch-bar {
+  flex: 0 0 auto;
+  height: var(--filter-h);
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 8px;
+  box-sizing: border-box;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-top: 1px solid var(--border-main);
+  background-color: var(--bg-band);
+  scrollbar-width: none;
+}
+
+.space-switch-bar::-webkit-scrollbar {
+  display: none;
+}
+
+/* ── 底栏 30px ── */
+.app-footer {
+  height: var(--footer-h);
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 10px;
+  box-sizing: border-box;
+  border-top: 1px solid var(--border-main);
+  background-color: var(--bg-band);
+  color: var(--text-muted);
+  font-size: var(--fs-small);
+  line-height: 1;
+  user-select: none;
+}
+
+/* ─────────────────────────────────────────────────────────────
+ * 窄屏 / 移动端适配：保持紧凑尺寸，触控目标放大到 32px。
+ * ───────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  html,
+  body,
+  #root {
+    height: 100dvh;
+    overscroll-behavior: none;
+  }
+
+  body {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .app-container.is-mobile {
+    width: 100vw;
+    height: 100dvh;
+    min-height: 100dvh;
+    overflow: hidden;
+  }
+
+  .app-container.is-mobile .ui-toolbar-row {
+    height: var(--filter-h);
+    max-height: var(--filter-h);
+    overflow: hidden;
+    padding: 0 6px;
+  }
+
+  .app-container.is-mobile .viewer-container {
+    padding-bottom: 0;
+    box-sizing: border-box;
+  }
+
+  .app-container.is-mobile .canvas-container {
+    min-height: 0;
+  }
+
+  .app-header {
+    padding: 0 6px;
+    gap: 6px;
+  }
+
+  .mobile-tool-button,
+  .mobile-view-item {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* 视口内浮层：搜索面板贴住顶边，避开右侧工具栏。 */
+  .is-mobile .text-search-panel {
+    top: max(8px, env(safe-area-inset-top, 0px));
+    left: max(8px, env(safe-area-inset-left, 0px));
+    right: calc(max(8px, env(safe-area-inset-right, 0px)) + 52px);
+    width: auto;
+    z-index: 25;
+  }
+
+  .is-mobile .text-search-row {
+    height: 32px;
+    padding-left: 8px;
+    border-radius: var(--radius-lg);
+  }
+
+  .is-mobile .text-search-input {
+    height: 32px;
+    font-size: var(--fs-body);
+  }
+
+  .is-mobile .text-search-nav,
+  .is-mobile .text-search-close {
+    width: 28px;
+    height: 28px;
+  }
+
+  .is-mobile .text-search-results {
+    max-height: min(42dvh, calc(100dvh - 210px));
+    border-radius: var(--radius-lg);
+  }
+
+  .is-mobile .text-search-result {
+    min-height: 40px;
+    padding: 6px 8px;
+  }
+
+  .cad-toast-container {
+    top: calc(env(safe-area-inset-top, 0px) + 8px);
+    width: calc(100% - 16px);
+  }
+
+  .cad-toast {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .about-modal-content,
+  .viewer-error-panel {
+    width: calc(100vw - 24px);
+    max-height: calc(100dvh - 40px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  }
+
+  /* 顶部坐标药丸（移动端视口浮层，z-index 25 与测距 HUD 同层） */
+  .is-mobile .mobile-coord-chip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    position: absolute;
+    top: max(8px, env(safe-area-inset-top, 0px));
+    left: max(8px, env(safe-area-inset-left, 0px));
+    right: auto;
+    z-index: 25;
+    padding: 4px 7px;
+    border: 1px solid var(--border-main);
+    border-radius: var(--radius);
+    background-color: var(--bg-chrome);
+    color: var(--text-muted);
+    font-size: var(--fs-micro);
+    line-height: 1;
+    box-shadow: var(--shadow-card);
+    box-sizing: border-box;
+    pointer-events: none;
+    max-width: calc(100vw - 76px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
+    overflow: hidden;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .mobile-coord-chip .coord-selected {
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  /* 右侧竖排工具条：32px 按钮，视口内浮层 z-index 25。 */
+  .is-mobile .mobile-right-toolbar {
+    display: flex;
+    position: absolute;
+    top: max(8px, env(safe-area-inset-top, 0px));
+    right: max(8px, env(safe-area-inset-right, 0px));
+    bottom: auto;
+    z-index: 25;
+    flex-direction: column;
+    gap: 2px;
+    padding: 3px;
+    max-height: calc(100dvh - max(8px, env(safe-area-inset-top, 0px)) - max(8px, env(safe-area-inset-bottom, 0px)));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
+    border: 1px solid var(--border-main);
+    border-radius: var(--radius-lg);
+    background-color: var(--bg-panel);
+    color: var(--text-sec);
+    box-shadow: var(--shadow-overlay);
+  }
+
+  .mobile-right-toolbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .mobile-tool-button {
+    width: 32px;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--text-sec);
+    cursor: pointer;
+    transition: background-color var(--t-fast), border-color var(--t-fast), color var(--t-fast);
+    flex-shrink: 0;
+  }
+
+  .mobile-tool-button svg,
+  .mobile-side-close svg,
+  .mobile-view-item svg {
+    width: var(--icon-size);
+    height: var(--icon-size);
+  }
+
+  .mobile-tool-button:active:not(:disabled) {
+    background-color: var(--bg-hover);
+    border-color: var(--border-main);
+    color: var(--text-main);
+  }
+
+  .mobile-tool-button.active {
+    background-color: var(--accent-soft);
+    border-color: var(--accent-line);
+    color: var(--accent);
+  }
+
+  .mobile-tool-button:disabled {
+    background: transparent;
+    color: var(--text-muted);
+    cursor: default;
+  }
+
+  .mobile-tool-separator {
+    height: 1px;
+    margin: 2px 4px;
+    background-color: var(--border-sub);
+    flex-shrink: 0;
+  }
+
+  .is-mobile .mobile-side-backdrop {
+    display: block;
+    position: absolute;
+    inset: 0;
+    z-index: 20;
+    background-color: var(--scrim);
+  }
+
+  .is-mobile .mobile-side-panel {
+    display: flex;
+    flex-direction: column;
+    position: absolute;
+    top: max(8px, env(safe-area-inset-top, 0px));
+    right: calc(max(8px, env(safe-area-inset-right, 0px)) + 42px);
+    bottom: max(8px, env(safe-area-inset-bottom, 0px));
+    width: min(320px, calc(100vw - 64px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)));
+    z-index: 25;
+    overflow: hidden;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-lg);
+    background-color: var(--bg-panel);
+    color: var(--text-main);
+    box-shadow: var(--shadow-overlay);
+    transform: translateX(10px);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.16s ease, transform 0.16s ease;
+  }
+
+  .mobile-side-panel.open {
+    transform: translateX(0);
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .mobile-side-panel-header {
+    height: var(--modal-head-h);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-shrink: 0;
+    padding: 0 4px 0 10px;
+    border-bottom: 1px solid var(--border-main);
+    background-color: var(--bg-band);
+    color: var(--text-main);
+    font-size: var(--fs-title);
+    font-weight: 600;
+    box-sizing: border-box;
+  }
+
+  .mobile-side-close {
+    width: 24px;
+    height: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+  }
+
+  .mobile-side-close:active {
+    background-color: var(--bg-hover);
+    color: var(--danger);
+  }
+
+  .mobile-side-panel-content {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .mobile-side-panel-content .layer-panel,
+  .mobile-side-panel-content .properties-panel {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    background-color: transparent;
+  }
+
+  .mobile-side-panel-content .layer-panel-header,
+  .mobile-side-panel-content .properties-header {
+    display: none;
+  }
+
+  .mobile-side-panel-content .tree-row {
+    height: 32px;
+  }
+
+  .mobile-side-panel-content .tree-comp {
+    height: 32px;
+    padding-left: 30px;
+  }
+
+  .mobile-view-list {
+    padding: 5px;
+  }
+
+  .mobile-view-item {
+    width: 100%;
+    min-height: 32px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 8px;
+    border: 0;
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--text-main);
+    font-size: var(--fs-body);
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .mobile-view-item.checked {
+    background-color: var(--accent-soft);
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  .mobile-view-item:active {
+    background-color: var(--bg-hover);
+    color: var(--text-main);
+  }
+
+  .mobile-view-section-title {
+    padding: 6px 8px 3px;
+    color: var(--text-muted);
+    font-size: var(--fs-micro);
+    font-weight: 600;
+  }
+}
