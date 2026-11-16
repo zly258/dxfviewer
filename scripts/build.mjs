@@ -22,7 +22,7 @@ fs.writeFileSync(path.join(distDir, 'threejs-dxf-loader.umd.js'), umdSource, 'ut
 
 const esmBundle = `/**
  * @license MIT
- * threejs-dxf-loader v1.0.0 (ES Module Bundle)
+ * threejs-dxf-loader v1.1.0 (ES Module Bundle)
  * Author: zhangly1403 <zhangly1403@qq.com>
  */
 import * as THREE from 'three';

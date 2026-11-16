@@ -1,6 +1,6 @@
 /**
  * @license MIT
- * threejs-dxf-loader v1.0.0 (ES Module Bundle)
+ * threejs-dxf-loader v1.1.0 (ES Module Bundle)
  * Author: zhangly1403 <zhangly1403@qq.com>
  */
 import * as THREE from 'three';
@@ -164,6 +164,29 @@ const _globalScope = { THREE };
    * Specifically transforms bright Yellow (#FFFF00 -> #B45309), Cyan (#00FFFF -> #0284C7),
    * Lime Green (#00FF00 -> #15803D), White (#FFFFFF -> #0F172A), and clamps pale colors.
    */
+  /**
+   * Convert an sRGB colour byte to the linear-sRGB working space.
+   *
+   * three.js interprets `BufferAttribute` colours as **Linear-sRGB** (the
+   * renderer's working colour space), while CAD/ACI colours are authored in
+   * sRGB. Writing the raw sRGB byte values into the colour attribute makes
+   * every mid-tone render one step too bright (e.g. #808080 shows up as
+   * ~#BCBCBC). Converting here keeps the colours identical to AutoCAD.
+   */
+  function srgbByteToLinear(byte) {
+    const s = byte / 255;
+    return s <= 0.04045 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  }
+
+  /** Pack an sRGB hex colour into linear-sRGB components for a vertex colour. */
+  function hexToLinearRgb(hex) {
+    return {
+      r: srgbByteToLinear((hex >> 16) & 255),
+      g: srgbByteToLinear((hex >> 8) & 255),
+      b: srgbByteToLinear(hex & 255)
+    };
+  }
+
   function adaptHexForLightBackground(hex) {
     if (hex === 0xFFFFFF || hex === 0xF8FAFC || hex === 0xFEFEFE) return 0x0F172A;
     if (hex === 0xFFFF00 || hex === 0xFFFF7F) return 0xB45309;
@@ -360,6 +383,18 @@ const _globalScope = { THREE };
   /**
    * Computes smooth vertex normals across curved 3D surfaces while preserving sharp edges (>= creaseDeg).
    */
+  /**
+   * Compute smooth vertex normals with a crease-angle threshold.
+   *
+   * `creaseDeg` controls where the surface is allowed to break: faces whose
+   * normals differ by more than this angle keep their own flat normal, which
+   * preserves sharp mechanical edges on solids.
+   *
+   * The spatial welding grid is now adaptive to the model size. A fixed
+   * quantisation merges unrelated vertices on large drawings (causing stray
+   * shading artefacts) and fails to weld on small ones (causing visible
+   * seams between neighbouring facets).
+   */
   function computeCreaseAngleNormals(posArray, creaseDeg = 44) {
     const vCount = posArray.length / 3;
     const normals = new Float32Array(posArray.length);
@@ -392,11 +427,29 @@ const _globalScope = { THREE };
     // Skip spatial welding if mesh is enormous (>150,000 vertices) to keep frame rate fast
     if (vCount > 150000) return normals;
 
-    // 2. Bucket vertices by quantized spatial position
+    // 2. Bucket vertices by quantized spatial position.
+    //    The quantum follows the model extent so welding is scale independent.
+    let minX = Infinity, minY = Infinity, minZ = Infinity;
+    let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+    for (let v = 0; v < vCount; v++) {
+      const idx = v * 3;
+      const x = posArray[idx], y = posArray[idx + 1], z = posArray[idx + 2];
+      if (x < minX) minX = x; if (x > maxX) maxX = x;
+      if (y < minY) minY = y; if (y > maxY) maxY = y;
+      if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+    }
+    const extent = Math.max(maxX - minX, maxY - minY, maxZ - minZ, 1e-6);
+    // Welding quantum: use an absolute CAD-scale tolerance (0.01 mm) so that
+    // neighbouring facets of the same solid always weld, regardless of how
+    // large the model is. A purely relative quantum (extent/4096) would be
+    // 24 mm on a 100 m model and would leave visible seams between facets.
+    // The upper bound keeps small models from merging distinct vertices.
+    const quantum = Math.max(Math.min(extent / 4096, 1e-2), 1e-9);
+
     const buckets = new Map();
     for (let v = 0; v < vCount; v++) {
       const idx = v * 3;
-      const key = `${Math.round(posArray[idx] * 50)},${Math.round(posArray[idx + 1] * 50)},${Math.round(posArray[idx + 2] * 50)}`;
+      const key = `${Math.round(posArray[idx] / quantum)},${Math.round(posArray[idx + 1] / quantum)},${Math.round(posArray[idx + 2] / quantum)}`;
       let list = buckets.get(key);
       if (!list) {
         list = [];
@@ -435,7 +488,7 @@ const _globalScope = { THREE };
     return normals;
   }
 
-  function interpolateBulgePoints(p1, p2, bulge, segmentsPerCircle = 48) {
+  function interpolateBulgePoints(p1, p2, bulge, segmentsPerCircle = 128) {
     if (!bulge || Math.abs(bulge) < 1e-6 || !isFinite(bulge)) {
       return [new THREE.Vector3(p1.x, p1.y, p1.z || 0), new THREE.Vector3(p2.x, p2.y, p2.z || 0)];
     }
@@ -453,7 +506,22 @@ const _globalScope = { THREE };
     const cx = midX - (dy * 0.5) * cotHalf;
     const cy = midY + (dx * 0.5) * cotHalf;
     const startAngle = Math.atan2(p1.y - cy, p1.x - cx);
-    const numSegs = Math.max(4, Math.min(96, Math.ceil((Math.abs(includedAngle) / (Math.PI * 2)) * segmentsPerCircle)));
+    // Segment budget for the arc.
+    //   - at least one segment per 90 degrees of sweep (ezdxf `ConstructionEllipse`)
+    //   - at least 6 segments (three-dxf uses the same floor)
+    //   - `segmentsPerCircle` controls the density of a full circle
+    // The previous floor of 4 segments turned a 90 degree arc into a visible
+    // quadrilateral, which is exactly the kind of faceting users notice.
+    const numSegs = Math.max(
+      6,
+      Math.min(
+        256,
+        Math.max(
+          Math.ceil(Math.abs(includedAngle) / (Math.PI / 2)),
+          Math.ceil((Math.abs(includedAngle) / (Math.PI * 2)) * segmentsPerCircle)
+        )
+      )
+    );
     const pts = [];
     const z1 = p1.z || 0;
     const z2 = p2.z !== undefined ? p2.z : z1;
@@ -552,25 +620,60 @@ const _globalScope = { THREE };
     return pts;
   }
 
+  /**
+   * Decode an ACIS SAT text stream.
+   *
+   * SAT bodies are obfuscated with a reversible XOR-159 scheme (implemented
+   * in ezdxf as `tools/crypt.py`). Two details matter and are easy to miss:
+   *
+   *  1. The printable-character mapping is `159 - c`, which is equivalent to
+   *     `c ^ 0x5F` for the whole printable ASCII range.
+   *  2. The character `0x5E` (`^`) encodes the letter `A` and is followed by
+   *     one filler character that must be skipped. Without that skip rule an
+   *     extra blank survives in the token stream and breaks the
+   *     `body/lump/shell/...` keyword matching.
+   *
+   * The special cases `0x20` (space), `0x40` (`_`) and `0x5F` (`@`) are
+   * passed through as themselves.
+   */
+  const SAT_DECODE_TABLE = (() => {
+    const t = new Map();
+    t.set(0x20, ' ');
+    t.set(0x40, '_');
+    t.set(0x5F, '@');
+    for (let c = 0x41; c <= 0x5e; c++) t.set(c, String.fromCharCode(0x41 + (0x5e - c)));
+    return t;
+  })();
+
+  function decodeACISSatLine(line) {
+    let out = '';
+    let skip = false;
+    for (let i = 0; i < line.length; i++) {
+      const c = line.charCodeAt(i);
+      if (skip) { skip = false; continue; }
+      const mapped = SAT_DECODE_TABLE.get(c);
+      if (mapped !== undefined) {
+        out += mapped;
+        if (c === 0x5e) skip = true;
+      } else if (c >= 33 && c <= 126) {
+        out += String.fromCharCode(159 - c);
+      } else {
+        out += line[i];
+      }
+    }
+    return out;
+  }
+
   function decodeACISSatLines(rawLines) {
     if (!rawLines || rawLines.length === 0) return '';
     const joined = rawLines.join('\n');
-    if (/\b(body|lump|shell|face|loop|coedge|edge|vertex|point)\b/.test(joined)) {
+    // Already-plain SAT text: detect it by the ACIS keywords rather than by
+    // guessing, so an encrypted body that happens to contain those words is
+    // still decoded correctly.
+    if (/^\s*-?\d*\s*(body|lump|shell|face|loop|coedge|edge|vertex|point)\b/im.test(joined)) {
       return joined;
     }
-    const decodedLines = rawLines.map(line => {
-      let out = '';
-      for (let i = 0; i < line.length; i++) {
-        const c = line.charCodeAt(i);
-        if (c >= 33 && c <= 126) {
-          out += String.fromCharCode(159 - c);
-        } else {
-          out += line[i];
-        }
-      }
-      return out;
-    });
-    return decodedLines.join('\n');
+    return rawLines.map(decodeACISSatLine).join('\n');
   }
 
 
@@ -732,6 +835,14 @@ const _globalScope = { THREE };
       return { end: true, name };
     }
     const parts = ['-' + recordIndex, name];
+    // ACIS booleans are context dependent (ezdxf `acis/const.py`,
+    // `BOOL_SPECIFIER`):
+    //   - sense fields (coedge/edge/face sense): TRUE -> "reversed", FALSE -> "forward"
+    //   - sidedness fields (face double_sided, shell solid): TRUE -> "double"/"solid"
+    // Using "reversed" for every TRUE flips the loop orientation of solids and
+    // therefore their shading normals, so the meaning is resolved per record.
+    const isSenseRecord = /^(coedge|tcoedge-coedge|edge|tedge-edge|face|loop)$/i.test(name);
+    const isSidedRecord = /^(face|shell|body|lump)$/i.test(name);
     // Skip ACIS common header (attr pointer, entity id, optional third ptr) so geometric
     // numbers align with the existing SAT reconstructor (which does not expect those fields).
     let startIdx = 1;
@@ -749,10 +860,13 @@ const _globalScope = { THREE };
       if (t.tag === SAB_TAGS.POINTER) {
         parts.push('$' + t.value);
       } else if (t.tag === SAB_TAGS.BOOL_TRUE) {
-        // ezdxf: TRUE often encodes "reversed" / "double" / "I" depending on context
-        parts.push('reversed');
+        if (isSenseRecord) parts.push('reversed');
+        else if (isSidedRecord) parts.push('double');
+        else parts.push('I');
       } else if (t.tag === SAB_TAGS.BOOL_FALSE) {
-        parts.push('forward');
+        if (isSenseRecord) parts.push('forward');
+        else if (isSidedRecord) parts.push('single');
+        else parts.push('forward');
       } else if (t.tag === SAB_TAGS.INT || t.tag === SAB_TAGS.ENUM) {
         parts.push(String(t.value));
       } else if (t.tag === SAB_TAGS.DOUBLE || t.tag === SAB_TAGS.UNKNOWN_0x17) {
@@ -1642,21 +1756,24 @@ const _globalScope = { THREE };
     const uSpan = rect ? (rect.uMax - rect.uMin) : 0;
     const vSpan = rect ? (rect.vMax - rect.vMin) : 0;
     let nu, nv;
+    // Adaptive tessellation: the grid resolution follows the angular span so
+    // large curved faces stay smooth while small faces do not explode into
+    // thousands of redundant triangles.
     if (surf.type === 'cone') {
-      nu = Math.max(16, Math.min(64, Math.round((uSpan || Math.PI * 2) / (Math.PI * 2) * 48)));
-      nv = Math.max(4, Math.min(24, Math.round((Math.abs(vSpan) || 1) > 1 ? 8 : 6) + (Math.abs(surf.sine) > 1e-6 ? 4 : 0)));
+      nu = Math.max(16, Math.min(96, Math.round((uSpan || Math.PI * 2) / (Math.PI * 2) * 64)));
+      nv = Math.max(4, Math.min(32, Math.round((Math.abs(vSpan) || 1) > 1 ? 10 : 8) + (Math.abs(surf.sine) > 1e-6 ? 4 : 0)));
     } else if (surf.type === 'torus') {
-      nu = Math.max(12, Math.min(64, Math.round((uSpan || Math.PI * 2) / (Math.PI * 2) * 36)));
-      nv = Math.max(10, Math.min(36, Math.round((vSpan || Math.PI * 2) / (Math.PI * 2) * 16)));
+      nu = Math.max(16, Math.min(96, Math.round((uSpan || Math.PI * 2) / (Math.PI * 2) * 48)));
+      nv = Math.max(12, Math.min(48, Math.round((vSpan || Math.PI * 2) / (Math.PI * 2) * 20)));
     } else if (surf.type === 'sphere') {
-      nu = Math.max(12, Math.min(48, Math.round((uSpan || Math.PI * 2) / (Math.PI * 2) * 28)));
-      nv = Math.max(8, Math.min(24, Math.round((vSpan || Math.PI) / Math.PI * 16)));
+      nu = Math.max(14, Math.min(64, Math.round((uSpan || Math.PI * 2) / (Math.PI * 2) * 36)));
+      nv = Math.max(10, Math.min(32, Math.round((vSpan || Math.PI) / Math.PI * 20)));
     } else if (surf.type === 'spline') {
-      nu = Math.max(8, Math.min(64, (surf.nU || 8) * 3));
-      nv = Math.max(4, Math.min(48, (surf.nV || 4) * 4));
+      nu = Math.max(10, Math.min(80, (surf.nU || 8) * 4));
+      nv = Math.max(6, Math.min(64, (surf.nV || 4) * 5));
       if (uSpan && surf.domainU) nu = Math.max(6, Math.min(nu, Math.round((uSpan / Math.max(1e-9, surf.domainU[1] - surf.domainU[0])) * nu) + 2));
     } else {
-      nu = 16; nv = 8;
+      nu = 20; nv = 10;
     }
 
     const flip = sense < 0;
@@ -2943,8 +3060,9 @@ const _globalScope = { THREE };
       }
       const lHex = effPair.light;
       const dHex = effPair.dark;
-      const lr = ((lHex >> 16) & 255) / 255, lg = ((lHex >> 8) & 255) / 255, lb = (lHex & 255) / 255;
-      const dr = ((dHex >> 16) & 255) / 255, dg = ((dHex >> 8) & 255) / 255, db = (dHex & 255) / 255;
+      const lc = hexToLinearRgb(lHex), dc = hexToLinearRgb(dHex);
+      const lr = lc.r, lg = lc.g, lb = lc.b;
+      const dr = dc.r, dg = dc.g, db = dc.b;
       targetPage.quadColLight.pushRGBRepeat(lr, lg, lb, 6);
       targetPage.quadColDark.pushRGBRepeat(dr, dg, db, 6);
 
@@ -4358,7 +4476,7 @@ const _globalScope = { THREE };
   // 8. High-Performance Batched Layer Collector (Dual Light/Dark Color Buffers)
   // ============================================================================
   class LayerBatchCollector {
-    constructor(layerName, displayName, colorPair, linetype, visible, originShift, onVertexAdded, getPickId = null) {
+    constructor(layerName, displayName, colorPair, linetype, visible, originShift, onVertexAdded, getPickId = null, creaseAngle = 44) {
       this.layerName = layerName;
       this.displayName = displayName || layerName;
       this.colorPair = colorPair;
@@ -4368,6 +4486,7 @@ const _globalScope = { THREE };
       this.originShift = originShift || { x: 0, y: 0, z: 0 };
       this.onVertexAdded = onVertexAdded || null;
       this.getPickId = getPickId || (() => -1);
+      this.creaseAngle = creaseAngle || 44;
       this.entityCount = 0;
 
       this.linePos = new Float32GrowableBuffer(16384);
@@ -4403,8 +4522,9 @@ const _globalScope = { THREE };
       this.linePos.push6(ax, ay, az, bx, by, bz);
 
       const cp = this._unpackPair(colorOrPair);
-      const lr = ((cp.light >> 16) & 255) / 255, lg = ((cp.light >> 8) & 255) / 255, lb = (cp.light & 255) / 255;
-      const dr = ((cp.dark >> 16) & 255) / 255, dg = ((cp.dark >> 8) & 255) / 255, db = (cp.dark & 255) / 255;
+      const lc = hexToLinearRgb(cp.light), dc = hexToLinearRgb(cp.dark);
+      const lr = lc.r, lg = lc.g, lb = lc.b;
+      const dr = dc.r, dg = dc.g, db = dc.b;
       this.lineColLight.push6(lr, lg, lb, lr, lg, lb);
       this.lineColDark.push6(dr, dg, db, dr, dg, db);
 
@@ -4421,8 +4541,9 @@ const _globalScope = { THREE };
       if (!coords || coords.length === 0) return;
       const ox = this.originShift.x, oy = this.originShift.y, oz = this.originShift.z;
       const cp = this._unpackPair(colorOrPair);
-      const lr = ((cp.light >> 16) & 255) / 255, lg = ((cp.light >> 8) & 255) / 255, lb = (cp.light & 255) / 255;
-      const dr = ((cp.dark >> 16) & 255) / 255, dg = ((cp.dark >> 8) & 255) / 255, db = (cp.dark & 255) / 255;
+      const lc = hexToLinearRgb(cp.light), dc = hexToLinearRgb(cp.dark);
+      const lr = lc.r, lg = lc.g, lb = lc.b;
+      const dr = dc.r, dg = dc.g, db = dc.b;
       const cb = this.onVertexAdded;
       const pid = this.getPickId();
       for (let i = 0; i < coords.length; i += 3) {
@@ -4443,8 +4564,9 @@ const _globalScope = { THREE };
       this.mesh2DPos.push9(ax, ay, az, bx, by, bz, cx, cy, cz);
 
       const cp = this._unpackPair(colorOrPair);
-      const lr = ((cp.light >> 16) & 255) / 255, lg = ((cp.light >> 8) & 255) / 255, lb = (cp.light & 255) / 255;
-      const dr = ((cp.dark >> 16) & 255) / 255, dg = ((cp.dark >> 8) & 255) / 255, db = (cp.dark & 255) / 255;
+      const lc = hexToLinearRgb(cp.light), dc = hexToLinearRgb(cp.dark);
+      const lr = lc.r, lg = lc.g, lb = lc.b;
+      const dr = dc.r, dg = dc.g, db = dc.b;
       this.mesh2DColLight.push9(lr, lg, lb, lr, lg, lb, lr, lg, lb);
       this.mesh2DColDark.push9(dr, dg, db, dr, dg, db, dr, dg, db);
 
@@ -4466,8 +4588,9 @@ const _globalScope = { THREE };
       this.mesh3DPos.push9(ax, ay, az, bx, by, bz, cx, cy, cz);
 
       const cp = this._unpackPair(colorOrPair);
-      const lr = ((cp.light >> 16) & 255) / 255, lg = ((cp.light >> 8) & 255) / 255, lb = (cp.light & 255) / 255;
-      const dr = ((cp.dark >> 16) & 255) / 255, dg = ((cp.dark >> 8) & 255) / 255, db = (cp.dark & 255) / 255;
+      const lc = hexToLinearRgb(cp.light), dc = hexToLinearRgb(cp.dark);
+      const lr = lc.r, lg = lc.g, lb = lc.b;
+      const dr = dc.r, dg = dc.g, db = dc.b;
       this.mesh3DColLight.push9(lr, lg, lb, lr, lg, lb, lr, lg, lb);
       this.mesh3DColDark.push9(dr, dg, db, dr, dg, db, dr, dg, db);
 
@@ -4511,6 +4634,8 @@ const _globalScope = { THREE };
           polygonOffsetFactor: 2,
           polygonOffsetUnits: 2
         });
+        geom.computeBoundingBox();
+        geom.computeBoundingSphere();
         const mesh2d = new THREE.Mesh(geom, mat);
         mesh2d.renderOrder = 1;
         mesh2d.name = `BatchedMesh2D_${this.layerName}`;
@@ -4530,7 +4655,7 @@ const _globalScope = { THREE };
         const darkArr = new Float32Array(this.mesh3DColDark.toTypedArray());
         const activeArr = new Float32Array(isLightTheme ? lightArr : darkArr);
         geom.setAttribute('color', new THREE.BufferAttribute(activeArr, 3));
-        const smoothNormals = computeCreaseAngleNormals(posArr, 44);
+        const smoothNormals = computeCreaseAngleNormals(posArr, this.creaseAngle || 44);
         geom.setAttribute('normal', new THREE.BufferAttribute(smoothNormals, 3));
 
         const mat = new THREE.MeshStandardMaterial({
@@ -4542,6 +4667,8 @@ const _globalScope = { THREE };
           polygonOffsetFactor: 1,
           polygonOffsetUnits: 1
         });
+        geom.computeBoundingBox();
+        geom.computeBoundingSphere();
         const mesh3d = new THREE.Mesh(geom, mat);
         mesh3d.renderOrder = 2;
         mesh3d.name = `BatchedMesh3D_${this.layerName}`;
@@ -4560,6 +4687,8 @@ const _globalScope = { THREE };
         const darkArr = new Float32Array(this.lineColDark.toTypedArray());
         const activeArr = new Float32Array(isLightTheme ? lightArr : darkArr);
         geom.setAttribute('color', new THREE.BufferAttribute(activeArr, 3));
+        geom.computeBoundingBox();
+        geom.computeBoundingSphere();
         const lines = new THREE.LineSegments(geom, new THREE.LineBasicMaterial({ vertexColors: true }));
         lines.renderOrder = 3;
         lines.name = `BatchedLines_${this.layerName}`;
@@ -4587,9 +4716,16 @@ const _globalScope = { THREE };
         backgroundColor: 'light',
         dimensionMode: 'auto',
         includePaperSpace: false,
-        curveSegments: 48,
+        curveSegments: 96,
         extrudeThickness: true,
-        centerOrigin: true
+        centerOrigin: true,
+        // Crease angle (degrees) used to decide where a 3D surface breaks.
+        // Smaller = smoother curved faces, larger = sharper mechanical edges.
+        creaseAngle: 44,
+        // Minimum number of segments used for a full circle / closed curve.
+        minCurveSegments: 24,
+        // Maximum number of segments used for a full circle / closed curve.
+        maxCurveSegments: 192
       };
       this.registeredFonts = {};
     }
@@ -4616,10 +4752,11 @@ const _globalScope = { THREE };
       const monoG = 1.0;
       const monoB = 1.0;
 
-      // Highlight: purple (#8B5CF6) on white bg, lighter purple (#C4B5FD) on black bg
-      const hiR = isLight ? 0.545 : 0.769;
-      const hiG = isLight ? 0.361 : 0.710;
-      const hiB = isLight ? 0.965 : 0.992;
+      // Highlight: purple (#8B5CF6) on white bg, lighter purple (#C4B5FD) on black bg.
+      // Stored in linear-sRGB because vertex colours live in the renderer's
+      // working colour space.
+      const hi = isLight ? hexToLinearRgb(0x8B5CF6) : hexToLinearRgb(0xC4B5FD);
+      const hiR = hi.r, hiG = hi.g, hiB = hi.b;
       const hasSel = selectedIdSet && selectedIdSet.size > 0;
 
       rootGroup.traverse(obj => {
@@ -4655,7 +4792,11 @@ const _globalScope = { THREE };
           }
         }
         if (obj.isMesh && obj.name && obj.name.startsWith('BatchedMesh3D') && obj.material && obj.material.emissive) {
-          obj.material.emissive.setHex(isMono ? 0x383838 : 0x000000);
+          // 3D solids: selection boost via emissive so shaded geometry stays legible
+          // instead of looking flat under PBR lighting.
+          const boost = hasSel && obj.userData.selectionBoost === true;
+          obj.material.emissive.setHex(isMono ? 0x383838 : (boost ? 0x5B21B6 : 0x000000));
+          obj.material.emissiveIntensity = boost ? 0.85 : 1.0;
           obj.material.roughness = isMono ? 0.55 : 0.42;
           obj.material.metalness = isMono ? 0.05 : 0.16;
           obj.material.needsUpdate = true;
@@ -4801,8 +4942,18 @@ const _globalScope = { THREE };
         usePaperSpace = true;
       }
 
-      const baseSegs = dxf.entities.length > 15000 ? 24 : (dxf.entities.length > 5000 ? 36 : (this.options.curveSegments || 56));
+      // Curve tessellation budget. Large drawings get fewer segments to keep the
+      // parse fast, but the floor is raised so close-up views of big drawings do
+      // not look faceted, and the ceiling is capped so tiny drawings stay cheap.
+      const minSegs = Math.max(8, this.options.minCurveSegments || 24);
+      const maxSegs = Math.max(minSegs, this.options.maxCurveSegments || 192);
+      const requested = Math.max(minSegs, Math.min(maxSegs, this.options.curveSegments || 48));
+      const baseSegs = dxf.entities.length > 15000
+        ? Math.max(minSegs, Math.floor(requested * 0.75))
+        : (dxf.entities.length > 5000 ? Math.max(minSegs, Math.floor(requested * 0.85)) : requested);
       this._activeCurveSegs = baseSegs;
+      this._minCurveSegs = minSegs;
+      this._maxCurveSegs = maxSegs;
 
       // Adaptive text atlas nominal pixel size for extra-large drawings
       const nominalTextPx = textLikeCount > 5000 ? 64 : (textLikeCount > 1500 ? 80 : 96);
@@ -4881,7 +5032,8 @@ const _globalScope = { THREE };
             lDef.visible !== false,
             originShift,
             onVertexAdded,
-            getPickId
+            getPickId,
+            this.options.creaseAngle || 44
           );
         }
         return collectors[key];
