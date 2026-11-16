@@ -565,7 +565,10 @@ const _globalScope = { THREE };
     const uEnd = U[n + 1];
     if (uEnd <= uStart) return validCP.map(pt => new THREE.Vector3(pt.x, pt.y, pt.z || 0));
 
-    const numSamples = Math.max(baseSamples, Math.min(240, validCP.length * 6));
+    // Sample density follows the control polygon: a spline with many control
+    // points gets a proportionally denser sampling. The cap only exists to
+    // bound the worst case (a huge spline), it is not a quality setting.
+    const numSamples = Math.max(baseSamples, Math.min(1024, validCP.length * 8));
 
     function findSpan(u) {
       if (u >= U[n + 1]) return n;
@@ -1758,22 +1761,23 @@ const _globalScope = { THREE };
     let nu, nv;
     // Adaptive tessellation: the grid resolution follows the angular span so
     // large curved faces stay smooth while small faces do not explode into
-    // thousands of redundant triangles.
+    // thousands of redundant triangles. The caps are absolute safety limits,
+    // not a quality knob — the resolution never depends on the drawing size.
     if (surf.type === 'cone') {
-      nu = Math.max(16, Math.min(96, Math.round((uSpan || Math.PI * 2) / (Math.PI * 2) * 64)));
-      nv = Math.max(4, Math.min(32, Math.round((Math.abs(vSpan) || 1) > 1 ? 10 : 8) + (Math.abs(surf.sine) > 1e-6 ? 4 : 0)));
+      nu = Math.max(24, Math.min(192, Math.round((uSpan || Math.PI * 2) / (Math.PI * 2) * 96)));
+      nv = Math.max(8, Math.min(64, Math.round((Math.abs(vSpan) || 1) > 1 ? 16 : 12) + (Math.abs(surf.sine) > 1e-6 ? 6 : 0)));
     } else if (surf.type === 'torus') {
-      nu = Math.max(16, Math.min(96, Math.round((uSpan || Math.PI * 2) / (Math.PI * 2) * 48)));
-      nv = Math.max(12, Math.min(48, Math.round((vSpan || Math.PI * 2) / (Math.PI * 2) * 20)));
+      nu = Math.max(24, Math.min(192, Math.round((uSpan || Math.PI * 2) / (Math.PI * 2) * 72)));
+      nv = Math.max(16, Math.min(72, Math.round((vSpan || Math.PI * 2) / (Math.PI * 2) * 28)));
     } else if (surf.type === 'sphere') {
-      nu = Math.max(14, Math.min(64, Math.round((uSpan || Math.PI * 2) / (Math.PI * 2) * 36)));
-      nv = Math.max(10, Math.min(32, Math.round((vSpan || Math.PI) / Math.PI * 20)));
+      nu = Math.max(20, Math.min(128, Math.round((uSpan || Math.PI * 2) / (Math.PI * 2) * 56)));
+      nv = Math.max(14, Math.min(56, Math.round((vSpan || Math.PI) / Math.PI * 28)));
     } else if (surf.type === 'spline') {
-      nu = Math.max(10, Math.min(80, (surf.nU || 8) * 4));
-      nv = Math.max(6, Math.min(64, (surf.nV || 4) * 5));
+      nu = Math.max(16, Math.min(128, (surf.nU || 8) * 6));
+      nv = Math.max(10, Math.min(96, (surf.nV || 4) * 7));
       if (uSpan && surf.domainU) nu = Math.max(6, Math.min(nu, Math.round((uSpan / Math.max(1e-9, surf.domainU[1] - surf.domainU[0])) * nu) + 2));
     } else {
-      nu = 20; nv = 10;
+      nu = 32; nv = 16;
     }
 
     const flip = sense < 0;
@@ -4716,6 +4720,9 @@ const _globalScope = { THREE };
         backgroundColor: 'light',
         dimensionMode: 'auto',
         includePaperSpace: false,
+        // Number of segments used to approximate a full circle / closed curve.
+        // Accuracy first: the same budget applies to every drawing, regardless
+        // of its size. Lower it only if you really need a faster parse.
         curveSegments: 96,
         extrudeThickness: true,
         centerOrigin: true,
@@ -4724,6 +4731,9 @@ const _globalScope = { THREE };
         creaseAngle: 44,
         // Minimum number of segments used for a full circle / closed curve.
         minCurveSegments: 24,
+        // Nominal pixel size of a glyph in the text atlas. Constant for every
+        // drawing; extra text is handled by paging, not by lowering quality.
+        textAtlasPx: 96,
         // Maximum number of segments used for a full circle / closed curve.
         maxCurveSegments: 192
       };
@@ -4945,18 +4955,26 @@ const _globalScope = { THREE };
       // Curve tessellation budget. Large drawings get fewer segments to keep the
       // parse fast, but the floor is raised so close-up views of big drawings do
       // not look faceted, and the ceiling is capped so tiny drawings stay cheap.
+      // Curve tessellation budget.
+      //
+      // Accuracy always wins over parse speed here: the tessellation density
+      // must not depend on how many entities a drawing happens to contain.
+      // An earlier version scaled the segment count down for large drawings
+      // (15000+ entities -> 75 %), which made big drawings visibly faceted
+      // exactly where the user zooms in. The budget is now a fixed, high
+      // value for every drawing.
       const minSegs = Math.max(8, this.options.minCurveSegments || 24);
       const maxSegs = Math.max(minSegs, this.options.maxCurveSegments || 192);
       const requested = Math.max(minSegs, Math.min(maxSegs, this.options.curveSegments || 48));
-      const baseSegs = dxf.entities.length > 15000
-        ? Math.max(minSegs, Math.floor(requested * 0.75))
-        : (dxf.entities.length > 5000 ? Math.max(minSegs, Math.floor(requested * 0.85)) : requested);
+      const baseSegs = requested;
       this._activeCurveSegs = baseSegs;
       this._minCurveSegs = minSegs;
       this._maxCurveSegs = maxSegs;
 
-      // Adaptive text atlas nominal pixel size for extra-large drawings
-      const nominalTextPx = textLikeCount > 5000 ? 64 : (textLikeCount > 1500 ? 80 : 96);
+      // Text atlas resolution is constant: the glyph resolution must not
+      // depend on how much text a drawing contains. Large drawings simply use
+      // more atlas pages (the atlas is paged), so the quality stays identical.
+      const nominalTextPx = this.options.textAtlasPx || 96;
       const originShift = this.computeSceneOrigin(dxf, usePaperSpace);
 
       const globalBBox = new THREE.Box3();
@@ -5547,7 +5565,7 @@ const _globalScope = { THREE };
       const ocsMat = getOCS2WCSMatrix(ent.extrusion);
       const combMat = new THREE.Matrix4().multiplyMatrices(worldMat, ocsMat);
       const hasThick = this.options.extrudeThickness && Math.abs(ent.thickness || 0) > 1e-4;
-      const segs = hasThick ? 56 : (depth > 0 ? Math.max(24, Math.floor(this._activeCurveSegs * 0.75)) : this._activeCurveSegs);
+      const segs = hasThick ? 56 : this._activeCurveSegs;
       const pts = [];
       for (let i = 0; i <= segs; i++) {
         const a = (i / segs) * Math.PI * 2;
@@ -5563,7 +5581,9 @@ const _globalScope = { THREE };
       let endRad = THREE.MathUtils.degToRad(ent.endAngle !== undefined ? ent.endAngle : 360);
       while (endRad <= startRad) endRad += Math.PI * 2;
       const sweep = endRad - startRad;
-      const baseSegs = depth > 0 ? Math.max(16, Math.floor(this._activeCurveSegs * 0.7)) : this._activeCurveSegs;
+      // Nested (3D) arcs keep the same density as top-level arcs: accuracy
+      // must not depend on how deeply an entity is nested.
+      const baseSegs = this._activeCurveSegs;
       const segs = Math.max(8, Math.ceil((sweep / (Math.PI * 2)) * baseSegs));
       const ocsMat = getOCS2WCSMatrix(ent.extrusion);
       const combMat = new THREE.Matrix4().multiplyMatrices(worldMat, ocsMat);

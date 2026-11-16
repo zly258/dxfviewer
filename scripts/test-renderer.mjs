@@ -111,7 +111,30 @@ check('loader options expose crease angle and curve segment bounds', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 8. The 3D viewer ships a selection highlight overlay for solids
+// 10. Tessellation accuracy must never depend on the drawing size
+// ---------------------------------------------------------------------------
+check('tessellation density is independent of the drawing size', () => {
+  const src = fs.readFileSync(path.join(rootDir, 'src', 'DXFLoader.js'), 'utf8');
+  // No entity-count based downgrade of the curve budget.
+  assert(
+    !/entities\.length > \d+[\s\S]{0,160}?_activeCurveSegs/.test(src),
+    'the curve segment budget must not be scaled down for large drawings'
+  );
+  // No text-atlas downgrade based on the number of text entities.
+  assert(
+    !/textLikeCount > \d+ \? \d+ :/.test(src),
+    'the text atlas resolution must not be reduced for drawings with much text'
+  );
+  assert(src.includes('textAtlasPx'), 'a constant text atlas resolution option must exist');
+  // Nested 3D entities keep the same density as top-level ones.
+  assert(
+    !/depth > 0 \? Math\.max\(\d+, Math\.floor\(this\._activeCurveSegs/.test(src),
+    'nested entities must keep the same tessellation density'
+  );
+});
+
+// ---------------------------------------------------------------------------
+// 11. The example app renders an additive highlight for selected 3D solids
 // ---------------------------------------------------------------------------
 check('example app renders an additive highlight for selected 3D solids', () => {
   const html = fs.readFileSync(path.join(rootDir, 'examples', 'index.html'), 'utf8');
