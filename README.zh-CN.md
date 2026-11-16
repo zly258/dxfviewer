@@ -30,21 +30,14 @@
 
 ---
 
-## 安装与本地运行
-
-```bash
-npm install three threejs-dxf-loader
-```
-
-本地运行示例与测试：
+## 本地运行
 
 ```bash
 git clone https://github.com/zly258/dxfviewer.git
-cd three-dxf-loader
-npm run build
-npm test
-npm run dev
-# 浏览器访问 http://localhost:8080/
+cd dxfviewer
+node scripts/build.mjs     # 构建 dist/ 与 docs/
+node scripts/test.mjs      # 运行自动化解析测试
+node scripts/serve.mjs     # 本地预览 http://localhost:8080/
 ```
 
 ---
@@ -67,10 +60,9 @@ DXFLoader.applyBackgroundTheme(result.scene, 'bw_light');
 
 ---
 
-## 发布到 GitHub Pages 与 NPM
+## 发布到 GitHub Pages
 
 - **GitHub Pages**: 推送代码到 `main` 分支，并在仓库 `Settings → Pages → Source` 选择 **GitHub Actions**（`.github/workflows/ci-and-pages.yml`）。
-- **NPM**: 在仓库 Secrets 中配置 `NPM_TOKEN` 并发布 GitHub Release（`.github/workflows/npm-publish.yml`），或本地执行 `npm publish --access public`。
 
 ## 开发者与协议
 

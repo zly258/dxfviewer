@@ -31,21 +31,14 @@ A complete, production-grade **2D & 3D AutoCAD DXF parser and WebGL renderer** b
 
 ---
 
-## Installation & Local Run
-
-```bash
-npm install three threejs-dxf-loader
-```
-
-Run the repository locally:
+## Local Run
 
 ```bash
 git clone https://github.com/zly258/dxfviewer.git
-cd three-dxf-loader
-npm run build
-npm test
-npm run dev
-# Opens http://localhost:8080/
+cd dxfviewer
+node scripts/build.mjs     # build dist/ and docs/
+node scripts/test.mjs      # run the automated parser tests
+node scripts/serve.mjs     # serve locally at http://localhost:8080/
 ```
 
 ---
@@ -68,10 +61,9 @@ DXFLoader.applyBackgroundTheme(result.scene, 'bw_light');
 
 ---
 
-## Publishing to GitHub Pages & NPM
+## Publishing to GitHub Pages
 
-- **GitHub Pages**: Push to `main` and set **Settings → Pages → Source** to **GitHub Actions** (`.github/workflows/ci-and-pages.yml`).
-- **NPM**: Add `NPM_TOKEN` in repository secrets and publish a GitHub Release (`.github/workflows/npm-publish.yml`), or run `npm publish --access public`.
+Push to `main`; the workflow `.github/workflows/ci-and-pages.yml` builds the docs and deploys them to GitHub Pages.
 
 ## Author & License
 
