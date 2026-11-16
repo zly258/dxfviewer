@@ -1,5 +1,5 @@
 /**
- * Zero-dependency local HTTP development server for running the Minimalist MD CAD Viewer example.
+ * Zero-dependency local HTTP development server for running the CAD Viewer example.
  * Usage: `npm run dev` or `npm start`
  * Author: zhangly1403 <zhangly1403@qq.com>
  */
@@ -48,7 +48,7 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, () => {
   console.log('');
-  console.log('  threejs-dxf-loader - Minimalist MD CAD Viewer (Chinese / English)');
+  console.log('  threejs-dxf-loader - CAD Viewer (Chinese / English)');
   console.log(`  Local URL: http://localhost:${PORT}/`);
   console.log('');
 });

@@ -6,7 +6,7 @@
 [![Three.js](https://img.shields.io/badge/Three.js-%3E%3D0.128.0-black.svg)](https://threejs.org/)
 [![Author](https://img.shields.io/badge/Author-zhangly1403-emerald.svg)](https://github.com/zhangly1403)
 
-A complete, production-grade **2D & 3D AutoCAD DXF parser and WebGL renderer** built on Three.js, paired with a **Minimalist Material Design (MD) bilingual (`中文 / EN`) CAD viewer** (`examples/index.html`).
+A complete, production-grade **2D & 3D AutoCAD DXF parser and WebGL renderer** built on Three.js, paired with a **bilingual (`中文 / EN`) CAD viewer** (`examples/index.html`).
 
 - **Developer / Author**: `zhangly1403` (<zhangly1403@qq.com>)
 - **Live Demo (GitHub Pages)**: `https://zly258.github.io/dxfviewer/`
@@ -22,7 +22,7 @@ A complete, production-grade **2D & 3D AutoCAD DXF parser and WebGL renderer** b
    - **Solid Filled Text, Alignments & `%%` Symbols**: Supports `TEXT` (Left, Center, Right, Middle, Aligned, Fit), `MTEXT` (`\P`, `\S`, `\H`, `\W`, `\Q`, `\C`, ``), `DIMENSION`, `LEADER`, `MLEADER`, `ACAD_TABLE`, and full `%%` codes (`%%c` `⌀`, `%%d` `°`, `%%p` `±`, `%%130`–`%%135`, `%%176`–`%%248`, `%%%`). Unmatched CAD fonts automatically fall back to **SimSun (`宋体`) / Arial**.
 2. **4 Instant Themes (`<1ms` Zero Re-Parse)**:
    - Supports **White (`light`)**, **Black (`dark`)**, **B&W Light (`bw_light`)**, and **B&W Dark (`bw_dark`)** monochrome CAD modes via `DXFLoader.applyBackgroundTheme(rootGroup, bgTheme, selectedIdSet)`.
-3. **Minimalist Material Design Bilingual Viewer (`examples/index.html`)**:
+3. **Bilingual CAD Viewer (`examples/index.html`)**:
    - **2D Rotation Lock**: 2D Top view locks left-click rotation (`enableRotate = false`) for clean pan/zoom; 3D Iso view enables full 3D orbit.
    - **Color Highlighting**: Selected entities highlight directly by vertex color rather than cluttering bounding boxes.
    - **AutoCAD Window & Crossing Box Selection**: Left→Right (solid blue) Window inclusion / Right→Left (dashed green) Crossing intersection.
