@@ -47,8 +47,8 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`\n=============================================================`);
-  console.log(`  THREE.DXFLoader Minimalist MD Viewer (中文 / EN) is running!`);
+  console.log('');
+  console.log('  threejs-dxf-loader - Minimalist MD CAD Viewer (Chinese / English)');
   console.log(`  Local URL: http://localhost:${PORT}/`);
-  console.log(`=============================================================\n`);
+  console.log('');
 });
