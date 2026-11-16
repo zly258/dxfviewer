@@ -1,0 +1,68 @@
+{
+  "name": "@zhangly1403/dxfviewer",
+  "version": "1.0.0",
+  "description": "Complete, high-performance 2D & 3D AutoCAD DXF parser and Three.js renderer with solid filled text atlas, smooth 3D solids, async progress, instant theme switching, box selection, and entity search.",
+  "keywords": [
+    "threejs",
+    "three",
+    "dxf",
+    "dxf-loader",
+    "dxf-viewer",
+    "autocad",
+    "cad",
+    "webgl",
+    "2d",
+    "3d",
+    "acis",
+    "hatch",
+    "mtext"
+  ],
+  "homepage": "https://zly258.github.io/dxfviewer/",
+  "bugs": {
+    "url": "https://github.com/zly258/dxfviewer/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zly258/dxfviewer.git"
+  },
+  "license": "MIT",
+  "author": {
+    "name": "zhangly1403",
+    "email": "zhangly1403@qq.com",
+    "url": "https://github.com/zhangly1403"
+  },
+  "main": "./dist/three-dxf-loader.umd.js",
+  "module": "./dist/three-dxf-loader.esm.js",
+  "types": "./dist/DXFLoader.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/DXFLoader.d.ts",
+      "import": "./dist/three-dxf-loader.esm.js",
+      "require": "./dist/three-dxf-loader.umd.js",
+      "default": "./dist/three-dxf-loader.esm.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "README.zh-CN.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "dev": "node scripts/serve.mjs",
+    "start": "node scripts/serve.mjs",
+    "test": "node scripts/test.mjs",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "peerDependencies": {
+    "three": ">=0.128.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
