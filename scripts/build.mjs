@@ -40,8 +40,22 @@ export default DXFLoader;
 `;
 fs.writeFileSync(path.join(distDir, 'threejs-dxf-loader.esm.js'), esmBundle, 'utf-8');
 
-// Copy examples/index.html to docs/index.html for GitHub Pages deployment
-if (fs.existsSync(path.join(examplesDir, 'index.html'))) {
-  fs.copyFileSync(path.join(examplesDir, 'index.html'), path.join(docsDir, 'index.html'));
+// Sync inline DXFLoader inside examples/index.html from src, then copy to docs/
+const examplesHtmlPath = path.join(examplesDir, 'index.html');
+if (fs.existsSync(examplesHtmlPath)) {
+  let html = fs.readFileSync(examplesHtmlPath, 'utf-8');
+  // Use a function replacer: umdSource contains many "$" (ACIS pointers); a string
+  // replacement would treat $&, $1, $' etc. as special and corrupt the HTML.
+  const replaced = html.replace(
+    /(<!--\s*Inline DXFLoader[\s\S]*?<script>\r?\n)[\s\S]*?(\r?\n\s*<\/script>)/,
+    (_match, open, close) => open + umdSource.replace(/<\/script/gi, '<\\/script') + close
+  );
+  if (replaced === html) {
+    console.warn('[threejs-dxf-loader] Warning: could not locate inline DXFLoader script block in examples/index.html');
+  } else {
+    html = replaced;
+    fs.writeFileSync(examplesHtmlPath, html, 'utf-8');
+  }
+  fs.writeFileSync(path.join(docsDir, 'index.html'), html, 'utf-8');
 }
 console.log('[threejs-dxf-loader] Build completed successfully -> dist/ & docs/');

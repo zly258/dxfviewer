@@ -62,7 +62,7 @@ DXFLoader.applyBackgroundTheme(result.scene, 'bw_light');
 
 ## 发布到 GitHub Pages
 
-- **GitHub Pages**: 推送代码到 `main` 分支，并在仓库 `Settings → Pages → Source` 选择 **GitHub Actions**（`.github/workflows/ci-and-pages.yml`）。
+推送到 `main` 分支后，`.github/workflows/ci-and-pages.yml` 会自动构建并把 `docs/` 发布到 GitHub Pages。
 
 ## 开发者与协议
 
