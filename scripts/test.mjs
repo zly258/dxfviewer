@@ -1,5 +1,5 @@
 /**
- * Automated Node.js test suite for three-dxf-loader
+ * Automated Node.js test suite for threejs-dxf-loader
  * Verifies DXFParser, %% special symbol decoding, 3D entities, nested blocks, and theme switching.
  * Author: zhangly1403 <zhangly1403@qq.com>
  */
@@ -28,7 +28,7 @@ const mockTHREE = {
 
 globalThis.THREE = mockTHREE;
 const require = createRequire(import.meta.url);
-const DXFLoader = require('../dist/three-dxf-loader.umd.js');
+const DXFLoader = require('../dist/threejs-dxf-loader.umd.js');
 
 assert(typeof DXFLoader === 'function', 'DXFLoader class should be exported');
 assert(typeof DXFLoader.DXFParser === 'function', 'DXFParser class should be exported');
@@ -58,4 +58,4 @@ const spindleParsed = new DXFLoader.DXFParser().parse(spindleRaw);
 const types3d = new Set(spindleParsed.entities.map(e => e.type));
 assert(types3d.has('MESH') && types3d.has('3DFACE') && types3d.has('POLYLINE') && types3d.has('INSERT'), '3D spindle should cover MESH, 3DFACE, POLYLINE, INSERT');
 
-console.log('[three-dxf-loader] All automated tests passed!');
+console.log('[threejs-dxf-loader] All automated tests passed!');

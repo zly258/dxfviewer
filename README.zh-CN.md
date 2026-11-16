@@ -1,4 +1,4 @@
-# three-dxf-loader
+# threejs-dxf-loader
 
 [English](./README.md) | [简体中文](./README.zh-CN.md)
 
@@ -33,7 +33,7 @@
 ## 安装与本地运行
 
 ```bash
-npm install three @zhangly1403/dxfviewer
+npm install three threejs-dxf-loader
 ```
 
 本地运行示例与测试：
@@ -53,7 +53,7 @@ npm run dev
 
 ```javascript
 import * as THREE from 'three';
-import { DXFLoader } from '@zhangly1403/dxfviewer';
+import { DXFLoader } from 'threejs-dxf-loader';
 
 const loader = new DXFLoader();
 const result = await loader.parseAsync(dxfArrayBuffer, { backgroundColor: 'light' }, (p) => {

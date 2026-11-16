@@ -1,6 +1,6 @@
 /**
- * Zero-dependency build script for three-dxf-loader
- * Generates dist/three-dxf-loader.umd.js, dist/three-dxf-loader.esm.js, and syncs docs/ for GitHub Pages.
+ * Zero-dependency build script for threejs-dxf-loader
+ * Generates dist/threejs-dxf-loader.umd.js, dist/threejs-dxf-loader.esm.js, and syncs docs/ for GitHub Pages.
  * Author: zhangly1403 <zhangly1403@qq.com>
  */
 import fs from 'node:fs';
@@ -18,11 +18,11 @@ fs.mkdirSync(distDir, { recursive: true });
 fs.mkdirSync(docsDir, { recursive: true });
 
 const umdSource = fs.readFileSync(srcPath, 'utf-8');
-fs.writeFileSync(path.join(distDir, 'three-dxf-loader.umd.js'), umdSource, 'utf-8');
+fs.writeFileSync(path.join(distDir, 'threejs-dxf-loader.umd.js'), umdSource, 'utf-8');
 
 const esmBundle = `/**
  * @license MIT
- * three-dxf-loader v1.0.0 (ES Module Bundle)
+ * threejs-dxf-loader v1.0.0 (ES Module Bundle)
  * Author: zhangly1403 <zhangly1403@qq.com>
  */
 import * as THREE from 'three';
@@ -38,10 +38,10 @@ export const MultiPageTextAtlas = DXFLoader.MultiPageTextAtlas;
 export const ACI_PALETTE = DXFLoader.ACI_PALETTE;
 export default DXFLoader;
 `;
-fs.writeFileSync(path.join(distDir, 'three-dxf-loader.esm.js'), esmBundle, 'utf-8');
+fs.writeFileSync(path.join(distDir, 'threejs-dxf-loader.esm.js'), esmBundle, 'utf-8');
 
 // Copy examples/index.html to docs/index.html for GitHub Pages deployment
 if (fs.existsSync(path.join(examplesDir, 'index.html'))) {
   fs.copyFileSync(path.join(examplesDir, 'index.html'), path.join(docsDir, 'index.html'));
 }
-console.log('[three-dxf-loader] Build completed successfully -> dist/ & docs/');
+console.log('[threejs-dxf-loader] Build completed successfully -> dist/ & docs/');

@@ -1,5 +1,5 @@
 {
-  "name": "@zhangly1403/dxfviewer",
+  "name": "threejs-dxf-loader",
   "version": "1.0.0",
   "description": "Complete, high-performance 2D & 3D AutoCAD DXF parser and Three.js renderer with solid filled text atlas, smooth 3D solids, async progress, instant theme switching, box selection, and entity search.",
   "keywords": [
@@ -31,15 +31,15 @@
     "email": "zhangly1403@qq.com",
     "url": "https://github.com/zhangly1403"
   },
-  "main": "./dist/three-dxf-loader.umd.js",
-  "module": "./dist/three-dxf-loader.esm.js",
+  "main": "./dist/threejs-dxf-loader.umd.js",
+  "module": "./dist/threejs-dxf-loader.esm.js",
   "types": "./dist/DXFLoader.d.ts",
   "exports": {
     ".": {
       "types": "./dist/DXFLoader.d.ts",
-      "import": "./dist/three-dxf-loader.esm.js",
-      "require": "./dist/three-dxf-loader.umd.js",
-      "default": "./dist/three-dxf-loader.esm.js"
+      "import": "./dist/threejs-dxf-loader.esm.js",
+      "require": "./dist/threejs-dxf-loader.umd.js",
+      "default": "./dist/threejs-dxf-loader.esm.js"
     }
   },
   "files": [

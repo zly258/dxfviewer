@@ -1,4 +1,4 @@
-# three-dxf-loader
+# threejs-dxf-loader
 
 [English](./README.md) | [简体中文](./README.zh-CN.md)
 
@@ -34,7 +34,7 @@ A complete, production-grade **2D & 3D AutoCAD DXF parser and WebGL renderer** b
 ## Installation & Local Run
 
 ```bash
-npm install three @zhangly1403/dxfviewer
+npm install three threejs-dxf-loader
 ```
 
 Run the repository locally:
@@ -54,7 +54,7 @@ npm run dev
 
 ```javascript
 import * as THREE from 'three';
-import { DXFLoader } from '@zhangly1403/dxfviewer';
+import { DXFLoader } from 'threejs-dxf-loader';
 
 const loader = new DXFLoader();
 const result = await loader.parseAsync(dxfArrayBuffer, { backgroundColor: 'light' }, (p) => {

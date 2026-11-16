@@ -1,6 +1,6 @@
 /**
  * @license MIT
- * three-dxf-loader v1.0.0 (ES Module Bundle)
+ * threejs-dxf-loader v1.0.0 (ES Module Bundle)
  * Author: zhangly1403 <zhangly1403@qq.com>
  */
 import * as THREE from 'three';
