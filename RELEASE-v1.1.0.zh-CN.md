@@ -48,4 +48,8 @@ renderer.toneMapping = THREE.NoToneMapping;         // CAD 颜色请勿使用 AC
 
 ---
 
-English notes are available in: [RELEASE-v1.1.0.md](./RELEASE-v1.1.0.md)
+本文档的英文版本请见：[RELEASE-v1.1.0.md](https://github.com/zly258/dxfviewer/blob/main/RELEASE-v1.1.0.md)。
+
+### 属性面板显示块属性
+
+选中块参照（INSERT）时，其块属性现在会单独列在「块属性」分组中，不再与几何数值混在一起。每个 ATTRIB 以「标签 / 值」形式展示，无值的属性标记为「（空）」。
