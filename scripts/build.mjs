@@ -58,4 +58,19 @@ if (fs.existsSync(examplesHtmlPath)) {
   }
   fs.writeFileSync(path.join(docsDir, 'index.html'), html, 'utf-8');
 }
+
+// Copy the sample drawings so the deployed example can load them lazily
+// (the huge plant-layout sample is fetched at runtime, not embedded).
+const samplesSrc = path.join(examplesDir, 'samples');
+if (fs.existsSync(samplesSrc)) {
+  const samplesDst = path.join(docsDir, 'samples');
+  fs.mkdirSync(samplesDst, { recursive: true });
+  let copied = 0;
+  for (const f of fs.readdirSync(samplesSrc)) {
+    if (!f.toLowerCase().endsWith('.dxf')) continue;
+    fs.copyFileSync(path.join(samplesSrc, f), path.join(samplesDst, f));
+    copied++;
+  }
+  console.log(`[threejs-dxf-loader] copied ${copied} sample drawing(s) -> docs/samples/`);
+}
 console.log('[threejs-dxf-loader] Build completed successfully -> dist/ & docs/');

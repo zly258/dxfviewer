@@ -5590,7 +5590,14 @@ const _globalScope = { THREE };
 
     emitXLineOrRay(ent, dxf, batch, worldMat, parentContext) {
       const base = new THREE.Vector3(ent.x || 0, ent.y || 0, ent.z || 0);
-      const dir = new THREE.Vector3(ent.x1 || 1, ent.y1 || 0, ent.z1 || 0).normalize();
+      // A direction component of 0 is legitimate (a vertical ray is (0,1,0)):
+      // the fallback must only apply when the code is missing, so the old
+      // `ent.x1 || 1` did not turn every vertical ray into a 45-degree line.
+      const dir = new THREE.Vector3(
+        ent.x1 !== undefined ? ent.x1 : 1,
+        ent.y1 !== undefined ? ent.y1 : 0,
+        ent.z1 !== undefined ? ent.z1 : 0
+      ).normalize();
       // Construction lines are infinite; AutoCAD clips them to the drawing
       // extent. A fixed 250 units overflows large drawings (and looks like a
       // stray diagonal), so the reach follows the drawing size when known.
@@ -5671,7 +5678,13 @@ const _globalScope = { THREE };
 
     emitEllipse(ent, dxf, batch, worldMat, parentContext) {
       const center = new THREE.Vector3(ent.x || 0, ent.y || 0, ent.z || 0);
-      const majorVec = new THREE.Vector3(ent.x1 || 1, ent.y1 || 0, ent.z1 || 0);
+      // The major axis may have a zero component (e.g. (0, 45, 0)); only a
+      // missing code should fall back to a default direction.
+      const majorVec = new THREE.Vector3(
+        ent.x1 !== undefined ? ent.x1 : 1,
+        ent.y1 !== undefined ? ent.y1 : 0,
+        ent.z1 !== undefined ? ent.z1 : 0
+      );
       const normal = new THREE.Vector3(
         ent.extrusion ? ent.extrusion.x : 0,
         ent.extrusion ? ent.extrusion.y : 0,
@@ -6013,7 +6026,11 @@ const _globalScope = { THREE };
     emitWipeoutOrImage(ent, dxf, batch, worldMat, parentContext) {
       if (ent.x === undefined || ent.x3 === undefined || ent.y3 === undefined) return;
       const origin = new THREE.Vector3(ent.x, ent.y || 0, ent.z || 0);
-      const uVec = new THREE.Vector3(ent.x1 || 1, ent.y1 || 0, ent.z1 || 0);
+      const uVec = new THREE.Vector3(
+        ent.x1 !== undefined ? ent.x1 : 1,
+        ent.y1 !== undefined ? ent.y1 : 0,
+        ent.z1 !== undefined ? ent.z1 : 0
+      );
       const vVec = new THREE.Vector3(ent.x2 || 0, ent.y2 || 1, ent.z2 || 0);
       const w = ent.x3, h = ent.y3;
       const p0 = origin.clone();

@@ -226,4 +226,14 @@ check('the all-element showcase drawing is bundled', () => {
   assert(html.includes('lblSample6'), 'the showcase must appear in the sample menu');
 });
 
+
+// ---------------------------------------------------------------------------
+// 18. A vertical ray keeps its direction (no 45-degree fallback)
+// ---------------------------------------------------------------------------
+check('a vertical ray keeps its direction', () => {
+  const src = fs.readFileSync(path.join(rootDir, 'src', 'DXFLoader.js'), 'utf8');
+  const code = src.replace(/^\s*\/\/.*$/gm, '');
+  assert(!code.includes('ent.x1 || 1'), 'a zero direction component must not fall back to 1');
+  assert(code.includes('ent.x1 !== undefined ? ent.x1 : 1'), 'the direction fallback must check for undefined');
+});
 console.log(`[threejs-dxf-loader] ${passed} renderer/precision assertions passed!`);

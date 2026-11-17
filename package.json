@@ -50,7 +50,7 @@
     "test:renderer": "node scripts/test-renderer.mjs",
     "test:e2e": "node scripts/test-e2e.mjs",
     "check": "node scripts/test.mjs && node scripts/test-renderer.mjs && node scripts/validate-acis-sab.mjs",
-    "sync:samples": "node scripts/sync-showcase.mjs"
+    "sync:samples": "node scripts/make-huge-sample.mjs && node scripts/make-showcase.mjs && node scripts/sync-showcase.mjs"
   },
   "peerDependencies": {
     "three": ">=0.128.0"

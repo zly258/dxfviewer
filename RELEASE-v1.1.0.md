@@ -69,3 +69,10 @@ Selecting a block reference now lists its attributes in a dedicated **Block Attr
 - **Glyphs are stroked as well as filled**, so text keeps a crisp outline over dense hatching and at any zoom level; the text atlas also uses stronger anisotropic filtering.
 - **Construction lines (XLINE / RAY) are clipped to the drawing extent** instead of a fixed 250-unit reach, so they no longer sprawl across large drawings.
 - **New sample: "All Element Types"** covers lines, linetypes, XLINE/RAY, POINT, CIRCLE, ARC, ELLIPSE, SPLINE, LWPOLYLINE, POLYLINE, SOLID, HATCH (solid and ANSI31), the four TEXT alignments, MTEXT with inline codes, aligned and radial DIMENSIONs, LEADER, and a block reference with attributes.
+
+### Rebuilt sample drawings, a huge-drawing test and a construction-line fix
+
+- **The showcase drawings are now generated, not hand-assembled.** `scripts/make-showcase.mjs` produces a clean 2D grid ("All Element Types", 125 entities in labelled cells) and a separate 3D showcase (solids, mesh, helix, spline and text in space). Layouts no longer overlap, and every sample is a valid DXF entity with the right group codes.
+- **A new huge-drawing sample** exercises the viewer at realistic scale: `plant_layout_huge_2d.dxf` has ~11,100 entities on 16 layers (column grid, equipment foundations, room partitions, pipe racks, valves, dimension chains and underground utilities). It is fetched at runtime by the example rather than embedded, and the build copies the sample files to the deployed site.
+- **Fixed a real geometry bug:** XLINE / RAY direction components of zero were being replaced with 1 by `ent.x1 || 1`, turning every vertical construction line into a 45-degree diagonal. The same issue existed in ELLIPSE major-axis and WIPEOUT/IMAGE vectors; all three now fall back only when the group code is actually missing.
+- `npm run sync:samples` regenerates all three sample drawings and syncs the copies embedded in the example.
