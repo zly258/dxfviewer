@@ -53,3 +53,9 @@ The Chinese version of these notes is available at [RELEASE-v1.1.0.zh-CN.md](htt
 ### Block attributes in the property panel
 
 Selecting a block reference now lists its attributes in a dedicated **Block Attributes** section, so they are easy to find instead of being mixed among the geometric values. Every ATTRIB is shown as a tag/value pair, and attributes without a value are marked as "(empty)".
+
+### Revolution-spline caps and cylinder tessellation / see Chinese doc for details
+
+- **Dished heads stored as `rot_spl_sur` revolution spline surfaces now tessellate correctly.** They previously fell through to the sparse Delaunay trim path and rendered as a warped, partially covered cap (a flat dark ellipse floating inside the shell silhouette). The structured UV-grid path now also accepts faces whose UV contour spans the whole surface domain, and a degenerate meridian range is extended across the meridian domain like the sphere/cone caps. A 2:1 elliptical head now renders as a smooth cap (rim-to-apex span correct, section symmetric, 2268 structured triangles).
+- **Cylinders are emitted with a single quad row** (a cone surface with sine = 0 is linear along its axis), cutting the triangle count of piping-heavy assemblies by roughly half with no visual change.
+- Added `DXFLoader.decodeAcisData(entity, dxf)`: decodes an entity ACIS payload (native SAT or binary SAB) into the plain SAT records for inspection.
