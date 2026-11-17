@@ -2681,8 +2681,12 @@
               else if (arg.includes('ql')) lines.inlineHAlign = 0;
             } else if (cmd === 'H') {
               if (arg.endsWith('x') || arg.endsWith('X')) {
+                // \Hnx — height relative to the MTEXT entity's base height.
+                // This is an absolute multiplier from the base, not cumulative:
+                // \H1.05x; always means 1.05× the entity height regardless of
+                // any previous \H command in the same span.
                 const factor = parseFloat(arg);
-                if (!isNaN(factor) && factor > 0) top.scale *= factor;
+                if (!isNaN(factor) && factor > 0) top.scale = factor;
               } else {
                 const absH = parseFloat(arg);
                 if (!isNaN(absH) && absH > 0) top.absHeight = absH;
