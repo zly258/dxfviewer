@@ -1187,7 +1187,7 @@
     }
     const u0 = knotsU[degU], u1 = knotsU[nU];
     const v0 = knotsV[degV], v1 = knotsV[nV];
-    return {
+    const parsed = {
       type: 'spline',
       degU, degV, nU, nV, poles, knotsU, knotsV, weights,
       periodicU: false, periodU: (u1 - u0) || 1,
@@ -1200,6 +1200,7 @@
         return acisInvertOnSurfaceGrid(this, p, 16, 12);
       }
     };
+    return parsed;
   }
 
   function acisParseIntcurve(rec) {
@@ -1613,6 +1614,31 @@
         uMin = mid.u; uMax = mid.u + surf.periodU;
       }
     }
+    // Revolution spline surfaces (`rot_spl_sur`, e.g. 2:1 elliptical dished
+    // heads on pressure vessels): the face is bounded by a single rim
+    // isocurve plus seam edges, so the projected meridian range collapses to
+    // (approximately) one parameter value while the revolution direction
+    // covers the full circle. Extend the collapsed range across the meridian
+    // domain toward the end farther from the rim — the same treatment the
+    // sphere/cone caps get above. Grid-based inversion quantises the rim
+    // parameter, so the test is relative to the surface domain, not absolute.
+    if (surf.type === 'spline' && surf.domainU && surf.domainV && loopsUV.length) {
+      const duDomain = Math.abs(surf.domainU[1] - surf.domainU[0]);
+      const dvDomain = Math.abs(surf.domainV[1] - surf.domainV[0]);
+      const duCollapsed = (uMax - uMin) < Math.max(1e-8, duDomain * 0.06);
+      const vFullCircle = (vMax - vMin) >= dvDomain * 0.9;
+      if (duCollapsed && vFullCircle) {
+        const d0 = surf.domainU[0], d1 = surf.domainU[1];
+        const mid = loopsUV[0][Math.floor(loopsUV[0].length / 4)] || loopsUV[0][0];
+        if (mid) {
+          if (Math.abs(mid.u - d0) <= Math.abs(d1 - mid.u)) {
+            uMin = Math.min(mid.u, d0); uMax = d1;
+          } else {
+            uMin = d0; uMax = Math.max(mid.u, d1);
+          }
+        }
+      }
+    }
     if (uMax - uMin < 1e-12 || vMax - vMin < 1e-12) return null;
     return { uMin, uMax, vMin, vMax, allIso };
   }
@@ -1747,16 +1773,15 @@
   function acisTessellateFace(surf, loopsUV, batch, combMat, colorPair, sense) {
     if (!surf || !surf.eval || !loopsUV.length) return 0;
     const rect = acisLoopsAreIsoRectangle(loopsUV, surf);
-    const uSpan = rect ? (rect.uMax - rect.uMin) : 0;
-    const vSpan = rect ? (rect.vMax - rect.vMin) : 0;
-    let nu, nv;
-    // Adaptive tessellation: the grid resolution follows the angular span so
-    // large curved faces stay smooth while small faces do not explode into
-    // thousands of redundant triangles. The caps are absolute safety limits,
-    // not a quality knob — the resolution never depends on the drawing size.
     if (surf.type === 'cone') {
       nu = Math.max(24, Math.min(192, Math.round((uSpan || Math.PI * 2) / (Math.PI * 2) * 96)));
-      nv = Math.max(8, Math.min(64, Math.round((Math.abs(vSpan) || 1) > 1 ? 16 : 12) + (Math.abs(surf.sine) > 1e-6 ? 6 : 0)));
+      // A cylinder (cone with sine == 0) is linear along its axis: one row of
+      // quads reproduces it exactly. Extra rows only multiplied the triangle
+      // count of piping-heavy assemblies by ~16 without any visual gain.
+      const isCylinder = Math.abs(surf.sine || 0) < 1e-9;
+      nv = isCylinder
+        ? 2
+        : Math.max(8, Math.min(64, Math.round((Math.abs(vSpan) || 1) > 1 ? 16 : 12) + (Math.abs(surf.sine) > 1e-6 ? 6 : 0)));
     } else if (surf.type === 'torus') {
       nu = Math.max(24, Math.min(192, Math.round((uSpan || Math.PI * 2) / (Math.PI * 2) * 72)));
       nv = Math.max(16, Math.min(72, Math.round((vSpan || Math.PI * 2) / (Math.PI * 2) * 28)));
@@ -1791,6 +1816,19 @@
     // BRepMesh_CylinderRangeSplitter / ConeRangeSplitter / TorusRangeSplitter do.
     // Two const-v end circles of a pipe are not a filled 2D polygon, so the
     // bounding rectangle is the correct face and must keep this path.
+    // Revolution caps (rot_spl_sur dished heads) are also full parameter
+    // rectangles even though `allIso` trips: their UV contour transitions
+    // from the rim isocurve to the seam isocurve at corners, which the
+    // adjacency test reads as non-iso. Accept the rectangle whenever the
+    // face's UV contour spans (nearly) the whole surface domain — partial
+    // trimmed faces span less and keep the Delaunay trimming path.
+    if (rect && !rect.allIso && surf.domainU && surf.domainV) {
+      const duDomain = Math.abs(surf.domainU[1] - surf.domainU[0]);
+      const dvDomain = Math.abs(surf.domainV[1] - surf.domainV[0]);
+      const uCover = (rect.uMax - rect.uMin) >= duDomain * 0.95;
+      const vCover = (rect.vMax - rect.vMin) >= dvDomain * 0.95;
+      if (uCover && vCover) rect.allIso = true;
+    }
     if (rect && rect.allIso) {
       const { uMin, uMax, vMin, vMax } = rect;
       const groups = acisClassifyUvLoops(loopsUV);
@@ -4739,6 +4777,24 @@
     registerFont(name, threeFont) {
       this.registeredFonts[name.toLowerCase()] = threeFont;
       return this;
+    }
+
+    /**
+     * Decode the ACIS payload (SAT text or binary SAB) of an entity into the
+     * plain SAT record text that the reconstructor consumes. Useful for hosts
+     * that want to inspect or export the underlying B-rep data.
+     *
+     * @param {object} ent  the parsed ACIS entity (3DSOLID / SURFACE / REGION / BODY)
+     * @param {object} dxf  the parsed DXF document
+     * @returns {{source:string, satLines:string[]}|{source:string, error:string}}
+     */
+    static decodeAcisData(ent, dxf) {
+      try {
+        const resolved = resolveAcisSatLines(ent, dxf);
+        return { source: resolved.source, satLines: resolved.satLines };
+      } catch (err) {
+        return { source: 'error', error: err && err.message ? err.message : String(err) };
+      }
     }
 
     /**
