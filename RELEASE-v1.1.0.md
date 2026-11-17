@@ -48,4 +48,8 @@ Full changelog: see the commit list for `v1.1.0`.
 
 ---
 
-简体中文说明请见：[RELEASE-v1.1.0.zh-CN.md](./RELEASE-v1.1.0.zh-CN.md)
+The Chinese version of these notes is available at [RELEASE-v1.1.0.zh-CN.md](https://github.com/zly258/dxfviewer/blob/main/RELEASE-v1.1.0.zh-CN.md).
+
+### Block attributes in the property panel
+
+Selecting a block reference now lists its attributes in a dedicated **Block Attributes** section, so they are easy to find instead of being mixed among the geometric values. Every ATTRIB is shown as a tag/value pair, and attributes without a value are marked as "(empty)".
