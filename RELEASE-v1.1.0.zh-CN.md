@@ -76,3 +76,9 @@ renderer.toneMapping = THREE.NoToneMapping;         // CAD 颜色请勿使用 AC
 - **新增超大图纸测试**：`plant_layout_huge_2d.dxf` 约 11,100 个实体、16 个图层，包含柱网、设备基础、房间隔墙、管廊、阀门、标注链与地下管线。示例程序在运行时按需加载，不再内嵌；构建脚本会把示例文件一并发布。
 - **修复一个真实的几何缺陷**：XLINE / RAY 方向分量为 0 时被 `ent.x1 || 1` 误替换为 1，导致所有竖直构造线被画成 45° 斜线。ELLIPSE 主轴与 WIPEOUT/IMAGE 矢量存在同样问题，现均只在组码缺失时才使用默认值。
 - 新增 `npm run sync:samples`：一键重新生成全部示例图纸并同步示例中内嵌的副本。
+
+### 示例图纸随界面语言切换
+
+- **示例图纸现在跟随界面语言。** 每个生成的示例都带有 `dxf_en` 与 `dxf_zh` 两份图纸；点击 EN/中文 时会用所选语言重新渲染当前示例，使图纸内的标注文字也切换语言。2D/3D 全元素案例与超大工厂图纸均支持中英文。
+- 生成器一次性输出几何完全相同的两版图纸（`npm run sync:samples`）；`node scripts/sync-showcase.mjs` 只更新字段值，不会改动周围的对象结构。
+- 新增 `npm run test:lang`（`scripts/test-sample-language.mjs`），验证每个双语示例切换语言后画面确实变化。

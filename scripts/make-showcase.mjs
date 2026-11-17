@@ -72,6 +72,67 @@ const TABLES = ['0', 'SECTION', '2', 'TABLES', ...LTYPE, ...LAYERS, ...STYLE, ..
 
 const tail = ['0', 'SECTION', '2', 'ENTITIES'];
 
+
+// --------------------------------------------------------------------------
+//  Localisation: a few labels are translated so the same generator can emit
+//  an English and a Chinese copy of each drawing. Anything not listed here is
+//  language-neutral (numbers, DXF control codes, part numbers).
+const ZH = {
+  '01  LINE / linetypes': '01  直线 / 线型',
+  'CONTINUOUS': '连续线',
+  'CENTER': '中心线',
+  'HIDDEN': '隐藏线',
+  '02  XLINE / RAY / POINT': '02  构造线 / 射线 / 点',
+  'XLINE / RAY / POINT': '构造线 / 射线 / 点',
+  '03  CIRCLE / ARC / ELLIPSE': '03  圆 / 圆弧 / 椭圆',
+  'CIRCLE  ARC  ELLIPSE': '圆  圆弧  椭圆',
+  '04  SPLINE / LWPOLYLINE': '04  样条 / 轻量多段线',
+  'SPLINE  LWPOLYLINE': '样条  轻量多段线',
+  '05  POLYLINE (bulge arc)': '05  多段线 (凸度圆弧)',
+  'bulge 0.6 / -0.6': '凸度 0.6 / -0.6',
+  '06  SOLID (filled quad)': '06  实体填充 (四边形)',
+  'SOLID': '实体填充',
+  '07  HATCH  SOLID / ANSI31': '07  填充  实体 / ANSI31',
+  'SOLID   ANSI31': '实体填充   ANSI31',
+  '08  INSERT + ATTRIB': '08  块插入 + 属性',
+  'SHEET 01': '图号 01',
+  'REV A': '版本 A',
+  'block with attributes': '带属性的块',
+  '09  TEXT  4 alignments': '09  文字  四种对齐',
+  'Left aligned': '左对齐',
+  'Center': '居中',
+  'Right': '右对齐',
+  'Middle': '中间',
+  'halign 0 / 1 / 2, valign 2': '水平对齐 0 / 1 / 2, 垂直对齐 2',
+  '10  MTEXT  inline codes': '10  多行文字  内联控制码',
+  'Inline codes: \\PH2.5;{\\H1.5x|c2550000taller\\H2.5x} \\W0.8; narrower \\W1; normal':
+    '内联码: \\PH2.5;{\\H1.5x|c2550000加高\\H2.5x} \\W0.8; 缩窄 \\W1; 正常',
+  '11  DIMENSION  aligned / radial': '11  标注  对齐 / 半径',
+  'aligned + radial': '对齐 + 半径',
+  '12  LEADER': '12  引线',
+  'leader note': '引线注释',
+  '13  combined 2D assembly': '13  组合二维装配',
+  'outline + hatch + holes': '轮廓 + 填充 + 孔',
+  '14  title block': '14  标题栏',
+  'TITLE': '标题',
+  'SCALE 1:1': '比例 1:1',
+  'SHEET 1/1': '第 1/1 页',
+  '2D ELEMENT SHOWCASE  -  every DXF entity type': '二维元素案例 - 所有 DXF 实体类型',
+  'Each sample sits in its own cell; nothing overlaps.': '每个示例独占一格，互不重叠。',
+  '3DFACE': '三维面',
+  'POLYLINE (3D)': '多段线 (三维)',
+  'HELIX': '螺旋线',
+  'MESH': '网格',
+  '3D TEXT': '三维文字',
+  'TEXT in space': '空间文字',
+  'SPLINE in space': '空间样条',
+  'CIRCLE at Z=40': 'Z=40 处的圆',
+};
+let LANG = 'en';
+function tr(s) {
+  return LANG === 'zh' && Object.prototype.hasOwnProperty.call(ZH, s) ? ZH[s] : s;
+}
+
 // ---------------------------------------------------------------- helpers
 function fmt(v) {
   if (Number.isInteger(v)) return String(v);
@@ -100,7 +161,7 @@ const text = (layerName, x, y, height, str, opts = {}) => {
   if (opts.valign) a.push('11', fmt(opts.alignX ?? x), '21', fmt(opts.alignY ?? y), '31', '0.0');
   if (opts.valignCode !== undefined) a.push('73', String(opts.valignCode));
   if (opts.rot) a.push('50', fmt(opts.rot));
-  a.push('1', str);
+  a.push('1', tr(str));
   return a;
 };
 
@@ -381,10 +442,14 @@ function build3D() {
 }
 
 // =========================================================================
-//  write
+//  write — emit both an English and a Chinese copy of each drawing
 // =========================================================================
-const out2D = path.join(samplesDir, 'elements_showcase_2d.dxf');
-const out3D = path.join(samplesDir, 'elements_showcase_3d.dxf');
-fs.writeFileSync(out2D, build2D().join('\n') + '\n', 'utf8');
-fs.writeFileSync(out3D, build3D().join('\n') + '\n', 'utf8');
-console.log('wrote', path.basename(out2D), 'and', path.basename(out3D));
+for (const lang of ['en', 'zh']) {
+  LANG = lang;
+  const suffix = lang === 'zh' ? '_zh' : '';
+  const out2D = path.join(samplesDir, `elements_showcase_2d${suffix}.dxf`);
+  const out3D = path.join(samplesDir, `elements_showcase_3d${suffix}.dxf`);
+  fs.writeFileSync(out2D, build2D().join('\n') + '\n', 'utf8');
+  fs.writeFileSync(out3D, build3D().join('\n') + '\n', 'utf8');
+  console.log('wrote', path.basename(out2D), 'and', path.basename(out3D));
+}
