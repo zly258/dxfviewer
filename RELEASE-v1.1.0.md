@@ -76,3 +76,9 @@ Selecting a block reference now lists its attributes in a dedicated **Block Attr
 - **A new huge-drawing sample** exercises the viewer at realistic scale: `plant_layout_huge_2d.dxf` has ~11,100 entities on 16 layers (column grid, equipment foundations, room partitions, pipe racks, valves, dimension chains and underground utilities). It is fetched at runtime by the example rather than embedded, and the build copies the sample files to the deployed site.
 - **Fixed a real geometry bug:** XLINE / RAY direction components of zero were being replaced with 1 by `ent.x1 || 1`, turning every vertical construction line into a 45-degree diagonal. The same issue existed in ELLIPSE major-axis and WIPEOUT/IMAGE vectors; all three now fall back only when the group code is actually missing.
 - `npm run sync:samples` regenerates all three sample drawings and syncs the copies embedded in the example.
+
+### Bilingual sample drawings
+
+- **The sample drawings now follow the interface language.** Each generated preset carries `dxf_en` and `dxf_zh` payloads; switching EN/中文 re-renders the current built-in sample so every label inside the drawing uses the selected language. The 2D and 3D showcases and the huge plant layout are all bilingual.
+- The generators emit both copies with identical geometry (`npm run sync:samples`), and `node scripts/sync-showcase.mjs` only updates field values, leaving the surrounding object structure untouched.
+- Added `npm run test:lang` (`scripts/test-sample-language.mjs`) which verifies that each bilingual preset visibly changes when the language switches.

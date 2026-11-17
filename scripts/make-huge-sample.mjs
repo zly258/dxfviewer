@@ -19,6 +19,42 @@ import { fileURLToPath } from 'node:url';
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const outFile = path.join(rootDir, 'examples', 'samples', 'plant_layout_huge_2d.dxf');
 
+
+// --------------------------------------------------------------------------
+//  Localisation for the plant-layout sample. Only textual labels change; all
+//  geometry and coordinates stay identical between the two copies.
+const ZH = {
+  'PLANT LAYOUT  -  OVERALL PLAN': '工厂总平面 - 装置布置图',
+  'GRID: 6.0 M X 6.0 M': '柱网: 6.0 米 X 6.0 米',
+  'ALL DIMENSIONS IN MILLIMETRES': '所有尺寸单位为毫米',
+  'PIPE RACK EL. +6.000 (CS/SS/UT)': '管廊 标高 +6.000 (碳钢/不锈钢/公用工程)',
+  'UNDERGROUND UTILITIES EL. -1.200': '地下管线 标高 -1.200',
+  'EQUIPMENT FOUNDATIONS: C30 CONCRETE': '设备基础: C30 混凝土',
+};
+let LANG = 'en';
+function L(en, zh) { return LANG === 'zh' ? zh : en; }
+function tr(s) {
+  if (Object.prototype.hasOwnProperty.call(ZH, s)) return ZH[s];
+  // Generic patterns: equipment / room / utility labels.
+  if (typeof s === 'string') {
+    return s
+      .replace(/ROOM-/g, '房间-')
+      .replace(/  EQUIP\./g, '  设备')
+      .replace(/EL\.\+/g, '标高+')
+      .replace(/U\/G  EL\.-/g, '地下 标高-')
+      .replace(/\bCS-/g, '碳钢-')
+      .replace(/\bSS-/g, '不锈钢-')
+      .replace(/\bUT-/g, '公用-')
+      .replace(/\bP-/g, '泵-')
+      .replace(/\bTK-/g, '罐-')
+      .replace(/\bE-/g, '换热器-')
+      .replace(/\bV-/g, '容器-')
+      .replace(/\bCMP-/g, '压缩机-')
+      .replace(/\bHX-/g, '换热器-');
+  }
+  return s;
+}
+
 // ------------------------------------------------------------------ helpers
 let seed = 20260315;
 function rnd() {
@@ -29,7 +65,7 @@ function rndInt(a, b) { return a + Math.floor(rnd() * (b - a + 1)); }
 function pick(arr) { return arr[rndInt(0, arr.length - 1)]; }
 function fmt(v) { return String(Math.round(v * 1e3) / 1e3); }
 
-const out = [];
+let out = [];
 let entCount = 0;
 function E(...a) { out.push(...a); entCount++; }
 const P = (x, y) => { out.push('10', fmt(x), '20', fmt(y), '30', '0.0'); };
@@ -46,6 +82,7 @@ for (let i = 0; i < NX; i++) gridCols.push(i * BAY);
 for (let j = 0; j < NY; j++) gridRows.push(j * BAY);
 
 // ------------------------------------------------------------------ header
+function build() {
 E('0', 'SECTION', '2', 'HEADER',
   '9', '$ACADVER', '1', 'AC1027',
   '9', '$INSUNITS', '70', '1',
@@ -216,7 +253,7 @@ for (let j = 0; j < NY - 1; j++) {
     if (rnd() < 0.5) {
       E('0', 'TEXT', '8', 'ANNOT-ROOM',
         '10', fmt(x0 + w / 2 - 2500), '20', fmt(y0 + h / 2), '30', '0.0', '40', '900.0',
-        '1', `ROOM-${rooms.id}-${rowNames[j] || 'Z'}${i + 1}`);
+        '1', tr(`ROOM-${rooms[rooms.length - 1].id}-${rowNames[j] || 'Z'}${i + 1}`));
     }
     // Room fixtures: 2-4 equipment items per room, drawn as small rectangles
     // and circles so each bay carries a realistic amount of detail.
@@ -259,9 +296,9 @@ for (let j = 0; j < NY - 1; j += 3) {
     E('0', 'CIRCLE', '8', 'EQUIP-FOUNDATION', P(x, y), '40', fmt(Math.min(w, h) / 3));
     E('0', 'LEADER', '8', 'ANNOT-EQUIP', '62', '7',
       P(x + Math.min(w, h) / 3, y), P(x + w / 2 + 3000, y + 3000), P(x + w / 2 + 9000, y + 3000),
-      '3', `${tag}  EQUIP.`);
+      '3', tr(`${tag}  EQUIP.`));
     E('0', 'TEXT', '8', 'ANNOT-EQUIP', '10', fmt(x + w / 2 + 9500), '20', fmt(y + 2500), '30', '0.0',
-      '40', '800.0', '1', `${tag}  EL.+5.200`);
+      '40', '800.0', '1', tr(`${tag}  EL.+5.200`));
   }
 }
 
@@ -280,7 +317,7 @@ for (let r = 0; r < 24; r++) {
   E('0', 'LWPOLYLINE', '8', layer, '90', '4', '70', '0', '43', '350.0',
     P(x0, y), P(bend1, y), P(bend1, yMid), P(bend2, yMid), P(bend2, y), P(x1, y));
   E('0', 'TEXT', '8', layer, '10', fmt(x0 + 3000), '20', fmt(y + 700), '30', '0.0',
-    '40', '700.0', '1', `${layer === 'PIPE-CS' ? 'CS' : layer === 'PIPE-SS' ? 'SS' : 'UT'}-${String(100 + r)}-D${rndInt(2, 24) * 25}`);
+    '40', '700.0', '1', tr(`${layer === 'PIPE-CS' ? 'CS' : layer === 'PIPE-SS' ? 'SS' : 'UT'}-${String(100 + r)}-D${rndInt(2, 24) * 25}`));
   const nValves = rndInt(1, 3);
   for (let v = 0; v < nValves; v++) {
     const vx = x0 + ((v + 1) / (nValves + 1)) * (x1 - x0);
@@ -318,7 +355,7 @@ for (let r = 0; r < 8; r++) {
   E('0', 'LINE', '8', 'HIDDEN-UNDERGROUND', P(2000, y), P2(W - 2000, y));
   const label = pick(['SW-DN600', 'PW-DN400', 'FW-DN300', 'NG-DN250', 'TG-DN150', 'EP-2x120']);
   E('0', 'TEXT', '8', 'HIDDEN-UNDERGROUND', '10', fmt(10000), '20', fmt(y + 500), '30', '0.0',
-    '40', '600.0', '1', `${label}  U/G  EL.-1.200`);
+    '40', '600.0', '1', tr(`${label}  U/G  EL.-1.200`));
 }
 
 // ---- 7. Center lines for major equipment
@@ -361,7 +398,7 @@ E('0', 'LINE', '8', 'A-LINE', P(W - 14000, H - 10000), P2(W - 14000, H - 5000));
 E('0', 'LINE', '8', 'A-LINE', P(W - 15500, H - 8000), P2(W - 14000, H - 10000));
 E('0', 'LINE', '8', 'A-LINE', P(W - 12500, H - 8000), P2(W - 14000, H - 10000));
 E('0', 'TEXT', '8', 'ANNOT-ROOM', '10', fmt(W - 14700), '20', fmt(H - 4000), '30', '0.0',
-  '40', '2000.0', '72', '1', '11', fmt(W - 14000), '21', fmt(H - 3000), '31', '0.0', '1', 'N');
+  '40', '2000.0', '72', '1', '11', fmt(W - 14000), '21', fmt(H - 3000), '31', '0.0', '1', tr('N'));
 
 const notes = [
   'PLANT LAYOUT  -  OVERALL PLAN',
@@ -373,7 +410,7 @@ const notes = [
 ];
 for (let n = 0; n < notes.length; n++) {
   E('0', 'TEXT', '8', 'ANNOT-ROOM', '10', fmt(W - 60000), '20', fmt(H - 6000 - n * 2600), '30', '0.0',
-    '40', '1400.0', '1', notes[n]);
+    '40', '1400.0', '1', tr(notes[n]));
 }
 
 E('0', 'ENDSEC');
@@ -381,4 +418,18 @@ E('0', 'EOF');
 
 fs.writeFileSync(outFile, out.join('\n') + '\n', 'utf8');
 console.log(`wrote ${path.basename(outFile)}: ${(fs.statSync(outFile).size / 1048576).toFixed(2)} MB, ${entCount} entities`);
-
+}
+// =========================================================================
+//  write — English and Chinese copies with identical geometry
+// =========================================================================
+for (const lang of ['en', 'zh']) {
+  seed = 20260315;  // reset the PRNG so both copies have identical geometry
+  LANG = lang;
+  out = [];
+  entCount = 0;
+  const suffix = lang === 'zh' ? '_zh' : '';
+  build();
+  const file = path.join(rootDir, 'examples', 'samples', `plant_layout_huge_2d${suffix}.dxf`);
+  fs.writeFileSync(file, out.join('\n') + '\n', 'utf8');
+  console.log(`wrote ${path.basename(file)}: ${(fs.statSync(file).size / 1048576).toFixed(2)} MB, ${entCount} entities`);
+}

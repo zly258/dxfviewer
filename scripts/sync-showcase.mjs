@@ -1,12 +1,16 @@
 /**
- * Keeps the DXF drawings that are embedded in the example app in sync with
- * the files under examples/samples.
+ * Keeps the DXF drawings embedded in the example app in sync with the files
+ * under examples/samples.
  *
- * The example is a single self-contained HTML file, so the sample drawings
- * have to be embedded as strings. This script copies the current file content
- * into the matching preset, so editing a sample on disk and running
- *   node scripts/make-showcase.mjs && node scripts/sync-showcase.mjs
- * updates both.
+ * Each bilingual preset carries three payloads:
+ *   dxf      — the English drawing (backwards-compatible fallback)
+ *   dxf_en   — the English drawing
+ *   dxf_zh   — the Chinese drawing
+ *
+ * This script only replaces the *value* of existing fields — it never touches
+ * the surrounding object structure, so it is safe to run repeatedly.
+ *
+ * Run:  node scripts/sync-showcase.mjs
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -16,58 +20,57 @@ const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const htmlFile = path.join(rootDir, 'examples', 'index.html');
 
 const PRESETS = [
-  { key: 'elements_2d', file: 'elements_showcase_2d.dxf' },
-  { key: 'elements_3d', file: 'elements_showcase_3d.dxf' }
+  { key: 'elements_2d', en: 'elements_showcase_2d.dxf', zh: 'elements_showcase_2d_zh.dxf' },
+  { key: 'elements_3d', en: 'elements_showcase_3d.dxf', zh: 'elements_showcase_3d_zh.dxf' },
+  { key: 'huge_2d', en: 'plant_layout_huge_2d.dxf', zh: 'plant_layout_huge_2d_zh.dxf' }
 ];
+
+function findStringEnd(src, from) {
+  let inStr = false, esc = false;
+  for (let p = from; p < src.length; p++) {
+    const ch = src[p];
+    if (inStr) {
+      if (esc) { esc = false; continue; }
+      if (ch === '\\') { esc = true; continue; }
+      if (ch === '"') return p;
+    } else if (ch === '"') inStr = true;
+  }
+  return -1;
+}
 
 let html = fs.readFileSync(htmlFile, 'utf8');
 let changed = 0;
 
-for (const { key, file } of PRESETS) {
-  const dxfPath = path.join(rootDir, 'examples', 'samples', file);
-  if (!fs.existsSync(dxfPath)) {
-    console.log(`[sync-showcase] ${file} not found — skipped`);
-    continue;
+// The preset may be embedded in the HTML or registered lazily at runtime;
+// replace every occurrence of the field value to cover both.
+for (const preset of PRESETS) {
+  for (const [field, file] of [['dxf_en', preset.en], ['dxf_zh', preset.zh]]) {
+    const p = path.join(rootDir, 'examples', 'samples', file);
+    if (!fs.existsSync(p)) {
+      console.log(`[sync-showcase] ${file} missing — skipped`);
+      continue;
+    }
+    const wanted = JSON.stringify(fs.readFileSync(p, 'utf8'));
+    const fieldPrefix = `"${field}": `;
+    let pos = 0;
+    while ((pos = html.indexOf(fieldPrefix, pos)) >= 0) {
+      const start = pos + fieldPrefix.length;
+      const end = findStringEnd(html, start);
+      if (end < 0) break;
+      const current = html.slice(start, end + 1);
+      if (current !== wanted) {
+        html = html.slice(0, start) + wanted + html.slice(end + 1);
+        changed++;
+        console.log(`[sync-showcase] updated ${field} from ${file}`);
+      }
+      pos = end + 1;
+    }
   }
-  const dxfText = fs.readFileSync(dxfPath, 'utf8');
-
-  const k = html.indexOf(`"${key}": {`);
-  if (k < 0) {
-    console.log(`[sync-showcase] preset ${key} not found — skipped`);
-    continue;
-  }
-  const dxfKey = html.indexOf('"dxf": ', k);
-  if (dxfKey < 0) continue;
-  const start = dxfKey + '"dxf": '.length;
-
-  let inStr = false, esc = false, end = -1;
-  for (let p = start; p < html.length; p++) {
-    const ch = html[p];
-    if (inStr) {
-      if (esc) { esc = false; continue; }
-      if (ch === '\\') { esc = true; continue; }
-      if (ch === '"') { inStr = false; end = p; break; }
-    } else if (ch === '"') inStr = true;
-  }
-  if (end < 0) {
-    console.error(`[sync-showcase] could not find the end of the ${key} DXF string`);
-    process.exit(1);
-  }
-
-  const wanted = JSON.stringify(dxfText);
-  const current = html.slice(start, end + 1);
-  if (current === wanted) {
-    console.log(`[sync-showcase] ${key} is already up to date`);
-    continue;
-  }
-  html = html.slice(0, start) + wanted + html.slice(end + 1);
-  changed++;
-  console.log(`[sync-showcase] updated ${key} (${current.length} → ${wanted.length} chars)`);
 }
 
 if (changed) {
   fs.writeFileSync(htmlFile, html);
-  console.log(`[sync-showcase] ${changed} preset(s) updated`);
+  console.log(`[sync-showcase] ${changed} field(s) updated`);
 } else {
   console.log('[sync-showcase] nothing to do');
 }
