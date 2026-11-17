@@ -1,8 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const rootDir = path.resolve(__dirname, '..');
 
 const mockTHREE = {
   MathUtils: {
@@ -89,7 +92,10 @@ const mockTHREE = {
 globalThis.THREE = mockTHREE;
 const DXFLoader = require('../dist/threejs-dxf-loader.umd.js');
 
-const dir = process.argv[2];
+// Directory to benchmark. Defaults to the samples that ship with the repository
+// so the script runs in any environment; pass a path to benchmark your own
+// drawings.
+const dir = process.argv[2] || path.join(rootDir, 'examples', 'samples');
 const files = fs.readdirSync(dir).filter(f => f.toLowerCase().endsWith('.dxf')).slice(0, 12);
 
 let total = 0;
