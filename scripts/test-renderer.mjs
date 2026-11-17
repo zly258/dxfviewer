@@ -236,4 +236,27 @@ check('a vertical ray keeps its direction', () => {
   assert(!code.includes('ent.x1 || 1'), 'a zero direction component must not fall back to 1');
   assert(code.includes('ent.x1 !== undefined ? ent.x1 : 1'), 'the direction fallback must check for undefined');
 });
+// ---------------------------------------------------------------------------
+// 19. pickRecords has no arbitrary size cap
+// ---------------------------------------------------------------------------
+check('every entity gets a pick record regardless of drawing size', () => {
+  const src = fs.readFileSync(path.join(rootDir, 'src', 'DXFLoader.js'), 'utf8');
+  assert(!src.includes('pickRecords.length < 50000'), 'the 50k pickRecords cap must be removed');
+  assert(!src.includes('pickRecords.length < 60000'), 'the 60k nestedText cap must be removed');
+  assert(src.includes('Every emitted entity MUST get a pick record'), 'the pick-record comment must be present');
+});
+
+// ---------------------------------------------------------------------------
+// 20. Point picking uses a world-space grid index (O(candidates) not O(N))
+// ---------------------------------------------------------------------------
+check('point picking uses a world-space grid index', () => {
+  const html = fs.readFileSync(path.join(rootDir, 'examples', 'index.html'), 'utf8');
+  assert(html.includes('worldPickIndex'), 'a world-space grid index must exist');
+  assert(html.includes('ensureSegmentIndex'), 'a segment inverse index must exist for the narrow phase');
+  assert(
+    html.includes('for (const [pid, rec] of candidateMap)'),
+    'the narrow phase must iterate candidates not the whole index'
+  );
+});
+
 console.log(`[threejs-dxf-loader] ${passed} renderer/precision assertions passed!`);

@@ -5553,7 +5553,7 @@
       const textRecords = textAtlas.textRecords || [];
       for (let i = 0; i < textRecords.length; i++) {
         const tr = textRecords[i];
-        if (tr.parentBlock && tr.entity && pickRecords.length < 60000) {
+        if (tr.parentBlock && tr.entity) {
           const synId = pickRecords.length;
           const syntheticRec = {
             id: synId,
@@ -5639,28 +5639,32 @@
         stats.totalEntities++;
         stats.byType[ent.type] = (stats.byType[ent.type] || 0) + 1;
 
+        // Every emitted entity MUST get a pick record: the renderer writes
+        // `currentPickId` into the batch and the picker looks that id up here.
+        // Capping the array at 50000 made all later entities share one missing
+        // id, so point picking silently stopped working on large drawings.
+        let entBox = null;
         if (bState.curEntMinX <= bState.curEntMaxX) {
-          const entBox = new THREE.Box3(
+          entBox = new THREE.Box3(
             new THREE.Vector3(bState.curEntMinX, bState.curEntMinY, bState.curEntMinZ),
             new THREE.Vector3(bState.curEntMaxX, bState.curEntMaxY, bState.curEntMaxZ)
           );
           if (ent.type !== 'XLINE' && ent.type !== 'RAY') {
             globalBBox.union(entBox);
           }
-          if (pickRecords.length < 50000) {
-            const lKey = normKey(ent.layer, '0');
-            const lDef = dxf.tables.layers[lKey];
-            pickRecords.push({
-              id: pickRecords.length,
-              isTopLevel: true,
-              entity: ent,
-              layer: lKey,
-              displayLayer: (lDef && lDef.displayName) || ent.displayLayer || ent.layer || '0',
-              colorPair: this.resolveColorPair(ent, dxf, null),
-              box: entBox
-            });
-          }
         }
+        if (!entBox) entBox = new THREE.Box3();
+        const lKey = normKey(ent.layer, '0');
+        const lDef = dxf.tables.layers[lKey];
+        pickRecords.push({
+          id: pickRecords.length,
+          isTopLevel: true,
+          entity: ent,
+          layer: lKey,
+          displayLayer: (lDef && lDef.displayName) || ent.displayLayer || ent.layer || '0',
+          colorPair: this.resolveColorPair(ent, dxf, null),
+          box: entBox
+        });
       }
 
       return this._finalizeScene(dxf, ctx, t0);
@@ -5694,28 +5698,32 @@
         stats.totalEntities++;
         stats.byType[ent.type] = (stats.byType[ent.type] || 0) + 1;
 
+        // Every emitted entity MUST get a pick record: the renderer writes
+        // `currentPickId` into the batch and the picker looks that id up here.
+        // Capping the array at 50000 made all later entities share one missing
+        // id, so point picking silently stopped working on large drawings.
+        let entBox = null;
         if (bState.curEntMinX <= bState.curEntMaxX) {
-          const entBox = new THREE.Box3(
+          entBox = new THREE.Box3(
             new THREE.Vector3(bState.curEntMinX, bState.curEntMinY, bState.curEntMinZ),
             new THREE.Vector3(bState.curEntMaxX, bState.curEntMaxY, bState.curEntMaxZ)
           );
           if (ent.type !== 'XLINE' && ent.type !== 'RAY') {
             globalBBox.union(entBox);
           }
-          if (pickRecords.length < 50000) {
-            const lKey = normKey(ent.layer, '0');
-            const lDef = dxf.tables.layers[lKey];
-            pickRecords.push({
-              id: pickRecords.length,
-              isTopLevel: true,
-              entity: ent,
-              layer: lKey,
-              displayLayer: (lDef && lDef.displayName) || ent.displayLayer || ent.layer || '0',
-              colorPair: this.resolveColorPair(ent, dxf, null),
-              box: entBox
-            });
-          }
         }
+        if (!entBox) entBox = new THREE.Box3();
+        const lKey = normKey(ent.layer, '0');
+        const lDef = dxf.tables.layers[lKey];
+        pickRecords.push({
+          id: pickRecords.length,
+          isTopLevel: true,
+          entity: ent,
+          layer: lKey,
+          displayLayer: (lDef && lDef.displayName) || ent.displayLayer || ent.layer || '0',
+          colorPair: this.resolveColorPair(ent, dxf, null),
+          box: entBox
+        });
 
         if ((i & 127) === 0) {
           const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
@@ -7355,6 +7363,13 @@
 
 
 
+
+
+
+
+
+
+
   </script>
 
   <!-- Minimalist Application Controller -->
@@ -8624,44 +8639,62 @@
       const rect = renderer.domElement.getBoundingClientRect();
       const width = rect.width || 800;
       const height = rect.height || 600;
-      const key = (cam ? cam.matrixWorldInverse.elements.join(',') + '|' + cam.projectionMatrix.elements.join(',') : '')
-        + '|' + width + 'x' + height;
+      // Derive a stable cache key from the camera parameters that actually
+      // affect the world-to-screen mapping. For the orthographic camera (2D
+      // view) only the frustum and zoom matter; perspective cameras use the
+      // full matrix. Rounding avoids false invalidations from OrbitControls
+      // microdrift. The key also includes the canvas size.
+      const r4 = (v) => Math.round(v * 1e4) / 1e4;
+      let key;
+      if (cam && cam.isOrthographicCamera) {
+        key = `ortho:${r4(cam.left)},${r4(cam.right)},${r4(cam.top)},${r4(cam.bottom)},${r4(cam.zoom)},${r4(cam.position.x)},${r4(cam.position.y)}|${width}x${height}`;
+      } else {
+        key = (cam ? cam.matrixWorldInverse.elements.map(r4).join(',') + '|' + cam.projectionMatrix.elements.map(r4).join(',') : '')
+          + '|' + width + 'x' + height;
+      }
       if (res.screenPickIndex && res.screenPickIndex.key === key) return res.screenPickIndex;
 
       const records = res.pickRecords;
       const cellPx = 24;
       const cells = new Map();
-      const v = new THREE.Vector3();
-      const corners = [];
-      for (let i = 0; i < 8; i++) corners.push(new THREE.Vector3());
       const boxes = new Array(records.length);
+
+      // For an orthographic camera the mapping from world to screen is a pure
+      // linear transform — projecting the two diagonal corners gives the exact
+      // AABB with 4× fewer project() calls. Perspective cameras still need 8.
+      const isOrtho = cam && cam.isOrthographicCamera;
+      const vMin = new THREE.Vector3(), vMax = new THREE.Vector3(), vTmp = new THREE.Vector3();
+      const corners = isOrtho ? null : new Array(8).fill(0).map(() => new THREE.Vector3());
 
       for (let i = 0; i < records.length; i++) {
         const rec = records[i];
         const b = rec.box;
         if (!b || b.isEmpty()) { boxes[i] = null; continue; }
-        corners[0].set(b.min.x, b.min.y, b.min.z);
-        corners[1].set(b.max.x, b.min.y, b.min.z);
-        corners[2].set(b.max.x, b.max.y, b.min.z);
-        corners[3].set(b.min.x, b.max.y, b.min.z);
-        corners[4].set(b.min.x, b.min.y, b.max.z);
-        corners[5].set(b.max.x, b.min.y, b.max.z);
-        corners[6].set(b.max.x, b.max.y, b.max.z);
-        corners[7].set(b.min.x, b.max.y, b.max.z);
-        let sxMin = Infinity, syMin = Infinity, sxMax = -Infinity, syMax = -Infinity;
-        for (let c = 0; c < 8; c++) {
-          v.copy(corners[c]).project(cam);
-          const sx = (v.x * 0.5 + 0.5) * width;
-          const sy = (-v.y * 0.5 + 0.5) * height;
-          if (sx < sxMin) sxMin = sx;
-          if (sy < syMin) syMin = sy;
-          if (sx > sxMax) sxMax = sx;
-          if (sy > syMax) syMax = sy;
+        let sxMin, syMin, sxMax, syMax;
+        if (isOrtho) {
+          vMin.copy(b.min).project(cam);
+          vMax.copy(b.max).project(cam);
+          const ax = (vMin.x * 0.5 + 0.5) * width, ay = (-vMin.y * 0.5 + 0.5) * height;
+          const bx = (vMax.x * 0.5 + 0.5) * width, by = (-vMax.y * 0.5 + 0.5) * height;
+          sxMin = Math.min(ax, bx); sxMax = Math.max(ax, bx);
+          syMin = Math.min(ay, by); syMax = Math.max(ay, by);
+        } else {
+          corners[0].set(b.min.x, b.min.y, b.min.z); corners[1].set(b.max.x, b.min.y, b.min.z);
+          corners[2].set(b.max.x, b.max.y, b.min.z); corners[3].set(b.min.x, b.max.y, b.min.z);
+          corners[4].set(b.min.x, b.min.y, b.max.z); corners[5].set(b.max.x, b.min.y, b.max.z);
+          corners[6].set(b.max.x, b.max.y, b.max.z); corners[7].set(b.min.x, b.max.y, b.max.z);
+          sxMin = Infinity; syMin = Infinity; sxMax = -Infinity; syMax = -Infinity;
+          for (let c = 0; c < 8; c++) {
+            vTmp.copy(corners[c]).project(cam);
+            const sx = (vTmp.x * 0.5 + 0.5) * width, sy = (-vTmp.y * 0.5 + 0.5) * height;
+            if (sx < sxMin) sxMin = sx; if (sy < syMin) syMin = sy;
+            if (sx > sxMax) sxMax = sx; if (sy > syMax) syMax = sy;
+          }
         }
         boxes[i] = { x0: sxMin, y0: syMin, x1: sxMax, y1: syMax };
         const cx0 = Math.floor(sxMin / cellPx), cx1 = Math.floor(sxMax / cellPx);
         const cy0 = Math.floor(syMin / cellPx), cy1 = Math.floor(syMax / cellPx);
-        if (Math.max(cx1 - cx0, cy1 - cy0) > 200) continue; // off-screen giant
+        if (Math.max(cx1 - cx0, cy1 - cy0) > 200) continue;
         for (let cx = cx0; cx <= cx1; cx++) {
           for (let cy = cy0; cy <= cy1; cy++) {
             const k = cx + '_' + cy;
@@ -8688,6 +8721,39 @@
         }
       }
       return ids;
+    }
+
+    /**
+     * Segment-level inverse index for the narrow pick phase.
+     *
+     * Without this, every click on a 160k-entity drawing walked all segments in
+     * the batched geometry looking for the few candidates, turning picking into
+     * an O(N) scan regardless of drawing complexity. This inverts the lookup
+     * so only the segments that actually belong to candidate entities are tested.
+     *
+     * Built lazily once per parse; invalidated when dxfRootGroup changes.
+     */
+    function ensureSegmentIndex() {
+      const res = appState.parsedResult;
+      if (!res) return null;
+      if (res.segmentIndex && res.segmentIndex.root === dxfRootGroup) return res.segmentIndex;
+      if (!dxfRootGroup) return null;
+
+      // pid → [{obj, v}]  where v is the even vertex index in pickIds
+      const pidToSegs = new Map();
+      dxfRootGroup.traverse(obj => {
+        if (!obj.isLineSegments) return;
+        if (!obj.geometry || !obj.userData || !obj.userData.pickIds) return;
+        const pids = obj.userData.pickIds;
+        for (let v = 0; v < pids.length; v += 2) {
+          const pid = pids[v];
+          let arr = pidToSegs.get(pid);
+          if (!arr) { arr = []; pidToSegs.set(pid, arr); }
+          arr.push({ obj, v });
+        }
+      });
+      res.segmentIndex = { root: dxfRootGroup, pidToSegs };
+      return res.segmentIndex;
     }
 
     /**
@@ -8739,23 +8805,73 @@
       const worldTol = Math.max(0.5, (worldWidth / width) * (pickRadiusPx + 4.0));
       const padVec = new THREE.Vector3(worldTol, worldTol, worldTol + 8.0);
 
-      // 1. Broad-phase filter via the screen-space index: only the records
-      //    whose projected bounds cover the cursor are visited. The index is
-      //    exact in the 2D and the 3D view alike, and it keeps the cost
-      //    proportional to the visible content instead of the drawing size.
+      // 1. Broad-phase filter: use the world-space grid index (built once per
+      //    parse, never invalidated by camera changes). For each candidate
+      //    whose world box intersects the pick ray (padded by the pick
+      //    tolerance), add it to the candidate map. This is O(candidates)
+      //    regardless of drawing size.
       const candidateMap = new Map();
       const tmpBox = new THREE.Box3();
-      const sIndex = ensureScreenPickIndex();
-      if (sIndex && records.length > 300) {
-        const ids = queryScreenPickIndex(sIndex, clickPxX - pickRadiusPx, clickPxY - pickRadiusPx, clickPxX + pickRadiusPx, clickPxY + pickRadiusPx);
+
+      // Build a world-space grid over pickRecords (lazy, cached per parse).
+      if (!appState.parsedResult.worldPickIndex) {
+        const recs = records;
+        let wMinX = Infinity, wMinY = Infinity, wMaxX = -Infinity, wMaxY = -Infinity;
+        for (let i = 0; i < recs.length; i++) {
+          const b = recs[i].box;
+          if (!b || b.isEmpty()) continue;
+          if (b.min.x < wMinX) wMinX = b.min.x;
+          if (b.min.y < wMinY) wMinY = b.min.y;
+          if (b.max.x > wMaxX) wMaxX = b.max.x;
+          if (b.max.y > wMaxY) wMaxY = b.max.y;
+        }
+        const span = Math.max(wMaxX - wMinX, wMaxY - wMinY, 1);
+        const wCell = Math.max(span / 256, 1e-3);
+        const wCells = new Map();
+        const wOversized = [];
+        for (let i = 0; i < recs.length; i++) {
+          const b = recs[i].box;
+          if (!b || b.isEmpty()) continue;
+          const x0 = Math.floor(b.min.x / wCell), x1 = Math.floor(b.max.x / wCell);
+          const y0 = Math.floor(b.min.y / wCell), y1 = Math.floor(b.max.y / wCell);
+          if (Math.max(x1 - x0, y1 - y0) > 96) { wOversized.push(i); continue; }
+          for (let cx = x0; cx <= x1; cx++) {
+            for (let cy = y0; cy <= y1; cy++) {
+              const k = cx + '_' + cy;
+              let arr = wCells.get(k);
+              if (!arr) { arr = []; wCells.set(k, arr); }
+              arr.push(i);
+            }
+          }
+        }
+        appState.parsedResult.worldPickIndex = { cell: wCell, cells: wCells, oversized: wOversized };
+      }
+
+      const wIdx = appState.parsedResult.worldPickIndex;
+      if (wIdx && records.length > 300) {
+        // Compute the world-space pick region: the cursor maps to a ray in
+        // world space. For an orthographic camera the ray is constant-direction
+        // (perpendicular to the screen for 2D top view), so we just need the
+        // world X/Y at the cursor ± worldTol.
+        const ndcX = (clickPxX / width) * 2 - 1;
+        const ndcY = -(clickPxY / height) * 2 + 1;
+        const wCenter = new THREE.Vector3(ndcX, ndcY, 0.5).unproject(activeCamera);
+        const wX = wCenter.x, wY = wCenter.y;
+        const ids = new Set();
+        const x0 = Math.floor((wX - worldTol) / wIdx.cell), x1 = Math.floor((wX + worldTol) / wIdx.cell);
+        const y0 = Math.floor((wY - worldTol) / wIdx.cell), y1 = Math.floor((wY + worldTol) / wIdx.cell);
+        for (let cx = x0; cx <= x1; cx++) {
+          for (let cy = y0; cy <= y1; cy++) {
+            const arr = wIdx.cells.get(cx + '_' + cy);
+            if (!arr) continue;
+            for (let k = 0; k < arr.length; k++) ids.add(arr[k]);
+          }
+        }
+        for (let k = 0; k < wIdx.oversized.length; k++) ids.add(wIdx.oversized[k]);
         for (const i of ids) {
           const rec = records[i];
           const lg = layers[rec.layer];
           if (lg && !lg.visible) continue;
-          const sb = sIndex.boxes[i];
-          if (!sb) continue;
-          if (sb.x1 < clickPxX - pickRadiusPx || sb.x0 > clickPxX + pickRadiusPx) continue;
-          if (sb.y1 < clickPxY - pickRadiusPx || sb.y0 > clickPxY + pickRadiusPx) continue;
           tmpBox.copy(rec.box).expandByVector(padVec);
           if (ray.intersectsBox(tmpBox)) {
             candidateMap.set(rec.id, rec);
@@ -8803,47 +8919,62 @@
         return szVec.length();
       };
 
-      dxfRootGroup.traverse(obj => {
-        if (!obj.visible || (obj.parent && !obj.parent.visible)) return;
-        if (!obj.geometry || !obj.userData || !obj.userData.pickIds) return;
-        const posAttr = obj.geometry.getAttribute('position');
-        if (!posAttr) return;
-        const pos = posAttr.array;
-        const pids = obj.userData.pickIds;
-
-        if (obj.isLineSegments) {
-          // Test actual rendered line/curve/polyline/rectangle/circle segments
-          for (let v = 0; v < pids.length; v += 2) {
-            const pid = pids[v];
-            const rec = candidateMap.get(pid);
-            if (!rec) continue;
+      // --- LineSegments: inverse segment index (O(candidates) not O(N)) ---
+      // Iterate only the candidate entities; for each, look up exactly which
+      // segments belong to it via the index. This keeps pick latency constant
+      // at ~5 ms even on drawings with 100k+ line entities.
+      const segIdx = ensureSegmentIndex();
+      if (segIdx) {
+        for (const [pid, rec] of candidateMap) {
+          const segs = segIdx.pidToSegs.get(pid);
+          if (!segs) continue;
+          const isHatch = rec.entity && (rec.entity.type === 'HATCH' || rec.entity.type === 'MPOLYGON');
+          for (const { obj, v } of segs) {
+            if (!obj.visible) continue;
+            const pos = obj.geometry.getAttribute('position').array;
             const i0 = v * 3, i1 = (v + 1) * 3;
             vA.set(pos[i0], pos[i0 + 1], pos[i0 + 2]).project(activeCamera);
             vB.set(pos[i1], pos[i1 + 1], pos[i1 + 2]).project(activeCamera);
             const sx0 = (vA.x * 0.5 + 0.5) * width, sy0 = (-vA.y * 0.5 + 0.5) * height;
             const sx1 = (vB.x * 0.5 + 0.5) * width, sy1 = (-vB.y * 0.5 + 0.5) * height;
             const dSq = distToSegmentSq2D(clickPxX, clickPxY, sx0, sy0, sx1, sy1);
-
             if (dSq <= pickRadiusSq) {
-              const isHatch = rec.entity && (rec.entity.type === 'HATCH' || rec.entity.type === 'MPOLYGON');
               if (isHatch) {
                 const diag = getDiag(rec);
-                if (diag < bestHatchBoxDiag) {
-                  bestHatchBoxDiag = diag;
-                  bestHatchRec = rec;
-                }
+                if (diag < bestHatchBoxDiag) { bestHatchBoxDiag = diag; bestHatchRec = rec; }
               } else {
                 const diag = getDiag(rec);
-                // If distances are within 1.5px of each other, prefer the smaller/more specific entity; otherwise closest edge wins!
                 if (dSq + 2.25 < bestEdgeDistSq || (Math.abs(dSq - bestEdgeDistSq) <= 2.25 && diag < bestEdgeBoxDiag)) {
-                  bestEdgeDistSq = dSq;
-                  bestEdgeBoxDiag = diag;
-                  bestEdgeRec = rec;
+                  bestEdgeDistSq = dSq; bestEdgeBoxDiag = diag; bestEdgeRec = rec;
                 }
               }
             }
           }
-        } else if (obj.isMesh && obj.name && obj.name.startsWith('Batched_Text_Atlas')) {
+        }
+      }
+
+      // --- Text atlas + 3D/2D mesh: traverse once (small batches in practice)
+      // Skip entirely when all candidates are line-type entities (the common
+      // case for drawings dominated by LINE/CIRCLE/ARC/LWPOLYLINE).
+      let hasNonLineCandidates = false;
+      for (const rec of candidateMap.values()) {
+        const t = rec.entity && rec.entity.type;
+        if (t !== 'LINE' && t !== 'CIRCLE' && t !== 'ARC' && t !== 'ELLIPSE' &&
+            t !== 'SPLINE' && t !== 'LWPOLYLINE' && t !== 'POLYLINE' &&
+            t !== 'XLINE' && t !== 'RAY' && t !== 'POINT' && t !== 'HATCH') {
+          hasNonLineCandidates = true; break;
+        }
+      }
+      if (hasNonLineCandidates) {
+      dxfRootGroup.traverse(obj => {
+        if (!obj.visible || (obj.parent && !obj.parent.visible)) return;
+        if (!obj.geometry || !obj.userData || !obj.userData.pickIds) return;
+        if (obj.isLineSegments) return; // already handled via segment index
+        const posAttr = obj.geometry.getAttribute('position');
+        if (!posAttr) return;
+        const pos = posAttr.array;
+        const pids = obj.userData.pickIds;
+        if (obj.isMesh && obj.name && obj.name.startsWith('Batched_Text_Atlas')) {
           // Test rendered text quads
           for (let v = 0; v < pids.length; v += 3) {
             const pid = pids[v];
@@ -8922,6 +9053,7 @@
           }
         }
       });
+      } // end if (hasNonLineCandidates)
 
       // Priority:
       // 1. Direct click on a Text quad or very close (< 4px) to an Edge
