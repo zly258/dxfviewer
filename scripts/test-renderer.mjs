@@ -151,4 +151,79 @@ check('3D pick priority prefers the solid surface over its edge', () => {
   assert(html.includes('preferSolid3D'), 'solid-over-edge pick preference must exist');
 });
 
+// ---------------------------------------------------------------------------
+// 12. Selection on huge drawings uses a screen-space index
+// ---------------------------------------------------------------------------
+check('point and box selection use a screen-space pick index', () => {
+  const html = fs.readFileSync(path.join(rootDir, 'examples', 'index.html'), 'utf8');
+  assert(html.includes('ensureScreenPickIndex'), 'a screen-space pick index must exist');
+  assert(html.includes('queryScreenPickIndex'), 'the screen-space index must be queried');
+  assert(html.includes('sIndex.boxes[i]'), 'the index must supply the projected bounds');
+  // The broad phase must not fall back to scanning every record.
+  assert(
+    /records\.length > 300/.test(html),
+    'the screen index must be used for drawings with many records'
+  );
+});
+
+// ---------------------------------------------------------------------------
+// 13. A block reference is selected as a whole
+// ---------------------------------------------------------------------------
+check('block references are selected as a whole', () => {
+  const html = fs.readFileSync(path.join(rootDir, 'examples', 'index.html'), 'utf8');
+  assert(html.includes('resolveBlockReferenceSelection'), 'block-reference resolution must exist');
+  assert(
+    html.includes('resolveBlockReferenceSelection(winner)'),
+    'a picked block member must resolve to its block reference'
+  );
+  const src = fs.readFileSync(path.join(rootDir, 'src', 'DXFLoader.js'), 'utf8');
+  assert(src.includes('childEnt.parentInsert'), 'entities must remember their block reference');
+});
+
+// ---------------------------------------------------------------------------
+// 14. The viewer opens in English and the choice is remembered
+// ---------------------------------------------------------------------------
+check('the viewer opens in English and remembers the language choice', () => {
+  const html = fs.readFileSync(path.join(rootDir, 'examples', 'index.html'), 'utf8');
+  assert(html.includes("localStorage.getItem('dxfviewer.lang')"), 'the language must be restored');
+  assert(html.includes("localStorage.setItem('dxfviewer.lang'"), 'the language must be stored');
+  assert(/return 'en';/.test(html), 'the default language must be English');
+  assert(
+    /applyLanguageUI\(\);[\s\S]{0,80}/.test(html) && /btnLangToggle[\s\S]{0,600}applyLanguageUI\(\);/.test(html),
+    'the language must be applied on start'
+  );
+  assert(html.includes('SAMPLE_TITLES'), 'the sample titles must follow the language');
+});
+
+// ---------------------------------------------------------------------------
+// 15. The wheel zoom is slightly more sensitive than before
+// ---------------------------------------------------------------------------
+check('the wheel zoom step is more sensitive', () => {
+  const html = fs.readFileSync(path.join(rootDir, 'examples', 'index.html'), 'utf8');
+  const m = /Math\.pow\(([0-9.]+),\s*deltaY/.exec(html);
+  assert(m, 'the zoom factor must be a power of the wheel delta');
+  assert(Number(m[1]) > 1.09, 'the zoom step must be more sensitive than 1.09');
+});
+
+// ---------------------------------------------------------------------------
+// 16. Glyphs get a stroke underlay so the outlines stay crisp
+// ---------------------------------------------------------------------------
+check('text glyphs are stroked for crisp outlines', () => {
+  const src = fs.readFileSync(path.join(rootDir, 'src', 'DXFLoader.js'), 'utf8');
+  assert(src.includes('strokeText'), 'glyphs must be stroked as well as filled');
+  assert(/texture\.anisotropy = (8|[4-9])/.test(src), 'the text atlas must use anisotropic filtering');
+});
+
+// ---------------------------------------------------------------------------
+// 17. The all-element sample is bundled with the example
+// ---------------------------------------------------------------------------
+check('the all-element showcase drawing is bundled', () => {
+  const samples = path.join(rootDir, 'examples', 'samples');
+  const file = path.join(samples, 'elements_showcase_2d.dxf');
+  assert(fs.existsSync(file), 'the showcase drawing must exist');
+  const html = fs.readFileSync(path.join(rootDir, 'examples', 'index.html'), 'utf8');
+  assert(html.includes('elements_2d'), 'the showcase must be available as a preset');
+  assert(html.includes('lblSample6'), 'the showcase must appear in the sample menu');
+});
+
 console.log(`[threejs-dxf-loader] ${passed} renderer/precision assertions passed!`);

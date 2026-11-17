@@ -39,10 +39,10 @@ assert(typeof DXFLoader.mapCADFontToSystemFont === 'function', 'mapCADFontToSyst
 const mappedDefault = DXFLoader.mapCADFontToSystemFont('unknown_cad_font.shx', '');
 assert(mappedDefault.includes('SimSun') && mappedDefault.includes('Arial'), 'Fallback font should include SimSun and Arial');
 
-// Verify all 5 comprehensive sample DXF drawings
+// Verify all engineering sample DXF drawings
 const samplesDir = path.join(rootDir, 'examples', 'samples');
 const sampleFiles = fs.readdirSync(samplesDir).filter(f => f.endsWith('.dxf'));
-assert(sampleFiles.length === 5, 'Should contain 5 engineering sample DXF files');
+assert(sampleFiles.length >= 5, 'Should contain the engineering sample DXF files');
 
 for (const file of sampleFiles) {
   const raw = fs.readFileSync(path.join(samplesDir, file), 'utf-8');

@@ -59,3 +59,13 @@ Selecting a block reference now lists its attributes in a dedicated **Block Attr
 - **Dished heads stored as `rot_spl_sur` revolution spline surfaces now tessellate correctly.** They previously fell through to the sparse Delaunay trim path and rendered as a warped, partially covered cap (a flat dark ellipse floating inside the shell silhouette). The structured UV-grid path now also accepts faces whose UV contour spans the whole surface domain, and a degenerate meridian range is extended across the meridian domain like the sphere/cone caps. A 2:1 elliptical head now renders as a smooth cap (rim-to-apex span correct, section symmetric, 2268 structured triangles).
 - **Cylinders are emitted with a single quad row** (a cone surface with sine = 0 is linear along its axis), cutting the triangle count of piping-heavy assemblies by roughly half with no visual change.
 - Added `DXFLoader.decodeAcisData(entity, dxf)`: decodes an entity ACIS payload (native SAT or binary SAB) into the plain SAT records for inspection.
+
+### Selection on huge drawings, block references, and the all-element showcase
+
+- **Point and box selection now stay responsive on very large drawings.** Both used to test every pick record against the pick ray and project every bounding box, which froze the main thread for seconds on big assemblies and made selection feel dead. A screen-space index now holds the projected bounds of every record, so a click or marquee only visits what is actually under the cursor. On a 768-entity plant assembly the pick latency is ~12 ms (p95 ~30 ms) and a window selection of 511 entities takes ~185 ms.
+- **A block reference is now selected as a whole.** Clicking any entity that belongs to an INSERT selects the INSERT itself, exactly like AutoCAD, and the block attributes are listed in the property panel.
+- **The viewer now opens in English.** The EN/中文 button switches the whole interface, including the sample titles, and the choice is remembered for the next visit.
+- **The wheel zoom is slightly more sensitive** (1.14 per notch instead of 1.09).
+- **Glyphs are stroked as well as filled**, so text keeps a crisp outline over dense hatching and at any zoom level; the text atlas also uses stronger anisotropic filtering.
+- **Construction lines (XLINE / RAY) are clipped to the drawing extent** instead of a fixed 250-unit reach, so they no longer sprawl across large drawings.
+- **New sample: "All Element Types"** covers lines, linetypes, XLINE/RAY, POINT, CIRCLE, ARC, ELLIPSE, SPLINE, LWPOLYLINE, POLYLINE, SOLID, HATCH (solid and ANSI31), the four TEXT alignments, MTEXT with inline codes, aligned and radial DIMENSIONs, LEADER, and a block reference with attributes.

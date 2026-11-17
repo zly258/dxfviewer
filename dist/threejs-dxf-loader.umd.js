@@ -2958,6 +2958,12 @@
               drawCtx.font = buildFontStr(st, subPx);
               drawCtx.translate(curX + 1, baseY);
               drawCtx.transform(wf, 0, -shear, 1, 0, 0);
+              // Light stroke underlay: thickens hairline strokes (SimSun at
+              // small sizes) so glyphs stay crisp over solid hatches and at
+              // any zoom, matching the heavier look of CAD SHX text.
+              drawCtx.lineWidth = Math.max(1, subPx * 0.024);
+              drawCtx.strokeText(run.upper, 0, -capHeightPx * 0.54);
+              drawCtx.strokeText(run.lower, 0, capHeightPx * 0.04);
               drawCtx.fillText(run.upper, 0, -capHeightPx * 0.54);
               drawCtx.fillText(run.lower, 0, capHeightPx * 0.04);
               if (run.divider === '/') {
@@ -2971,6 +2977,8 @@
               drawCtx.font = buildFontStr(st, pxSize);
               drawCtx.translate(curX, baseY);
               drawCtx.transform(wf, 0, -shear, 1, 0, 0);
+              drawCtx.lineWidth = Math.max(1, pxSize * 0.024);
+              drawCtx.strokeText(run.text, 0, 0);
               drawCtx.fillText(run.text, 0, 0);
             }
             drawCtx.restore();
@@ -3161,7 +3169,7 @@
         const texture = new THREE.CanvasTexture(page.canvas);
         texture.minFilter = THREE.LinearFilter;
         texture.magFilter = THREE.LinearFilter;
-        texture.anisotropy = 4;
+        texture.anisotropy = 8;
         texture.needsUpdate = true;
         const mat = new THREE.MeshBasicMaterial({
           map: texture,
@@ -5574,7 +5582,17 @@
     emitXLineOrRay(ent, dxf, batch, worldMat, parentContext) {
       const base = new THREE.Vector3(ent.x || 0, ent.y || 0, ent.z || 0);
       const dir = new THREE.Vector3(ent.x1 || 1, ent.y1 || 0, ent.z1 || 0).normalize();
-      const reach = 250;
+      // Construction lines are infinite; AutoCAD clips them to the drawing
+      // extent. A fixed 250 units overflows large drawings (and looks like a
+      // stray diagonal), so the reach follows the drawing size when known.
+      let reach = 250;
+      const ext = dxf.header && dxf.header.$EXTMAX && dxf.header.$EXTMIN
+        ? Math.max(
+            Math.abs(dxf.header.$EXTMAX.x - dxf.header.$EXTMIN.x),
+            Math.abs(dxf.header.$EXTMAX.y - dxf.header.$EXTMIN.y)
+          )
+        : 0;
+      if (ext > 0) reach = Math.max(10, ext * 0.35);
       const pStart = ent.type === 'XLINE' ? base.clone().addScaledVector(dir, -reach) : base;
       const pEnd = base.clone().addScaledVector(dir, reach);
       this.emitPolylineToBatch([pStart, pEnd], ent, dxf, batch, worldMat, parentContext, false, undefined, false);
@@ -6861,6 +6879,11 @@
             if (isDimBlock && childEnt.type === 'POINT') continue;
             const childLayerKey = normKey(childEnt.layer, '0') === '0' ? effectiveInsertLayer : normKey(childEnt.layer, '0');
             const targetBatch = getCollector ? getCollector(childLayerKey) : batch;
+            // Remember which block reference this entity belongs to, so the
+            // host application can select a whole INSERT when any of its
+            // members is picked (AutoCAD behaves the same way).
+            if (!childEnt.parentInsert) childEnt.parentInsert = insertEnt;
+            if (!childEnt.parentBlockName) childEnt.parentBlockName = blk.name || insertEnt.name || null;
             this.emitEntity(childEnt, dxf, getCollector, targetBatch, textAtlas, instMat, originShift, childContext, depth, stats);
           }
         }
