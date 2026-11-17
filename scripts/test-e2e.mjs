@@ -105,7 +105,7 @@ try {
   await page.waitForTimeout(2000);
   const stats = await page.evaluate(() => (document.getElementById('statsSummaryReadout') || {}).textContent);
   console.log('  stats:', stats);
-  ok(/24 Entities/.test(stats), 'the showcase loads with 24 entities');
+  ok(/125 Entities/.test(stats), 'the showcase loads with 125 entities');
 
   console.log('[e2e] picking');
   const box = await page.locator('canvas').first().boundingBox();
@@ -130,7 +130,7 @@ try {
     ok(found.has(t), `the element type ${t} is pickable`);
   }
   const block = found.get('INSERT');
-  ok(!!block && block.block === 'FRAME_TAG', 'a block member selects the whole block reference');
+  ok(!!block && block.block === 'TAG_BLOCK', 'a block member selects the whole block reference');
   ok(!!block && block.attrib === true, 'the block attributes are listed in the property panel');
 
   console.log('[e2e] zoom');
