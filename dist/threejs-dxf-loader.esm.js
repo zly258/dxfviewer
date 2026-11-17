@@ -5184,7 +5184,7 @@ const _globalScope = { THREE };
       const textRecords = textAtlas.textRecords || [];
       for (let i = 0; i < textRecords.length; i++) {
         const tr = textRecords[i];
-        if (tr.parentBlock && tr.entity && pickRecords.length < 60000) {
+        if (tr.parentBlock && tr.entity) {
           const synId = pickRecords.length;
           const syntheticRec = {
             id: synId,
@@ -5270,28 +5270,32 @@ const _globalScope = { THREE };
         stats.totalEntities++;
         stats.byType[ent.type] = (stats.byType[ent.type] || 0) + 1;
 
+        // Every emitted entity MUST get a pick record: the renderer writes
+        // `currentPickId` into the batch and the picker looks that id up here.
+        // Capping the array at 50000 made all later entities share one missing
+        // id, so point picking silently stopped working on large drawings.
+        let entBox = null;
         if (bState.curEntMinX <= bState.curEntMaxX) {
-          const entBox = new THREE.Box3(
+          entBox = new THREE.Box3(
             new THREE.Vector3(bState.curEntMinX, bState.curEntMinY, bState.curEntMinZ),
             new THREE.Vector3(bState.curEntMaxX, bState.curEntMaxY, bState.curEntMaxZ)
           );
           if (ent.type !== 'XLINE' && ent.type !== 'RAY') {
             globalBBox.union(entBox);
           }
-          if (pickRecords.length < 50000) {
-            const lKey = normKey(ent.layer, '0');
-            const lDef = dxf.tables.layers[lKey];
-            pickRecords.push({
-              id: pickRecords.length,
-              isTopLevel: true,
-              entity: ent,
-              layer: lKey,
-              displayLayer: (lDef && lDef.displayName) || ent.displayLayer || ent.layer || '0',
-              colorPair: this.resolveColorPair(ent, dxf, null),
-              box: entBox
-            });
-          }
         }
+        if (!entBox) entBox = new THREE.Box3();
+        const lKey = normKey(ent.layer, '0');
+        const lDef = dxf.tables.layers[lKey];
+        pickRecords.push({
+          id: pickRecords.length,
+          isTopLevel: true,
+          entity: ent,
+          layer: lKey,
+          displayLayer: (lDef && lDef.displayName) || ent.displayLayer || ent.layer || '0',
+          colorPair: this.resolveColorPair(ent, dxf, null),
+          box: entBox
+        });
       }
 
       return this._finalizeScene(dxf, ctx, t0);
@@ -5325,28 +5329,32 @@ const _globalScope = { THREE };
         stats.totalEntities++;
         stats.byType[ent.type] = (stats.byType[ent.type] || 0) + 1;
 
+        // Every emitted entity MUST get a pick record: the renderer writes
+        // `currentPickId` into the batch and the picker looks that id up here.
+        // Capping the array at 50000 made all later entities share one missing
+        // id, so point picking silently stopped working on large drawings.
+        let entBox = null;
         if (bState.curEntMinX <= bState.curEntMaxX) {
-          const entBox = new THREE.Box3(
+          entBox = new THREE.Box3(
             new THREE.Vector3(bState.curEntMinX, bState.curEntMinY, bState.curEntMinZ),
             new THREE.Vector3(bState.curEntMaxX, bState.curEntMaxY, bState.curEntMaxZ)
           );
           if (ent.type !== 'XLINE' && ent.type !== 'RAY') {
             globalBBox.union(entBox);
           }
-          if (pickRecords.length < 50000) {
-            const lKey = normKey(ent.layer, '0');
-            const lDef = dxf.tables.layers[lKey];
-            pickRecords.push({
-              id: pickRecords.length,
-              isTopLevel: true,
-              entity: ent,
-              layer: lKey,
-              displayLayer: (lDef && lDef.displayName) || ent.displayLayer || ent.layer || '0',
-              colorPair: this.resolveColorPair(ent, dxf, null),
-              box: entBox
-            });
-          }
         }
+        if (!entBox) entBox = new THREE.Box3();
+        const lKey = normKey(ent.layer, '0');
+        const lDef = dxf.tables.layers[lKey];
+        pickRecords.push({
+          id: pickRecords.length,
+          isTopLevel: true,
+          entity: ent,
+          layer: lKey,
+          displayLayer: (lDef && lDef.displayName) || ent.displayLayer || ent.layer || '0',
+          colorPair: this.resolveColorPair(ent, dxf, null),
+          box: entBox
+        });
 
         if ((i & 127) === 0) {
           const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
