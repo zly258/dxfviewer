@@ -2627,7 +2627,8 @@
       italic: false,
       underline: false,
       overline: false,
-      strike: false
+      strike: false,
+      tracking: 1.0
     }];
 
     const currentStyle = () => Object.assign({}, styleStack[styleStack.length - 1]);
@@ -2639,7 +2640,7 @@
       }
     };
 
-    const validCmdRe = /^[ACcFfHWQTSpa]$/;
+    const validCmdRe = /^[ACcFfHWQTtSpa]$/;
     let i = 0;
     while (i < text.length) {
       const ch = text[i];
@@ -2651,9 +2652,29 @@
         if (next === 'P' || next === 'X' || next === 'N') { flushBuf(); lines.push([]); i += 2; }
         else if (next === '~') { buf += ' '; i += 2; }
         else if (next === '\\' || next === '{' || next === '}') { buf += next; i += 2; }
-        else if (next === 'L' || next === 'l' || next === 'O' || next === 'o' || next === 'K' || next === 'k') {
-          // Skip underline/overline/strike toggles so no unwanted horizontal lines cut across text
+        else if (next === 'L') {
           flushBuf();
+          styleStack[styleStack.length - 1].underline = true;
+          i += 2;
+        } else if (next === 'l') {
+          flushBuf();
+          styleStack[styleStack.length - 1].underline = false;
+          i += 2;
+        } else if (next === 'O') {
+          flushBuf();
+          styleStack[styleStack.length - 1].overline = true;
+          i += 2;
+        } else if (next === 'o') {
+          flushBuf();
+          styleStack[styleStack.length - 1].overline = false;
+          i += 2;
+        } else if (next === 'K') {
+          flushBuf();
+          styleStack[styleStack.length - 1].strike = true;
+          i += 2;
+        } else if (next === 'k') {
+          flushBuf();
+          styleStack[styleStack.length - 1].strike = false;
           i += 2;
         } else if (validCmdRe.test(next)) {
           const semi = text.indexOf(';', i + 2);
@@ -2676,9 +2697,24 @@
               else if (alignCode === 1) lines.inlineVAlign = 2; // Middle
               else if (alignCode === 2) lines.inlineVAlign = 3; // Top
             } else if (cmd === 'p') {
+              // \p<args>; — paragraph formatting
+              // qc/ql/qr: alignment  xl<n>: first-line indent  r<n>: remaining indent
               if (arg.includes('qc')) lines.inlineHAlign = 1;
               else if (arg.includes('qr')) lines.inlineHAlign = 2;
               else if (arg.includes('ql')) lines.inlineHAlign = 0;
+              else if (arg.includes('qj')) lines.inlineHAlign = 0; // justified → left for now
+              // Store indent on the current paragraph line so the layout pass
+              // can offset the first run by the requested amount.
+              const indentMatch = arg.match(/x\s*l([0-9.]+)/i);
+              if (indentMatch) {
+                const lastLine = lines[lines.length - 1];
+                lastLine.paragraphIndentFirst = parseFloat(indentMatch[1]) || 0;
+              }
+              const hangMatch = arg.match(/r([0-9.]+)/i);
+              if (hangMatch) {
+                const lastLine = lines[lines.length - 1];
+                lastLine.paragraphIndentRest = parseFloat(hangMatch[1]) || 0;
+              }
             } else if (cmd === 'H') {
               if (arg.endsWith('x') || arg.endsWith('X')) {
                 // \Hnx — height relative to the MTEXT entity's base height.
@@ -2712,6 +2748,10 @@
                 if (p === 'i1') top.italic = true;
                 if (p === 'i0') top.italic = false;
               });
+            } else if (cmd === 'T' || cmd === 't') {
+              // \Tn; — tracking (character spacing) factor, 1.0 = normal
+              const trk = parseFloat(arg);
+              if (!isNaN(trk)) top.tracking = trk;
             }
             i = semi + 1;
           } else { buf += ch; i++; }
@@ -2876,6 +2916,7 @@
               const st = run.style || {};
               const scale = st.absHeight ? Math.min(12, Math.max(0.1, st.absHeight / baseHeight)) : (st.scale || 1.0);
               const wf = st.widthFactor || 1.0;
+              const trk = st.tracking || 1.0;
               const ob = st.oblique || 0;
               const shearExtra = Math.abs(Math.tan(THREE.MathUtils.degToRad(ob))) * curCapH * scale * 0.65;
               if (run.type === 'stack') {
@@ -2883,15 +2924,15 @@
                 const fStr = buildFontStr(st, subPx);
                 const uw = this.measureCached(ctx, fStr, run.upper) * wf;
                 const lw = this.measureCached(ctx, fStr, run.lower) * wf;
-                const rw = Math.max(uw, lw) + 6 + shearExtra;
+                const rw = (Math.max(uw, lw) + 6 + shearExtra) * trk;
                 w += rw;
-                return { run, rw, pxSize: curPxBase * scale, subPx, wf };
+                return { run, rw, pxSize: curPxBase * scale, subPx, wf, trk };
               } else {
                 const pxSize = curPxBase * scale;
                 const fStr = buildFontStr(st, pxSize);
-                const rw = this.measureCached(ctx, fStr, run.text) * wf + shearExtra;
+                const rw = (this.measureCached(ctx, fStr, run.text) * wf + shearExtra) * trk;
                 w += rw;
-                return { run, rw, pxSize, wf };
+                return { run, rw, pxSize, wf, trk };
               }
             });
             if (w > maxW) maxW = w;
@@ -2984,6 +3025,29 @@
               drawCtx.lineWidth = Math.max(1, pxSize * 0.024);
               drawCtx.strokeText(run.text, 0, 0);
               drawCtx.fillText(run.text, 0, 0);
+              // Underline / overline / strikethrough lines
+              const lw = Math.max(0.8, pxSize * 0.07);
+              if (st.underline) {
+                drawCtx.lineWidth = lw;
+                drawCtx.beginPath();
+                drawCtx.moveTo(0, capHeightPx * 0.18);
+                drawCtx.lineTo(rw / wf, capHeightPx * 0.18);
+                drawCtx.stroke();
+              }
+              if (st.overline) {
+                drawCtx.lineWidth = lw;
+                drawCtx.beginPath();
+                drawCtx.moveTo(0, -capHeightPx * 1.1);
+                drawCtx.lineTo(rw / wf, -capHeightPx * 1.1);
+                drawCtx.stroke();
+              }
+              if (st.strike) {
+                drawCtx.lineWidth = lw;
+                drawCtx.beginPath();
+                drawCtx.moveTo(0, -capHeightPx * 0.44);
+                drawCtx.lineTo(rw / wf, -capHeightPx * 0.44);
+                drawCtx.stroke();
+              }
             }
             drawCtx.restore();
             curX += rw;
