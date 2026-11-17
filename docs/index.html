@@ -7215,6 +7215,8 @@
 
 
 
+
+
   </script>
 
   <!-- Minimalist Application Controller -->
@@ -9172,11 +9174,6 @@
           buildPropRowHTML(appState.lang === 'zh' ? '缩放' : 'Scale', `(${Number(ent.xscale ?? 1).toFixed(2)}, ${Number(ent.yscale ?? 1).toFixed(2)}, ${Number(ent.zscale ?? 1).toFixed(2)})`),
           buildPropRowHTML(appState.lang === 'zh' ? '旋转角' : 'Rotation', `${Number(ent.rotation || 0).toFixed(1)}°`)
         );
-        if (ent.attribs && ent.attribs.length > 0) {
-          ent.attribs.forEach(attr => {
-            specRows.push(buildPropRowHTML(attr.tag || 'ATTRIB', escapeHtml(attr.text || '')));
-          });
-        }
       } else if (tp === 'HATCH') {
         specRows.push(
           buildPropRowHTML(appState.lang === 'zh' ? '图案' : 'Pattern', escapeHtml(ent.patternName || 'SOLID')),
@@ -9194,7 +9191,21 @@
       ].join(''));
 
       const secSpec = specRows.length > 0 ? buildPropSectionHTML(t('secSpecifics'), specRows.join('')) : '';
-      bodyEl.innerHTML = backBannerHtml + secGen + secSpec + secBounds;
+
+      // Block attributes (ATTRIB) get their own section so they are easy to
+      // read instead of being mixed into the generic entity rows.
+      let secAttrib = '';
+      const attribs = (ent.attribs || []).filter(a => a && (a.tag || a.text));
+      if (attribs.length > 0) {
+        const rows = attribs.map(attr => {
+          const raw = attr.text !== undefined && attr.text !== null ? String(attr.text) : '';
+          const shown = raw.trim() ? escapeHtml(raw) : `<span class="text-slate-300">${appState.lang === 'zh' ? '（空）' : '(empty)'}</span>`;
+          return buildPropRowHTML(escapeHtml(attr.tag || 'ATTRIB'), shown);
+        }).join('');
+        secAttrib = buildPropSectionHTML(appState.lang === 'zh' ? '块属性' : 'Block Attributes', rows);
+      }
+
+      bodyEl.innerHTML = backBannerHtml + secGen + secSpec + secAttrib + secBounds;
 
       const btnBack = document.getElementById('btnBackToMultiSelection');
       if (btnBack) {
