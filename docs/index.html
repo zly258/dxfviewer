@@ -9,33 +9,81 @@
   <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
+    /* =========================================================================
+     * 设计令牌（与 zly258/3dbrowser 同一套视觉语言）
+     * 底：#F8FAFC / 面：#FFFFFF / 胶囊槽：#F1F5F9 / 分割线：#E2E8F0
+     * 主操作蓝：#2563EB / 下拉选中：#EFF6FF + #2563EB + ✓
+     * ========================================================================= */
+    :root {
+      --font-sans: 'Nunito', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei UI", sans-serif;
+      --bg-app: #F8FAFC;
+      --bg-chrome: #FFFFFF;
+      --bg-band: #F1F5F9;
+      --bg-glass: rgba(255, 255, 255, 0.95);
+      --border-main: #E2E8F0;
+      --border-sub: #F1F5F9;
+      --text-main: #1E293B;
+      --text-sec: #475569;
+      --text-muted: #5B6472;
+      --text-faint: #94A3B8;
+      --accent: #2563EB;
+      --accent-hover: #1D4ED8;
+      --accent-soft: #EFF6FF;
+      --accent-line: #BFDBFE;
+      --radius-xs: 4px;
+      --radius: 6px;
+      --radius-lg: 12px;
+      --radius-xl: 16px;
+      --radius-pill: 9999px;
+      --header-h: 44px;
+      --header-h-compact: 36px;
+      --footer-h: 24px;
+      --sidebar-left-w: 224px;
+      --sidebar-right-w: 288px;
+      --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.06);
+      --shadow-overlay: 0 10px 15px -3px rgba(15, 23, 42, 0.10), 0 4px 6px -4px rgba(15, 23, 42, 0.08);
+      --shadow-panel: 0 12px 28px rgba(15, 23, 42, 0.10), 0 2px 6px rgba(15, 23, 42, 0.06);
+      --z-dock: 30;
+      --z-sheet: 40;
+      --z-dropdown: 60;
+      --z-toast: 80;
+    }
+
     *, *::before, *::after {
       cursor: default !important;
-      font-family: 'Nunito', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+      font-family: var(--font-sans);
+      box-sizing: border-box;
     }
+
+    html, body { height: 100%; }
+
     body {
-      background-color: #F8FAFC;
-      color: #1E293B;
+      background-color: var(--bg-app);
+      color: var(--text-main);
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
+      overflow: hidden;
     }
-    .mono {
-      font-variant-numeric: tabular-nums;
-      letter-spacing: -0.01em;
+
+    /* 移动端用 dvh，避免地址栏伸缩导致视口跳动 */
+    body.mode-portrait, body.mode-landscape { height: 100dvh; }
+
+    /* 输入框恢复文本光标（全局默认光标只约束界面控件） */
+    input, textarea, [contenteditable="true"] {
+      cursor: text !important;
+      user-select: text !important;
+      -webkit-user-select: text !important;
     }
-    /* Material Design 3 Pill Scrollbars & Sliders */
+
+    .mono { font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+
+    /* ---------- MD3 6px 胶囊滚动条（半透明 slate） ---------- */
     * {
       scrollbar-width: thin;
       scrollbar-color: rgba(148, 163, 184, 0.5) transparent;
     }
-    ::-webkit-scrollbar {
-      width: 6px;
-      height: 6px;
-    }
-    ::-webkit-scrollbar-track {
-      background: transparent;
-      margin: 4px;
-    }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; margin: 4px; }
     ::-webkit-scrollbar-thumb {
       background-color: rgba(148, 163, 184, 0.48);
       border-radius: 9999px;
@@ -43,77 +91,182 @@
       background-clip: padding-box;
       transition: background-color 0.15s ease;
     }
-    ::-webkit-scrollbar-thumb:hover {
-      background-color: rgba(100, 116, 139, 0.8);
+    ::-webkit-scrollbar-thumb:hover { background-color: rgba(100, 116, 139, 0.8); }
+    ::-webkit-scrollbar-corner { background: transparent; }
+
+    /* ---------- 顶栏：44px 三区（PC） ---------- */
+    #appHeader {
+      height: var(--header-h);
+      min-height: var(--header-h);
+      padding: 0 12px;
+      gap: 8px;
+      background: var(--bg-chrome);
+      border-bottom: 1px solid var(--border-main);
     }
-    ::-webkit-scrollbar-corner {
-      background: transparent;
+    .tb-left, .tb-center, .tb-right {
+      display: flex;
+      align-items: center;
+      min-width: 0;
     }
-    input[type="range"].md-slider {
-      -webkit-appearance: none;
-      appearance: none;
-      height: 4px;
-      border-radius: 9999px;
-      background: #E2E8F0;
-      outline: none;
-    }
-    input[type="range"].md-slider::-webkit-slider-thumb {
-      -webkit-appearance: none;
-      appearance: none;
-      width: 14px;
-      height: 14px;
-      border-radius: 9999px;
-      background: #2563EB;
-      box-shadow: 0 1px 3px rgba(37, 99, 235, 0.35);
-      transition: transform 0.12s ease, box-shadow 0.12s ease;
-    }
-    input[type="range"].md-slider::-webkit-slider-thumb:hover {
-      transform: scale(1.12);
-      box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.15);
-    }
-    /* Toolbar: force optical vertical centering of icon+label pills */
-    header .tb-pill {
+    .tb-left { flex: 1 1 0; gap: 8px; }
+    .tb-center { flex: 0 0 auto; justify-content: center; padding: 0 8px; }
+    .tb-right { flex: 1 1 0; justify-content: flex-end; gap: 6px; }
+
+    /* 图标+文字胶囊：统一 26px 高、1 倍行高、图标与文字光学垂直居中 */
+    .tb-pill {
       display: inline-flex;
       align-items: center;
       justify-content: center;
       height: 26px;
+      min-height: 26px;
       padding: 0 10px;
+      gap: 5px;
+      border: 0;
+      border-radius: var(--radius-pill);
+      background: var(--bg-band);
+      color: var(--text-sec);
+      font-size: 12px;
+      font-weight: 500;
       line-height: 1;
-      box-sizing: border-box;
+      white-space: nowrap;
+      transition: background-color 0.12s ease, color 0.12s ease;
     }
-    header .tb-pill svg,
-    header .tb-pill .tb-swatch {
-      display: block;
-      flex-shrink: 0;
-    }
-    header .tb-pill > span {
-      display: inline-flex;
-      align-items: center;
-      line-height: 1;
-      height: 1em;
-    }
-    header .tb-seg {
+    .tb-pill:hover { background: var(--border-main); color: var(--text-main); }
+    .tb-pill:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+    .tb-pill svg, .tb-pill .tb-swatch { display: block; flex-shrink: 0; }
+    .tb-pill > span { display: inline-flex; align-items: center; line-height: 1; height: 1em; }
+    .tb-pill.tb-icon { width: 26px; padding: 0; background: transparent; }
+    .tb-pill.tb-icon:hover { background: var(--bg-band); }
+    .tb-pill.tb-primary { background: var(--accent); color: #FFFFFF; font-weight: 600; }
+    .tb-pill.tb-primary:hover { background: var(--accent-hover); color: #FFFFFF; }
+
+    /* 分段胶囊槽 */
+    .tb-seg {
       display: inline-flex;
       align-items: center;
       height: 30px;
       padding: 2px;
+      gap: 2px;
+      background: var(--bg-band);
+      border-radius: var(--radius-pill);
     }
-    header .tb-icon {
-      width: 26px;
-      padding: 0;
+    .tb-seg .tb-pill {
+      height: 26px;
+      min-height: 26px;
+      padding: 0 12px;
+      background: transparent;
+      color: var(--text-sec);
     }
+    .tb-seg .tb-pill:hover { background: rgba(226, 232, 240, 0.72); color: var(--text-main); }
+    .tb-seg .tb-pill.is-active {
+      background: #FFFFFF;
+      color: var(--text-main);
+      font-weight: 600;
+      box-shadow: var(--shadow-card);
+    }
+    .tb-seg .tb-pill.is-active:hover { background: #FFFFFF; color: var(--text-main); }
+
+    /* ---------- 下拉菜单（毛玻璃卡） ---------- */
+    .theme-opt-btn,
+    .sample-opt-btn {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      width: 100%;
+      padding: 6px 10px;
+      border: 0;
+      border-radius: var(--radius-lg);
+      background: transparent;
+      color: var(--text-sec);
+      font-size: 12px;
+      font-weight: 500;
+      line-height: 1.35;
+      text-align: left;
+      transition: background-color 0.12s ease, color 0.12s ease;
+    }
+    .theme-opt-btn:hover,
+    .sample-opt-btn:hover { background: var(--bg-band); color: var(--text-main); }
+    .theme-opt-btn.is-active,
+    .sample-opt-btn.is-active {
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-weight: 600;
+    }
+    .theme-opt-btn > span:first-child {
+      min-width: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .sample-opt-btn > span:first-child {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .theme-opt-btn .opt-swatch {
+      width: 10px;
+      height: 10px;
+      border-radius: 9999px;
+      flex-shrink: 0;
+      display: block;
+    }
+    .opt-swatch-light { background: #FFFFFF; border: 1px solid #CBD5E1; }
+    .opt-swatch-dark { background: #0F172A; border: 1px solid #334155; }
+    .opt-swatch-bw { background: linear-gradient(90deg, #FFFFFF 50%, #0F172A 50%); border: 1px solid #CBD5E1; }
+    .theme-swatch-bw { background: linear-gradient(90deg, #FFFFFF 50%, #0F172A 50%); border: 1px solid #94A3B8; }
+
+    /* 搜索分类胶囊 */
+    .search-cat-btn {
+      display: inline-flex;
+      align-items: center;
+      height: 22px;
+      padding: 0 8px;
+      border: 0;
+      border-radius: var(--radius);
+      background: transparent;
+      color: var(--text-sec);
+      font-size: 11px;
+      font-weight: 500;
+      line-height: 1;
+      transition: background-color 0.12s ease, color 0.12s ease;
+    }
+    .search-cat-btn:hover { background: var(--bg-band); color: var(--text-main); }
+    .search-cat-btn.is-active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+
+    /* ---------- 侧栏 ---------- */
+    .panel-head {
+      flex: 0 0 auto;
+      height: 32px;
+      min-height: 32px;
+      padding: 0 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      background: var(--bg-chrome);
+      border-bottom: 1px solid var(--border-main);
+    }
+    .panel-search {
+      flex: 0 0 auto;
+      padding: 6px 10px;
+      background: rgba(248, 250, 252, 0.6);
+      border-bottom: 1px solid var(--border-sub);
+    }
+    #layerDrawer { background: var(--bg-chrome); border-right: 1px solid var(--border-main); }
+    #propertyDrawer { background: var(--bg-chrome); border-left: 1px solid var(--border-main); }
+
     .panel-resizer {
       width: 5px;
       flex-shrink: 0;
-      cursor: col-resize;
       background: transparent;
       position: relative;
       z-index: 20;
+      transition: background-color 0.12s ease;
     }
     .panel-resizer:hover,
-    .panel-resizer.is-dragging {
-      background: rgba(37, 99, 235, 0.35);
-    }
+    .panel-resizer.is-dragging { background: rgba(37, 99, 235, 0.35); }
     .panel-resizer::after {
       content: '';
       position: absolute;
@@ -122,45 +275,288 @@
       left: -3px;
       right: -3px;
     }
-    body.is-resizing-panel { cursor: col-resize !important; user-select: none !important; }
+    body.is-resizing-panel { user-select: none !important; }
+
+    /* ---------- 底栏 ---------- */
+    #appStatusBar {
+      flex: 0 0 var(--footer-h);
+      height: var(--footer-h);
+      min-height: var(--footer-h);
+      padding: 0 12px;
+      gap: 12px;
+      background: var(--bg-chrome);
+      border-top: 1px solid var(--border-main);
+      font-size: 11px;
+      line-height: 1;
+      color: var(--text-muted);
+    }
+    .status-hint { color: var(--text-muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* ---------- 空属性状态 ---------- */
+    .prop-empty {
+      min-height: 192px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 24px 16px;
+      text-align: center;
+    }
+    .prop-empty-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 9999px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg-band);
+      color: var(--text-faint);
+    }
+    .prop-empty-icon svg { width: 20px; height: 20px; display: block; }
+    .prop-empty-title { font-size: 12px; font-weight: 600; color: var(--text-sec); }
+    .prop-empty-hint { font-size: 11px; color: var(--text-muted); line-height: 1.6; max-width: 208px; }
+
+    /* ---------- 移动竖屏：底部居中悬浮毛玻璃胶囊栏 ---------- */
+    .mobile-dock { display: none; }
+    .mobile-sheet { display: none; }
+
+    .mode-portrait .mobile-dock {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      position: absolute;
+      left: 50%;
+      bottom: calc(var(--footer-h) + 12px);
+      transform: translateX(-50%);
+      z-index: var(--z-dock);
+      padding: 3px;
+      background: var(--bg-glass);
+      -webkit-backdrop-filter: blur(12px);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(226, 232, 240, 0.9);
+      border-radius: var(--radius-pill);
+      box-shadow: var(--shadow-panel);
+    }
+    .mode-portrait .mobile-dock .tb-seg { height: 28px; padding: 1px; }
+    .mode-portrait .mobile-dock .tb-pill { height: 26px; min-height: 26px; padding: 0 10px; }
+
+    /* ---------- 移动竖屏：底部上滑抽屉（图层 | 对象属性） ---------- */
+    .mode-portrait .mobile-sheet {
+      display: flex;
+      flex-direction: column;
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: var(--footer-h);
+      z-index: var(--z-sheet);
+      max-height: 55dvh;
+      background: var(--bg-chrome);
+      border-top: 1px solid var(--border-main);
+      border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+      box-shadow: var(--shadow-panel);
+      transform: translateY(100%);
+      visibility: hidden;
+      pointer-events: none;
+      transition: transform 0.22s ease, visibility 0s linear 0.22s;
+    }
+    .mode-portrait .mobile-sheet.is-open {
+      transform: translateY(0);
+      visibility: visible;
+      pointer-events: auto;
+      transition: transform 0.22s ease, visibility 0s;
+    }
+    .mobile-sheet-handle {
+      flex: 0 0 auto;
+      width: 36px;
+      height: 4px;
+      margin: 8px auto 4px;
+      background: #CBD5E1;
+      border-radius: var(--radius-pill);
+    }
+    .mobile-sheet-tabs {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      padding: 0 8px 6px;
+    }
+    .sheet-tab {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      height: 26px;
+      padding: 0 12px;
+      border: 0;
+      border-radius: var(--radius-pill);
+      background: transparent;
+      color: var(--text-sec);
+      font-size: 12px;
+      font-weight: 500;
+      line-height: 1;
+      white-space: nowrap;
+      transition: background-color 0.12s ease, color 0.12s ease;
+    }
+    .sheet-tab:hover { background: var(--bg-band); color: var(--text-main); }
+    .sheet-tab.is-active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+    .mobile-sheet-body { flex: 1 1 auto; min-height: 0; display: flex; }
+    .sheet-panel { display: none; flex: 1 1 auto; min-height: 0; flex-direction: column; }
+    .sheet-panel.is-active { display: flex; }
+    .mode-portrait .mobile-sheet .sheet-panel > aside {
+      width: 100% !important;
+      max-width: 100% !important;
+      flex: 1 1 auto;
+      min-height: 0;
+      border: 0;
+      border-radius: 0;
+    }
+
+    /* ---------- 移动竖屏：顶栏压缩 ---------- */
+    .mode-portrait #appHeader {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      align-items: center;
+      padding: 0 8px;
+      gap: 6px;
+    }
+    .mode-portrait .tb-center { display: none; }
+    .mode-portrait .tb-left { min-width: 0; gap: 6px; }
+    .mode-portrait .tb-right {
+      min-width: 0;
+      width: 100%;
+      gap: 1px;
+      justify-content: flex-start;
+      overflow-x: auto;
+      overflow-y: hidden;
+      scrollbar-width: none;
+    }
+    .mode-portrait .tb-right::-webkit-scrollbar { display: none; }
+    .mode-portrait #brandTitle,
+    .mode-portrait #brandSep { display: none; }
+    .mode-portrait #currentFileNameBadge { max-width: 64px; }
+    .mode-portrait .tb-pill { height: 26px; padding: 0 5px; gap: 3px; font-size: 11px; }
+    .mode-portrait .tb-right > * { flex: 0 0 auto; }
+    /* 待 JS 把按钮搬运到底部胶囊栏之前，先隐藏原位副本，避免首帧重复 */
+    .mode-portrait #headerTools > #btnToggleSearchPanel { display: none; }
+    .mode-portrait main > #layerDrawer,
+    .mode-portrait main > #propertyDrawer { display: none; }
+    .mode-portrait .panel-resizer { display: none !important; }
+    .mode-portrait .status-hint { display: none !important; }
+    .mode-portrait #toastBanner { bottom: calc(var(--footer-h) + 56px); }
+    .mode-portrait #themeDropdownMenu,
+    .mode-portrait #sampleDropdownMenu {
+      position: fixed;
+      top: calc(var(--header-h) + 6px);
+      right: 8px;
+      left: auto;
+      margin-top: 0;
+      z-index: var(--z-dropdown);
+      max-width: calc(100vw - 16px);
+    }
+    .mode-portrait #sampleDropdownMenu { width: min(320px, calc(100vw - 16px)); }
+    .mode-portrait #searchFloatingPanel {
+      left: 12px;
+      right: 12px;
+      top: 12px;
+      width: auto;
+      max-width: none;
+    }
+
+    /* ---------- 移动横屏：36px 顶栏 + 左右毛玻璃悬浮卡 ---------- */
+    .mode-landscape #appHeader {
+      height: var(--header-h-compact);
+      min-height: var(--header-h-compact);
+      padding: 0 8px;
+      gap: 6px;
+    }
+    .mode-landscape .tb-center { padding: 0 4px; }
+    .mode-landscape .tb-seg { height: 28px; padding: 1px; }
+    .mode-landscape .tb-seg .tb-pill { height: 26px; min-height: 26px; padding: 0 10px; }
+    .mode-landscape .tb-right { gap: 4px; }
+    .mode-landscape .tb-pill { padding: 0 6px; gap: 4px; font-size: 11px; }
+    .mode-landscape .status-hint { display: none !important; }
+    .mode-landscape .panel-resizer { display: none !important; }
+    .mode-landscape #layerDrawer,
+    .mode-landscape #propertyDrawer {
+      position: absolute;
+      top: 8px;
+      bottom: calc(var(--footer-h) + 8px);
+      z-index: var(--z-dock);
+      display: flex;
+      background: var(--bg-glass);
+      -webkit-backdrop-filter: blur(12px);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(226, 232, 240, 0.9);
+      border-radius: var(--radius-xl);
+      box-shadow: var(--shadow-panel);
+      overflow: hidden;
+    }
+    .mode-landscape #layerDrawer { left: 8px; width: 192px !important; max-width: 192px !important; }
+    .mode-landscape #propertyDrawer { right: 8px; width: 232px !important; max-width: 232px !important; }
+    .mode-landscape #layerDrawer .panel-head,
+    .mode-landscape #propertyDrawer .panel-head { height: 30px; min-height: 30px; padding: 0 8px; }
+    .mode-landscape #layerDrawer .panel-head .text-xs,
+    .mode-landscape #propertyDrawer .panel-head .text-xs { font-size: 11px; }
+    .mode-landscape #layerDrawer .panel-head button,
+    .mode-landscape #propertyDrawer .panel-head button { font-size: 11px; }
+
+    /* 超窄手机（≤380px）：主题按钮只留色板+箭头，保证 5 个按钮同屏 */
+    @media (max-width: 380px) {
+      .mode-portrait #lblCurrentTheme { display: none; }
+    }
+    /* ---------- 窄桌面 / 平板：压缩胶囊，保证三区不重叠 ---------- */
+    @media (max-width: 1199px) and (min-height: 501px) {
+      .tb-pill { padding: 0 6px; gap: 4px; font-size: 11px; }
+      .tb-right { gap: 4px; }
+    }
+    @media (max-width: 1023px) and (min-height: 501px) {
+      .tb-left { flex: 0 1 auto; }
+      .tb-right { flex: 1 1 auto; }
+    }
+    /* 768–819px 的窄桌面：收起品牌名，给文件名与右侧工具留出空间 */
+    @media (max-width: 819px) and (min-height: 501px) {
+      #brandTitle, #brandSep { display: none; }
+    }
+
   </style>
 </head>
 <body class="h-screen w-screen overflow-hidden flex flex-col select-none bg-slate-50 text-slate-800">
+  <script>
+    /* 首帧即锁定三端布局模式，避免移动端先闪一帧桌面三栏 */
+    (function () {
+      var w = window.innerWidth, h = window.innerHeight;
+      var mode = (h < 500) ? 'landscape' : (w < 768 ? 'portrait' : 'desktop');
+      document.body.classList.add('mode-' + mode);
+    })();
+  </script>
 
   <!-- Top Bar -->
-  <header class="h-11 bg-white border-b border-slate-200 px-3 flex items-center justify-between shrink-0 z-30 relative gap-2">
+  <header id="appHeader" class="bg-white border-b border-slate-200 flex items-center shrink-0 z-30 relative">
     <!-- Left: Layer Drawer Toggle + Brand + Truncated File Name -->
-    <div class="flex items-center gap-2 min-w-0">
-      <button id="btnToggleDrawer" type="button" class="tb-pill tb-icon rounded-full hover:bg-slate-100 text-slate-600 transition shrink-0" title="图层 / Layers">
+    <div class="tb-left">
+      <button id="btnToggleDrawer" type="button" class="tb-pill tb-icon" title="图层 / Layers">
         <svg class="w-4 h-4 block shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/>
         </svg>
       </button>
-      <span class="font-semibold text-xs tracking-tight text-slate-900 shrink-0 leading-none">CAD Viewer</span>
-      <span class="text-slate-300 shrink-0">/</span>
-      <span id="currentFileNameBadge" class="text-xs font-medium text-slate-600 mono truncate max-w-[140px] sm:max-w-[220px] md:max-w-[280px]" title="planetary_gearbox_2d.dxf">
-        planetary_gearbox_2d.dxf
-      </span>
+      <span id="brandTitle" class="font-semibold text-xs tracking-tight text-slate-900 shrink-0 leading-none">CAD Viewer</span>
+      <span id="brandSep" class="text-slate-300 shrink-0 leading-none">/</span>
+      <span id="currentFileNameBadge" class="text-xs font-medium text-slate-600 mono truncate max-w-[220px]" title="planetary_gearbox_2d.dxf">planetary_gearbox_2d.dxf</span>
     </div>
 
     <!-- Center: View Switcher (2D / 3D / 适应); pick/box are unified AutoCAD gestures (no mode toggle) -->
-    <div class="flex items-center gap-2 shrink-0">
-      <div class="hidden" aria-hidden="true">
-        <button id="btnModeSelect" type="button" tabindex="-1">点选</button>
-        <button id="btnModeBox" type="button" tabindex="-1">框选</button>
-      </div>
-
-      <div class="tb-seg hidden sm:inline-flex bg-slate-100 rounded-full">
-        <button id="btnViewTop" type="button" class="tb-pill rounded-full text-xs font-medium bg-white text-slate-900 shadow-xs transition">2D</button>
-        <button id="btnViewIso" type="button" class="tb-pill rounded-full text-xs font-medium text-slate-600 hover:text-slate-900 transition">3D</button>
-        <button id="btnFitView" type="button" class="tb-pill rounded-full text-xs font-medium text-slate-600 hover:text-slate-900 transition">适应</button>
+    <div id="headerCenter" class="tb-center">
+      <div id="viewSegGroup" class="tb-seg">
+        <button id="btnViewTop" type="button" class="tb-pill is-active">2D</button>
+        <button id="btnViewIso" type="button" class="tb-pill">3D</button>
+        <button id="btnFitView" type="button" class="tb-pill">适应</button>
       </div>
     </div>
 
-    <!-- Right: Search Button, White/Black & B&W Mode, Open DXF, Top-Right Sample Dropdown, Lang, Property Toggle -->
-    <div class="flex items-center gap-1.5 shrink-0">
+    <!-- Right: Search Button, White/Black Mode, Open DXF, Samples, Lang, Property Toggle -->
+    <div id="headerTools" class="tb-right">
       <!-- Standalone Search Panel Trigger -->
-      <button id="btnToggleSearchPanel" type="button" class="tb-pill rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium transition gap-1">
+      <button id="btnToggleSearchPanel" type="button" class="tb-pill" title="搜索 / Search">
         <svg class="w-3.5 h-3.5 text-slate-500 block shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35m0 0A7.5 7.5 0 103.5 10.5a7.5 7.5 0 0013.15 6.15z"/>
         </svg>
@@ -169,25 +565,32 @@
 
       <!-- Theme Dropdown (白底 / 黑底) -->
       <div class="relative" id="themeDropdownWrapper">
-        <button id="btnThemeDropdown" type="button" class="tb-pill rounded-full bg-slate-100 hover:bg-slate-200/80 text-slate-700 text-xs font-medium transition gap-1.5">
+        <button id="btnThemeDropdown" type="button" class="tb-pill" title="背景 / Background">
           <span class="tb-swatch w-2 h-2 rounded-full bg-white border border-slate-400 shrink-0" id="themeBtnSwatch"></span>
           <span id="lblCurrentTheme" class="leading-none">白底</span>
           <svg class="w-3 h-3 text-slate-500 transition-transform duration-150 block shrink-0" id="themeChevron" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
           </svg>
         </button>
-        <div id="themeDropdownMenu" class="hidden absolute right-0 mt-1.5 w-32 bg-white/95 backdrop-blur-md border border-slate-200/90 rounded-2xl shadow-xl p-1 z-50">
-          <button type="button" data-theme-val="light" class="theme-opt-btn w-full px-2.5 py-1.5 rounded-xl text-left text-xs font-medium bg-blue-50 text-blue-600 transition flex items-center justify-between">
-            <span class="flex items-center gap-2">
-              <span class="w-2.5 h-2.5 rounded-full bg-white border border-slate-300"></span>
+        <div id="themeDropdownMenu" class="hidden absolute right-0 mt-1.5 w-32 rounded-2xl bg-white/95 backdrop-blur-md border border-slate-200/90 shadow-xl p-1 z-50">
+          <button type="button" data-theme-val="light" class="theme-opt-btn is-active">
+            <span>
+              <span class="opt-swatch opt-swatch-light"></span>
               <span id="optBgLight">白底</span>
             </span>
             <span class="theme-check text-[11px] text-blue-600">✓</span>
           </button>
-          <button type="button" data-theme-val="dark" class="theme-opt-btn w-full px-2.5 py-1.5 rounded-xl text-left text-xs font-medium text-slate-700 hover:bg-slate-100 transition flex items-center justify-between mt-0.5">
-            <span class="flex items-center gap-2">
-              <span class="w-2.5 h-2.5 rounded-full bg-slate-900 border border-slate-700"></span>
+          <button type="button" data-theme-val="dark" class="theme-opt-btn">
+            <span>
+              <span class="opt-swatch opt-swatch-dark"></span>
               <span id="optBgDark">黑底</span>
+            </span>
+            <span class="theme-check hidden text-[11px] text-blue-600">✓</span>
+          </button>
+          <button type="button" data-theme-val="bw" class="theme-opt-btn">
+            <span>
+              <span class="opt-swatch opt-swatch-bw"></span>
+              <span id="optBgBw">黑白</span>
             </span>
             <span class="theme-check hidden text-[11px] text-blue-600">✓</span>
           </button>
@@ -195,61 +598,59 @@
       </div>
 
       <!-- Open Local DXF -->
-      <label for="dxfFileInput" id="lblOpenDxfBtn" class="tb-pill rounded-full bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium transition cursor-pointer">
-        打开 DXF
-      </label>
+      <label for="dxfFileInput" id="lblOpenDxfBtn" class="tb-pill tb-primary">打开 DXF</label>
       <input id="dxfFileInput" type="file" accept=".dxf,.txt" class="hidden" />
 
       <!-- Top-Right Sample Dropdown ("加载示例") -->
       <div class="relative" id="sampleDropdownWrapper">
-        <button id="btnSampleDropdown" type="button" class="tb-pill rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium transition gap-1">
+        <button id="btnSampleDropdown" type="button" class="tb-pill" title="加载示例 / Samples">
           <span id="lblLoadSampleBtn" class="leading-none">加载示例</span>
           <svg class="w-3 h-3 text-slate-500 block shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
           </svg>
         </button>
-        <div id="sampleDropdownMenu" class="hidden absolute right-0 mt-1.5 w-68 bg-white/95 backdrop-blur-md border border-slate-200/90 rounded-2xl shadow-xl p-1 z-50 space-y-0.5">
-          <button type="button" data-preset="gearbox_2d" class="sample-opt-btn w-full px-2.5 py-1.5 rounded-xl text-left text-xs font-medium bg-blue-50 text-blue-600 transition flex items-center justify-between gap-2">
+        <div id="sampleDropdownMenu" class="hidden absolute right-0 mt-1.5 w-80 max-h-[70dvh] overflow-y-auto rounded-2xl bg-white/95 backdrop-blur-md border border-slate-200/90 shadow-xl p-1 z-50 space-y-0.5">
+          <button type="button" data-preset="gearbox_2d" class="sample-opt-btn is-active">
             <span class="truncate" id="lblSample1">行星齿轮减速器总成图 (2D 机械/嵌套块)</span>
             <span class="sample-check text-[11px] text-blue-600 shrink-0">✓</span>
           </button>
-          <button type="button" data-preset="arch_2d" class="sample-opt-btn w-full px-2.5 py-1.5 rounded-xl text-left text-xs font-medium text-slate-700 hover:bg-slate-100 transition flex items-center justify-between gap-2">
+          <button type="button" data-preset="arch_2d" class="sample-opt-btn">
             <span class="truncate" id="lblSample2">科研办公楼标准层平面图 (2D 建筑/属性块)</span>
             <span class="sample-check hidden text-[11px] text-blue-600 shrink-0">✓</span>
           </button>
-          <button type="button" data-preset="spindle_3d" class="sample-opt-btn w-full px-2.5 py-1.5 rounded-xl text-left text-xs font-medium text-slate-700 hover:bg-slate-100 transition flex items-center justify-between gap-2">
+          <button type="button" data-preset="spindle_3d" class="sample-opt-btn">
             <span class="truncate" id="lblSample3">五轴加工中心电主轴头 (3D 完整实体总成)</span>
             <span class="sample-check hidden text-[11px] text-blue-600 shrink-0">✓</span>
           </button>
-          <button type="button" data-preset="robot_3d" class="sample-opt-btn w-full px-2.5 py-1.5 rounded-xl text-left text-xs font-medium text-slate-700 hover:bg-slate-100 transition flex items-center justify-between gap-2">
+          <button type="button" data-preset="robot_3d" class="sample-opt-btn">
             <span class="truncate" id="lblSample4">六轴工业机器人工作站 (3D 工业装备)</span>
             <span class="sample-check hidden text-[11px] text-blue-600 shrink-0">✓</span>
           </button>
-          <button type="button" data-preset="manifold_2d" class="sample-opt-btn w-full px-2.5 py-1.5 rounded-xl text-left text-xs font-medium text-slate-700 hover:bg-slate-100 transition flex items-center justify-between gap-2">
+          <button type="button" data-preset="manifold_2d" class="sample-opt-btn">
             <span class="truncate" id="lblSample5">高压液压集成阀块剖面 (多岛填充/全对齐文字)</span>
             <span class="sample-check hidden text-[11px] text-blue-600 shrink-0">✓</span>
           </button>
-          <button type="button" data-preset="elements_2d" class="sample-opt-btn w-full px-2.5 py-1.5 rounded-xl text-left text-xs font-medium text-slate-700 hover:bg-slate-100 transition flex items-center justify-between gap-2">
+          <button type="button" data-preset="elements_2d" class="sample-opt-btn">
             <span class="truncate" id="lblSample6">全元素案例 (线/弧/样条/文字/标注/填充/块属性)</span>
             <span class="sample-check hidden text-[11px] text-blue-600 shrink-0">✓</span>
           </button>
-          <button type="button" data-preset="elements_3d" class="sample-opt-btn w-full px-2.5 py-1.5 rounded-xl text-left text-xs font-medium text-slate-700 hover:bg-slate-100 transition flex items-center justify-between gap-2">
+          <button type="button" data-preset="elements_3d" class="sample-opt-btn">
             <span class="truncate" id="lblSample7">3D 元素案例 (实体/网格/螺旋线/空间文字)</span>
             <span class="sample-check hidden text-[11px] text-blue-600 shrink-0">✓</span>
           </button>
-          <button type="button" data-preset="huge_2d" class="sample-opt-btn w-full px-2.5 py-1.5 rounded-xl text-left text-xs font-medium text-slate-700 hover:bg-slate-100 transition flex items-center justify-between gap-2">
+          <button type="button" data-preset="huge_2d" class="sample-opt-btn">
             <span class="truncate" id="lblSample8">工厂管廊总平面 (超大图纸测试)</span>
             <span class="sample-check hidden text-[11px] text-blue-600 shrink-0">✓</span>
           </button>
         </div>
       </div>
 
-      <button id="btnLangToggle" type="button" class="tb-pill rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition mono">
-        EN
-      </button>
+      <button id="btnLangToggle" type="button" class="tb-pill mono" title="语言 / Language">EN</button>
 
-      <button id="btnTogglePropDrawer" type="button" class="tb-pill rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium transition" title="属性面板 / Properties">
-        <span id="lblPropPanelBtn">属性</span>
+      <button id="btnTogglePropDrawer" type="button" class="tb-pill tb-icon" title="属性面板 / Properties" aria-label="属性面板 / Properties">
+        <svg class="w-4 h-4 block shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 16v-4m0-4h.01M12 2a10 10 0 100 20 10 10 0 000-20z"/>
+        </svg>
       </button>
     </div>
 
@@ -265,20 +666,20 @@
   </div>
 
   <!-- Main Workspace -->
-  <main class="flex-1 flex min-h-0 relative overflow-hidden">
+  <main id="appMain" class="flex-1 flex min-h-0 relative overflow-hidden">
 
     <!-- 1. Left Layer Drawer with Layer Search -->
     <aside id="layerDrawer" class="bg-white border-r border-slate-200 flex flex-col min-h-0 shrink-0" style="width:224px">
-      <div class="px-3 py-2 border-b border-slate-100 flex items-center justify-between">
-        <span class="text-xs font-semibold text-slate-700"><span id="lblLayerTitle">图层</span> (<span id="lblLayerCount" class="mono">0</span>)</span>
-        <div class="flex items-center gap-2">
+      <div class="panel-head">
+        <span class="text-xs font-semibold text-slate-700 truncate"><span id="lblLayerTitle">图层</span> (<span id="lblLayerCount" class="mono">0</span>)</span>
+        <div class="flex items-center gap-2 shrink-0">
           <button id="btnLayersAllOn" type="button" class="text-xs text-blue-600 hover:underline font-medium">全显</button>
-          <button id="btnLayersAllOff" type="button" class="text-xs text-slate-400 hover:text-slate-600">全隐</button>
+          <button id="btnLayersAllOff" type="button" class="text-xs text-slate-500 hover:text-slate-700">全隐</button>
         </div>
       </div>
 
       <!-- Layer Search Input -->
-      <div class="px-2.5 py-1.5 border-b border-slate-100 bg-slate-50/50">
+      <div class="panel-search">
         <div class="relative flex items-center">
           <input id="layerSearchInput" type="text" placeholder="检索图层..." class="w-full pl-2.5 pr-6 py-1 bg-white border border-slate-200 rounded-md text-xs text-slate-700 placeholder-slate-400 focus:outline-none focus:border-blue-500 transition" />
           <button id="btnClearLayerSearch" type="button" class="hidden absolute right-1.5 text-slate-400 hover:text-slate-600 text-xs">✕</button>
@@ -297,12 +698,12 @@
       <!-- AutoCAD Window (Left->Right Solid Blue) / Crossing (Right->Left Dashed Green) Box Selection Overlay -->
       <div id="selectionBoxOverlay" class="hidden absolute pointer-events-none z-20" style="left:0;top:0;width:0;height:0;"></div>
 
-      <!-- Standalone Closable Fuzzy Search & Locate Panel ("一个单独的搜索，点击搜索打开面板，可以关闭") -->
-      <div id="searchFloatingPanel" class="hidden absolute top-3 right-3 z-30 w-80 bg-white/95 backdrop-blur border border-slate-200 rounded-2xl shadow-xl flex flex-col overflow-hidden">
+      <!-- Standalone Closable Fuzzy Search & Locate Panel -->
+      <div id="searchFloatingPanel" class="hidden absolute top-3 right-3 z-30 w-80 rounded-2xl bg-white/95 backdrop-blur-md border border-slate-200/90 shadow-xl flex flex-col overflow-hidden">
         <div class="px-3 py-2 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
           <span id="lblSearchPanelTitle" class="text-xs font-semibold text-slate-800">文件与图元模糊检索</span>
           <div class="flex items-center gap-2">
-            <span id="searchMatchCount" class="mono text-[11px] text-slate-400">0 / 0</span>
+            <span id="searchMatchCount" class="mono text-[11px] text-slate-500">0 / 0</span>
             <button id="btnCloseSearchPanel" type="button" class="text-slate-400 hover:text-slate-700 text-xs px-1">✕</button>
           </div>
         </div>
@@ -318,10 +719,10 @@
           </div>
 
           <div class="flex items-center gap-1 text-[11px]">
-            <button type="button" data-search-cat="all" class="search-cat-btn px-2 py-0.5 rounded-md bg-blue-50 text-blue-600 font-medium">全部</button>
-            <button type="button" data-search-cat="text" class="search-cat-btn px-2 py-0.5 rounded-md text-slate-600 hover:bg-slate-100">文本</button>
-            <button type="button" data-search-cat="prop" class="search-cat-btn px-2 py-0.5 rounded-md text-slate-600 hover:bg-slate-100">属性/块/图层</button>
-            <button type="button" data-search-cat="dim" class="search-cat-btn px-2 py-0.5 rounded-md text-slate-600 hover:bg-slate-100">标注</button>
+            <button type="button" data-search-cat="all" class="search-cat-btn is-active">全部</button>
+            <button type="button" data-search-cat="text" class="search-cat-btn">文本</button>
+            <button type="button" data-search-cat="prop" class="search-cat-btn">属性/块/图层</button>
+            <button type="button" data-search-cat="dim" class="search-cat-btn">标注</button>
           </div>
         </div>
 
@@ -330,7 +731,7 @@
 
       <!-- Real-Time Multi-Stage Loading & Rendering Progress Card -->
       <div id="loadingOverlayCard" class="hidden absolute inset-0 z-30 bg-white/60 backdrop-blur-[2px] flex items-center justify-center">
-        <div class="bg-white border border-slate-200 rounded-2xl px-5 py-4 shadow-lg w-72">
+        <div class="bg-white/95 backdrop-blur-md border border-slate-200/90 rounded-2xl px-5 py-4 shadow-xl w-72 max-w-[calc(100vw-32px)]">
           <div class="flex items-center justify-between text-xs font-medium text-slate-700 mb-2">
             <span id="loadingStageTitle">正在读取文件...</span>
             <span id="loadingPercentText" class="mono text-blue-600">0%</span>
@@ -338,27 +739,30 @@
           <div class="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden mb-1.5">
             <div id="loadingBarFill" class="h-full bg-blue-600 rounded-full transition-all duration-75" style="width: 0%"></div>
           </div>
-          <div id="loadingDetailText" class="text-[11px] text-slate-400 mono truncate">准备解析</div>
+          <div id="loadingDetailText" class="text-[11px] text-slate-500 mono truncate">准备解析</div>
         </div>
       </div>
 
+      <!-- Mobile Portrait: bottom-center floating glass pill bar (2D | 3D | 适应 + 搜索 moved here by JS) -->
+      <div id="mobileDock" class="mobile-dock" role="toolbar" aria-label="视图与搜索"></div>
+
       <!-- Minimalist Bottom Status Bar -->
-      <footer class="h-6 bg-white border-t border-slate-200 px-3 flex items-center justify-between text-[11px] text-slate-500 shrink-0">
-        <div class="flex items-center gap-3 truncate">
+      <footer id="appStatusBar" class="flex items-center justify-between shrink-0">
+        <div class="flex items-center gap-3 min-w-0 truncate">
           <span class="mono" id="cursorCoordsReadout">X: 0.00  Y: 0.00</span>
-          <span id="selectionCountBadge" class="text-slate-400">未选择</span>
-          <span id="statsSummaryReadout">0 图元</span>
+          <span id="selectionCountBadge" class="text-slate-500 mono">未选择</span>
+          <span id="statsSummaryReadout" class="mono">0 图元</span>
         </div>
-        <div id="lblStatusHint" class="text-slate-400 hidden md:block truncate">
+        <div id="lblStatusHint" class="status-hint">
           单击点选 · 拖拽框选 · 滚轮缩放 · 中键平移 · 右键绕光标旋转
         </div>
       </footer>
     </section>
 
-    <!-- 3. Right-Side Selected Object Property Panel ONLY ("属性面板只显示选择对象的属性，不要其他多余的") -->
+    <!-- 3. Right-Side Selected Object Property Panel ONLY -->
     <div id="propertyDrawerResizer" class="panel-resizer" title="拖动调整属性栏宽度"></div>
     <aside id="propertyDrawer" class="bg-white border-l border-slate-200 flex flex-col min-h-0 shrink-0" style="width:288px">
-      <div class="px-3 py-2 border-b border-slate-100 flex items-center justify-between shrink-0">
+      <div class="panel-head">
         <span id="lblPropPanelHeader" class="text-xs font-semibold text-slate-800 truncate">对象属性</span>
         <div class="flex items-center gap-1.5 shrink-0">
           <button id="btnZoomSelected" type="button" class="hidden px-2 py-0.5 rounded bg-blue-50 hover:bg-blue-100 text-blue-600 text-[11px] font-medium transition">
@@ -372,6 +776,19 @@
 
       <div id="propertyPanelBody" class="flex-1 overflow-y-auto p-2.5 space-y-2.5 text-xs"></div>
     </aside>
+
+    <!-- Mobile Portrait: bottom sheet that hosts the layer and property panels (moved by JS) -->
+    <div id="mobileSheet" class="mobile-sheet" aria-hidden="true">
+      <div class="mobile-sheet-handle"></div>
+      <div class="mobile-sheet-tabs" role="tablist" aria-label="图层与对象属性">
+        <button id="sheetTabLayers" type="button" class="sheet-tab is-active" data-sheet-tab="layers" role="tab" aria-selected="true">图层</button>
+        <button id="sheetTabProps" type="button" class="sheet-tab" data-sheet-tab="props" role="tab" aria-selected="false">对象属性</button>
+      </div>
+      <div class="mobile-sheet-body">
+        <div id="sheetLayersPanel" class="sheet-panel is-active"></div>
+        <div id="sheetPropsPanel" class="sheet-panel"></div>
+      </div>
+    </div>
   </main>
 
   <!-- Inline DXFLoader v10.0 Core Implementation -->
@@ -7440,6 +7857,12 @@
 
 
 
+
+
+
+
+
+
   </script>
 
   <!-- Minimalist Application Controller -->
@@ -7564,7 +7987,7 @@
       currentPresetKey: 'gearbox_2d',
       currentFileName: 'planetary_gearbox_2d.dxf',
       currentInput: PRESETS.gearbox_2d.dxf,
-      bgTheme: 'light', // 'light' | 'dark'
+      bgTheme: 'light', // 'light' | 'dark' | 'bw'
       viewMode: 'top',  // 'top' (2D, rotation locked) | 'iso' (3D)
       interactionMode: 'unified', // AutoCAD: click=pick, drag=box; no mode toggle
       parsedResult: null,
@@ -7579,8 +8002,132 @@
       selectedRecords: [],
       multiSelectBackup: null,
       multiTypeFilter: 'ALL',
-      parseJobId: 0
+      parseJobId: 0,
+      // 三端响应式外壳（桌面 / 手机竖屏 / 手机横屏）
+      viewportMode: 'desktop', // 'desktop' | 'portrait' | 'landscape'
+      sheetOpen: false,
+      sheetTab: 'layers'       // 'layers' | 'props'
     };
+
+    // =========================================================================
+    // Responsive shell: desktop / phone portrait / phone landscape
+    // The three modes share one DOM: panels and toolbar pills are relocated
+    // instead of duplicated, so every existing control keeps its listener.
+    // =========================================================================
+    const VIEWPORT_BREAKPOINTS = { landscapeMaxH: 500, portraitMaxW: 768 };
+
+    function resolveViewportMode(width, height) {
+      // Phone landscape is defined by the viewport height, exactly as specified.
+      if (height < VIEWPORT_BREAKPOINTS.landscapeMaxH) return 'landscape';
+      if (width < VIEWPORT_BREAKPOINTS.portraitMaxW) return 'portrait';
+      return 'desktop';
+    }
+
+    const layoutRefs = {};
+
+    function captureLayoutRefs() {
+      layoutRefs.main = document.getElementById('appMain');
+      layoutRefs.headerCenter = document.getElementById('headerCenter');
+      layoutRefs.headerTools = document.getElementById('headerTools');
+      layoutRefs.mobileDock = document.getElementById('mobileDock');
+      layoutRefs.mobileSheet = document.getElementById('mobileSheet');
+      layoutRefs.viewSeg = document.getElementById('viewSegGroup');
+      layoutRefs.searchBtn = document.getElementById('btnToggleSearchPanel');
+      layoutRefs.layerDrawer = document.getElementById('layerDrawer');
+      layoutRefs.propDrawer = document.getElementById('propertyDrawer');
+      layoutRefs.layerResizer = document.getElementById('layerDrawerResizer');
+      layoutRefs.propResizer = document.getElementById('propertyDrawerResizer');
+      layoutRefs.sheetLayers = document.getElementById('sheetLayersPanel');
+      layoutRefs.sheetProps = document.getElementById('sheetPropsPanel');
+    }
+
+    function syncDrawerResizers() {
+      if (!layoutRefs.layerResizer || !layoutRefs.propResizer) return;
+      const portrait = appState.viewportMode === 'portrait';
+      layoutRefs.layerResizer.style.display = (!portrait && appState.drawerOpen) ? '' : 'none';
+      layoutRefs.propResizer.style.display = (!portrait && appState.propDrawerOpen) ? '' : 'none';
+    }
+
+    // Reflect the sheet open state + active tab without re-rendering either panel.
+    function syncSheetUI() {
+      const sheet = layoutRefs.mobileSheet;
+      if (!sheet) return;
+      const isPortrait = appState.viewportMode === 'portrait';
+      const open = isPortrait && appState.sheetOpen;
+      sheet.classList.toggle('is-open', open);
+      sheet.setAttribute('aria-hidden', open ? 'false' : 'true');
+
+      const isLayers = appState.sheetTab !== 'props';
+      if (layoutRefs.sheetLayers) layoutRefs.sheetLayers.classList.toggle('is-active', isLayers);
+      if (layoutRefs.sheetProps) layoutRefs.sheetProps.classList.toggle('is-active', !isLayers);
+
+      const tabLayers = document.getElementById('sheetTabLayers');
+      const tabProps = document.getElementById('sheetTabProps');
+      if (tabLayers) {
+        tabLayers.classList.toggle('is-active', isLayers);
+        tabLayers.setAttribute('aria-selected', String(isLayers));
+      }
+      if (tabProps) {
+        tabProps.classList.toggle('is-active', !isLayers);
+        tabProps.setAttribute('aria-selected', String(!isLayers));
+      }
+    }
+
+    function setSheetOpen(open, tab) {
+      if (typeof tab === 'string') appState.sheetTab = tab;
+      appState.sheetOpen = !!open;
+      syncSheetUI();
+    }
+
+    function applyViewportMode() {
+      if (!layoutRefs.main) return false;
+      const mode = resolveViewportMode(window.innerWidth, window.innerHeight);
+      const changed = mode !== appState.viewportMode;
+      appState.viewportMode = mode;
+      document.body.classList.toggle('mode-desktop', mode === 'desktop');
+      document.body.classList.toggle('mode-portrait', mode === 'portrait');
+      document.body.classList.toggle('mode-landscape', mode === 'landscape');
+
+      if (mode === 'portrait') {
+        // Bottom floating dock: 2D | 3D | 适应 + 搜索
+        if (layoutRefs.viewSeg && layoutRefs.viewSeg.parentElement !== layoutRefs.mobileDock) {
+          layoutRefs.mobileDock.appendChild(layoutRefs.viewSeg);
+        }
+        if (layoutRefs.searchBtn && layoutRefs.searchBtn.parentElement !== layoutRefs.mobileDock) {
+          layoutRefs.mobileDock.appendChild(layoutRefs.searchBtn);
+        }
+        // Bottom sheet: layer panel + property panel
+        if (layoutRefs.layerDrawer && layoutRefs.layerDrawer.parentElement !== layoutRefs.sheetLayers) {
+          layoutRefs.sheetLayers.appendChild(layoutRefs.layerDrawer);
+        }
+        if (layoutRefs.propDrawer && layoutRefs.propDrawer.parentElement !== layoutRefs.sheetProps) {
+          layoutRefs.sheetProps.appendChild(layoutRefs.propDrawer);
+        }
+        layoutRefs.layerDrawer.style.display = 'flex';
+        layoutRefs.propDrawer.style.display = 'flex';
+        syncSheetUI();
+      } else {
+        // Restore the desktop/landscape three-column DOM.
+        if (layoutRefs.viewSeg && layoutRefs.viewSeg.parentElement !== layoutRefs.headerCenter) {
+          layoutRefs.headerCenter.appendChild(layoutRefs.viewSeg);
+        }
+        if (layoutRefs.searchBtn && layoutRefs.searchBtn.parentElement !== layoutRefs.headerTools) {
+          layoutRefs.headerTools.insertBefore(layoutRefs.searchBtn, layoutRefs.headerTools.firstElementChild);
+        }
+        if (layoutRefs.layerDrawer && layoutRefs.layerDrawer.parentElement !== layoutRefs.main) {
+          layoutRefs.main.insertBefore(layoutRefs.layerDrawer, layoutRefs.main.firstElementChild);
+        }
+        if (layoutRefs.propDrawer && layoutRefs.propDrawer.parentElement !== layoutRefs.main) {
+          layoutRefs.main.appendChild(layoutRefs.propDrawer);
+        }
+        layoutRefs.layerDrawer.style.display = appState.drawerOpen ? 'flex' : 'none';
+        layoutRefs.propDrawer.style.display = appState.propDrawerOpen ? 'flex' : 'none';
+        appState.sheetOpen = false;
+        syncSheetUI();
+      }
+      syncDrawerResizers();
+      return changed;
+    }
 
     let renderer, scene, perspCamera, orthoCamera, activeCamera, controls;
     let dxfRootGroup = null;
@@ -8960,9 +9507,8 @@
       }
 
       if (candidateMap.size === 0) {
-        appState.multiSelectBackup = null;
-        appState.multiTypeFilter = 'ALL';
-        setSelectedRecords([]);
+        // Empty-canvas click: drop the selection the same way ESC does.
+        clearSelection();
         return;
       }
 
@@ -9167,10 +9713,10 @@
       if (badge) {
         if (appState.selectedRecords.length === 0) {
           badge.textContent = t('unselectedBadge');
-          badge.className = 'text-slate-400';
+          badge.className = 'text-slate-500 mono';
         } else {
           badge.textContent = t('selectedCountBadge', appState.selectedRecords.length);
-          badge.className = 'text-blue-600 font-semibold';
+          badge.className = 'text-blue-600 font-semibold mono';
         }
       }
 
@@ -9185,6 +9731,22 @@
       updateSelectionOutlines(selectedIdSet);
 
       renderPropertyPanel();
+    }
+
+    /**
+     * Single place that drops the current selection: ESC, the 清除 button and a
+     * click on empty canvas all go through here so the multi-select backup and
+     * the type filter cannot be left behind.
+     */
+    function clearSelection() {
+      appState.multiSelectBackup = null;
+      appState.multiTypeFilter = 'ALL';
+      if ((appState.selectedRecords || []).length === 0) {
+        // Still normalise the panel so a stale multi-select view cannot linger.
+        renderPropertyPanel();
+        return;
+      }
+      setSelectedRecords([]);
     }
 
     function zoomToBox(box) {
@@ -9403,7 +9965,7 @@
 
       listEl.innerHTML = '';
       if (total === 0) {
-        listEl.innerHTML = `<div class="text-[11px] text-slate-400 py-4 text-center">${escapeHtml(t('noSearchMatch'))}</div>`;
+        listEl.innerHTML = `<div class="text-[11px] text-slate-500 py-4 text-center">${escapeHtml(t('noSearchMatch'))}</div>`;
         return;
       }
 
@@ -9418,10 +9980,10 @@
         row.innerHTML = `
           <div class="min-w-0 flex-1">
             <div class="flex items-center gap-1.5">
-              <span class="px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 mono text-[10px] font-medium shrink-0">${escapeHtml(m.badge)}</span>
+              <span class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 mono text-[10px] font-medium shrink-0">${escapeHtml(m.badge)}</span>
               <span class="font-medium text-slate-800 truncate">${escapeHtml(m.label)}</span>
             </div>
-            <div class="text-[10px] text-slate-400 mono truncate mt-0.5">${escapeHtml(m.subLabel)}</div>
+            <div class="text-[10px] text-slate-500 mono truncate mt-0.5">${escapeHtml(m.subLabel)}</div>
           </div>
           <span class="text-[11px] text-blue-600 font-medium shrink-0">${escapeHtml(t('locateShort'))}</span>
         `;
@@ -9479,8 +10041,19 @@
         if (headerEl) headerEl.textContent = t('propHeaderEmpty');
         if (btnZoom) btnZoom.classList.add('hidden');
         if (btnClear) btnClear.classList.add('hidden');
+        const emptyLines = String(t('propEmptyHint')).split('\n');
+        const emptyTitle = emptyLines.shift() || '';
+        const emptyHint = emptyLines.join(' ');
         bodyEl.innerHTML = `
-          <div class="h-48 flex items-center justify-center text-center px-4 text-xs text-slate-400 whitespace-pre-line leading-relaxed">${escapeHtml(t('propEmptyHint'))}</div>
+          <div class="prop-empty">
+            <span class="prop-empty-icon" aria-hidden="true">
+              <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 3l9 18-4.6-6.6L6 18 9 3z"/>
+              </svg>
+            </span>
+            <div class="prop-empty-title">${escapeHtml(emptyTitle)}</div>
+            <div class="prop-empty-hint">${escapeHtml(emptyHint)}</div>
+          </div>
         `;
         return;
       }
@@ -9551,7 +10124,7 @@
           return `
             <button type="button" data-inspect-idx="${idx}" class="w-full px-3 py-1.5 flex items-center justify-between hover:bg-blue-50/80 transition text-left">
               <div class="min-w-0 pr-2 flex items-center gap-1.5">
-                <span class="px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 mono text-[10px] font-semibold shrink-0">${escapeHtml(ent.type || 'ENT')}</span>
+                <span class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 mono text-[10px] font-semibold shrink-0">${escapeHtml(ent.type || 'ENT')}</span>
                 <span class="text-[11px] text-slate-700 truncate">${escapeHtml(txt || ent.name || ('#' + (ent.handle || '')) || r.displayLayer)}</span>
               </div>
               <span class="text-[11px] text-blue-600 shrink-0">${escapeHtml(t('locateShort'))}</span>
@@ -9801,25 +10374,32 @@
       document.getElementById('btnLayersAllOff').textContent = t('allOff');
       document.getElementById('layerSearchInput').placeholder = t('layerSearchPlaceholder');
 
-      const btnModeSelect = document.getElementById('btnModeSelect');
-      const btnModeBox = document.getElementById('btnModeBox');
-      if (btnModeSelect) btnModeSelect.textContent = t('modeSelect');
-      if (btnModeBox) btnModeBox.textContent = t('modeBox');
       document.getElementById('btnFitView').textContent = t('fitView');
       document.getElementById('lblSearchBtn').textContent = t('searchBtn');
 
       document.getElementById('optBgLight').textContent = t('bgLight');
       document.getElementById('optBgDark').textContent = t('bgDark');
+      document.getElementById('optBgBw').textContent = t('bgBw');
       updateThemeDropdownUI(appState.bgTheme);
       document.getElementById('lblOpenDxfBtn').textContent = t('openDxf');
       document.getElementById('lblLoadSampleBtn').textContent = t('loadSample');
-      document.getElementById('lblPropPanelBtn').textContent = t('propPanelBtn');
 
       document.getElementById('lblSearchPanelTitle').textContent = t('searchPanelTitle');
       document.getElementById('entitySearchInput').placeholder = t('searchPlaceholder');
+      const searchCatKeys = { all: 'catAll', text: 'catText', prop: 'catProp', dim: 'catDim' };
+      document.querySelectorAll('.search-cat-btn').forEach(btn => {
+        const key = searchCatKeys[btn.getAttribute('data-search-cat')];
+        if (key) btn.textContent = t(key);
+      });
       document.getElementById('btnZoomSelected').textContent = t('locateShort');
       document.getElementById('btnClearSelection').textContent = t('clearBtn');
       document.getElementById('lblStatusHint').textContent = t('statusHint');
+
+      // Mobile bottom-sheet tabs reuse the same panel titles.
+      const sheetTabLayers = document.getElementById('sheetTabLayers');
+      if (sheetTabLayers) sheetTabLayers.textContent = t('layerTitle');
+      const sheetTabProps = document.getElementById('sheetTabProps');
+      if (sheetTabProps) sheetTabProps.textContent = t('propHeaderEmpty');
 
       const sampleLabels = [
         ['lblSample1', 'gearbox_2d'],
@@ -9857,15 +10437,8 @@
       appState.viewMode = mode;
       const btnTop = document.getElementById('btnViewTop');
       const btnIso = document.getElementById('btnViewIso');
-      if (btnTop && btnIso) {
-        if (mode === 'iso') {
-          btnIso.className = 'tb-pill rounded-full text-xs font-medium bg-white text-slate-900 shadow-xs transition';
-          btnTop.className = 'tb-pill rounded-full text-xs font-medium text-slate-600 hover:text-slate-900 transition';
-        } else {
-          btnTop.className = 'tb-pill rounded-full text-xs font-medium bg-white text-slate-900 shadow-xs transition';
-          btnIso.className = 'tb-pill rounded-full text-xs font-medium text-slate-600 hover:text-slate-900 transition';
-        }
-      }
+      if (btnTop) btnTop.classList.toggle('is-active', mode !== 'iso');
+      if (btnIso) btnIso.classList.toggle('is-active', mode === 'iso');
     }
 
     /**
@@ -9875,25 +10448,25 @@
       const lbl = document.getElementById('lblCurrentTheme');
       const sw = document.getElementById('themeBtnSwatch');
       if (lbl) {
-        lbl.textContent = bgTheme === 'light' ? t('bgLight') : t('bgDark');
+        lbl.textContent = bgTheme === 'light' ? t('bgLight') : (bgTheme === 'bw' ? t('bgBw') : t('bgDark'));
       }
       if (sw) {
         sw.className = bgTheme === 'light'
           ? 'tb-swatch w-2 h-2 rounded-full bg-white border border-slate-400 shrink-0'
-          : 'tb-swatch w-2 h-2 rounded-full bg-slate-900 border border-slate-600 shrink-0';
+          : (bgTheme === 'bw'
+            ? 'tb-swatch w-2 h-2 rounded-full theme-swatch-bw shrink-0'
+            : 'tb-swatch w-2 h-2 rounded-full bg-slate-900 border border-slate-600 shrink-0');
       }
       document.querySelectorAll('.theme-opt-btn').forEach(btn => {
         const active = btn.getAttribute('data-theme-val') === bgTheme;
-        btn.className = active
-          ? 'theme-opt-btn w-full px-2.5 py-1.5 rounded-xl text-left text-xs font-semibold bg-blue-50 text-blue-600 transition flex items-center justify-between mt-0.5'
-          : 'theme-opt-btn w-full px-2.5 py-1.5 rounded-xl text-left text-xs font-medium text-slate-700 hover:bg-slate-100 transition flex items-center justify-between mt-0.5';
+        btn.classList.toggle('is-active', active);
         const chk = btn.querySelector('.theme-check');
         if (chk) chk.classList.toggle('hidden', !active);
       });
     }
 
     function applyThemeInstant(bgTheme) {
-      if (bgTheme !== 'light' && bgTheme !== 'dark') bgTheme = 'dark';
+      if (bgTheme !== 'light' && bgTheme !== 'dark' && bgTheme !== 'bw') bgTheme = 'dark';
       appState.bgTheme = bgTheme;
       updateThemeDropdownUI(bgTheme);
       if (!scene) return;
@@ -9992,7 +10565,10 @@
       const container = document.getElementById('threeCanvasContainer');
       const aspect = (container.clientWidth || 800) / Math.max(1, container.clientHeight || 600);
 
-      const frustumH = maxDim * 1.22;
+      // Fit both axes: on a phone the canvas is tall and narrow, so fitting the
+      // height alone would push a wide drawing off-screen horizontally.
+      const fitH = Math.max(size.y, size.x / Math.max(aspect, 1e-6), 10);
+      const frustumH = Math.max(maxDim, fitH) * 1.22;
       orthoCamera.left = (-frustumH * aspect) / 2;
       orthoCamera.right = (frustumH * aspect) / 2;
       orthoCamera.top = frustumH / 2;
@@ -10080,6 +10656,7 @@
         const nameSpan = document.createElement('span');
         nameSpan.className = 'text-slate-700 truncate';
         nameSpan.textContent = layerInfo.displayName || layerInfo.name;
+        nameSpan.title = layerInfo.displayName || layerInfo.name;
 
         left.appendChild(chk);
         left.appendChild(swatch);
@@ -10087,7 +10664,7 @@
 
         const countBtn = document.createElement('button');
         countBtn.type = 'button';
-        countBtn.className = 'mono text-[10px] text-slate-400 hover:text-blue-600 shrink-0 ml-1 px-1 rounded';
+        countBtn.className = 'mono text-[10px] text-slate-500 hover:text-blue-600 shrink-0 ml-1 px-1 rounded';
         countBtn.textContent = String(layerInfo.entityCount);
         countBtn.addEventListener('click', (ev) => {
           ev.stopPropagation();
@@ -10146,17 +10723,19 @@
     }
 
     window.addEventListener('DOMContentLoaded', () => {
+      captureLayoutRefs();
+      applyViewportMode();
+
       initThreeViewport();
       parseAndRenderCurrentDXFAsync(true);
 
-      // Left Layer Drawer Toggle
-      const syncDrawerResizers = () => {
-        const leftR = document.getElementById('layerDrawerResizer');
-        const rightR = document.getElementById('propertyDrawerResizer');
-        if (leftR) leftR.style.display = appState.drawerOpen ? '' : 'none';
-        if (rightR) rightR.style.display = appState.propDrawerOpen ? '' : 'none';
-      };
+      // Left Layer Drawer Toggle (portrait opens the 图层 tab of the bottom sheet)
       document.getElementById('btnToggleDrawer').addEventListener('click', () => {
+        if (appState.viewportMode === 'portrait') {
+          const alreadyOpen = appState.sheetOpen && appState.sheetTab === 'layers';
+          setSheetOpen(!alreadyOpen, 'layers');
+          return;
+        }
         const drawer = document.getElementById('layerDrawer');
         appState.drawerOpen = !appState.drawerOpen;
         drawer.style.display = appState.drawerOpen ? 'flex' : 'none';
@@ -10164,14 +10743,52 @@
         setTimeout(onWindowResize, 20);
       });
 
-      // Right Property Drawer Toggle
+      // Right Property Drawer Toggle (portrait opens the 对象属性 tab of the bottom sheet)
       document.getElementById('btnTogglePropDrawer').addEventListener('click', () => {
+        if (appState.viewportMode === 'portrait') {
+          const alreadyOpen = appState.sheetOpen && appState.sheetTab === 'props';
+          setSheetOpen(!alreadyOpen, 'props');
+          return;
+        }
         const propDrawer = document.getElementById('propertyDrawer');
         appState.propDrawerOpen = !appState.propDrawerOpen;
         propDrawer.style.display = appState.propDrawerOpen ? 'flex' : 'none';
         syncDrawerResizers();
         setTimeout(onWindowResize, 20);
       });
+
+      // Bottom-sheet tab switch: 图层 | 对象属性
+      document.querySelectorAll('[data-sheet-tab]').forEach(tabBtn => {
+        tabBtn.addEventListener('click', () => {
+          setSheetOpen(true, tabBtn.getAttribute('data-sheet-tab'));
+        });
+      });
+
+      // Three-mode breakpoint switching: relocate existing DOM, never rebuild the canvas.
+      let viewportModeRaf = 0;
+      const handleViewportChange = () => {
+        if (viewportModeRaf) return;
+        viewportModeRaf = requestAnimationFrame(() => {
+          viewportModeRaf = 0;
+          const active = document.activeElement;
+          const typing = !!(active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA'));
+          // A soft keyboard can shrink the viewport below 500px while the user is
+          // typing; keep the portrait shell instead of flipping to landscape.
+          if (typing && appState.viewportMode === 'portrait') return;
+          const changed = applyViewportMode();
+          onWindowResize();
+          // Phone rotation changes the usable canvas dramatically; re-fit so the
+          // drawing is not left half off-screen after the mode switch.
+          if (changed && appState.parsedResult) {
+            fitViewToScene(appState.viewMode || 'top');
+          }
+        });
+      };
+      window.addEventListener('resize', handleViewportChange);
+      window.addEventListener('orientationchange', handleViewportChange);
+      // Re-evaluate once typing ends, so a rotation performed with the soft
+      // keyboard open is not left stuck in the portrait shell.
+      document.addEventListener('focusout', handleViewportChange);
 
       // Standalone Search Panel Open / Close
       const searchPanel = document.getElementById('searchFloatingPanel');
@@ -10202,9 +10819,7 @@
           sampleMenu.classList.add('hidden');
           sampleMenu.querySelectorAll('.sample-opt-btn').forEach(b => {
             const isAct = b.getAttribute('data-preset') === key;
-            b.className = isAct
-              ? 'sample-opt-btn w-full px-2.5 py-1.5 rounded-xl text-left text-xs font-semibold bg-blue-50 text-blue-600 transition flex items-center justify-between gap-2'
-              : 'sample-opt-btn w-full px-2.5 py-1.5 rounded-xl text-left text-xs font-medium text-slate-700 hover:bg-slate-100 transition flex items-center justify-between gap-2';
+            b.classList.toggle('is-active', isAct);
             const c = b.querySelector('.sample-check');
             if (c) c.classList.toggle('hidden', !isAct);
           });
@@ -10308,9 +10923,7 @@
         btn.addEventListener('click', () => {
           appState.entitySearchCategory = btn.getAttribute('data-search-cat');
           document.querySelectorAll('.search-cat-btn').forEach(b => {
-            b.className = b === btn
-              ? 'search-cat-btn px-2 py-0.5 rounded-md bg-blue-50 text-blue-600 font-medium'
-              : 'search-cat-btn px-2 py-0.5 rounded-md text-slate-600 hover:bg-slate-100';
+            b.classList.toggle('is-active', b === btn);
           });
           rebuildSearchMatches();
         });
@@ -10325,9 +10938,16 @@
 
       // Property Panel Actions
       document.getElementById('btnZoomSelected').addEventListener('click', () => zoomToSelectedRecords());
-      document.getElementById('btnClearSelection').addEventListener('click', () => {
-        appState.multiSelectBackup = null;
-        setSelectedRecords([]);
+      document.getElementById('btnClearSelection').addEventListener('click', () => clearSelection());
+
+      // ESC clears the current selection (ignored while typing in a search box).
+      document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape' && e.key !== 'Esc') return;
+        const el = document.activeElement;
+        if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
+        if ((appState.selectedRecords || []).length === 0) return;
+        e.preventDefault();
+        clearSelection();
       });
 
       document.getElementById('btnViewTop').addEventListener('click', () => fitViewToScene('top'));
