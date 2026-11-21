@@ -196,13 +196,16 @@ check('the viewer opens in English and remembers the language choice', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 15. The wheel zoom is slightly more sensitive than before
+// 15. Wheel zoom scales with the normalised wheel delta
 // ---------------------------------------------------------------------------
-check('the wheel zoom step is more sensitive', () => {
+check('the wheel zoom step scales with the wheel delta', () => {
   const html = fs.readFileSync(path.join(rootDir, 'examples', 'index.html'), 'utf8');
-  const m = /Math\.pow\(([0-9.]+),\s*deltaY/.exec(html);
-  assert(m, 'the zoom factor must be a power of the wheel delta');
-  assert(Number(m[1]) > 1.09, 'the zoom step must be more sensitive than 1.09');
+  const m = /Math\.pow\(([0-9.]+),\s*delta\)/.exec(html);
+  assert(m, 'the zoom factor must be a power of the normalised wheel delta');
+  const base = Number(m[1]);
+  assert(base > 1, 'the zoom base must be greater than 1');
+  assert(html.includes('e.deltaMode === 1 ? 16'), 'deltaMode must be normalised');
+  assert(Math.pow(base, 100) > 1.09, 'one wheel notch must stay more sensitive than 1.09');
 });
 
 // ---------------------------------------------------------------------------

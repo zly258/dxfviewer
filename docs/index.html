@@ -43,7 +43,7 @@
       --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.06);
       --shadow-overlay: 0 10px 15px -3px rgba(15, 23, 42, 0.10), 0 4px 6px -4px rgba(15, 23, 42, 0.08);
       --shadow-panel: 0 12px 28px rgba(15, 23, 42, 0.10), 0 2px 6px rgba(15, 23, 42, 0.06);
-      --z-dock: 30;
+      --z-dock: 45;
       --z-sheet: 40;
       --z-dropdown: 60;
       --z-toast: 80;
@@ -256,6 +256,8 @@
     }
     #layerDrawer { background: var(--bg-chrome); border-right: 1px solid var(--border-main); }
     #propertyDrawer { background: var(--bg-chrome); border-left: 1px solid var(--border-main); }
+    /* Touch gestures on the canvas are handled explicitly (pan/zoom/tap). */
+    #threeCanvasContainer, #threeCanvasContainer canvas { touch-action: none; }
 
     .panel-resizer {
       width: 5px;
@@ -320,6 +322,7 @@
     /* ---------- 移动竖屏：底部居中悬浮毛玻璃胶囊栏 ---------- */
     .mobile-dock { display: none; }
     .mobile-sheet { display: none; }
+    .mobile-dock { transition: bottom 0.18s ease; }
 
     .mode-portrait .mobile-dock {
       display: inline-flex;
@@ -534,7 +537,7 @@
   <header id="appHeader" class="bg-white border-b border-slate-200 flex items-center shrink-0 z-30 relative">
     <!-- Left: Layer Drawer Toggle + Brand + Truncated File Name -->
     <div class="tb-left">
-      <button id="btnToggleDrawer" type="button" class="tb-pill tb-icon" title="图层 / Layers">
+      <button id="btnToggleDrawer" type="button" class="tb-pill tb-icon" title="图层 / Layers" aria-label="图层 / Layers">
         <svg class="w-4 h-4 block shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/>
         </svg>
@@ -547,8 +550,8 @@
     <!-- Center: View Switcher (2D / 3D / 适应); pick/box are unified AutoCAD gestures (no mode toggle) -->
     <div id="headerCenter" class="tb-center">
       <div id="viewSegGroup" class="tb-seg">
-        <button id="btnViewTop" type="button" class="tb-pill is-active">2D</button>
-        <button id="btnViewIso" type="button" class="tb-pill">3D</button>
+        <button id="btnViewTop" type="button" class="tb-pill is-active" aria-pressed="true">2D</button>
+        <button id="btnViewIso" type="button" class="tb-pill" aria-pressed="false">3D</button>
         <button id="btnFitView" type="button" class="tb-pill">适应</button>
       </div>
     </div>
@@ -556,7 +559,7 @@
     <!-- Right: Search Button, White/Black Mode, Open DXF, Samples, Lang, Property Toggle -->
     <div id="headerTools" class="tb-right">
       <!-- Standalone Search Panel Trigger -->
-      <button id="btnToggleSearchPanel" type="button" class="tb-pill" title="搜索 / Search">
+      <button id="btnToggleSearchPanel" type="button" class="tb-pill" title="搜索 / Search" aria-controls="searchFloatingPanel" aria-expanded="false">
         <svg class="w-3.5 h-3.5 text-slate-500 block shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35m0 0A7.5 7.5 0 103.5 10.5a7.5 7.5 0 0013.15 6.15z"/>
         </svg>
@@ -565,14 +568,14 @@
 
       <!-- Theme Dropdown (白底 / 黑底) -->
       <div class="relative" id="themeDropdownWrapper">
-        <button id="btnThemeDropdown" type="button" class="tb-pill" title="背景 / Background">
+        <button id="btnThemeDropdown" type="button" class="tb-pill" title="背景 / Background" aria-haspopup="menu" aria-expanded="false" aria-controls="themeDropdownMenu">
           <span class="tb-swatch w-2 h-2 rounded-full bg-white border border-slate-400 shrink-0" id="themeBtnSwatch"></span>
           <span id="lblCurrentTheme" class="leading-none">白底</span>
           <svg class="w-3 h-3 text-slate-500 transition-transform duration-150 block shrink-0" id="themeChevron" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
           </svg>
         </button>
-        <div id="themeDropdownMenu" class="hidden absolute right-0 mt-1.5 w-32 rounded-2xl bg-white/95 backdrop-blur-md border border-slate-200/90 shadow-xl p-1 z-50">
+        <div id="themeDropdownMenu" role="menu" class="hidden absolute right-0 mt-1.5 w-32 rounded-2xl bg-white/95 backdrop-blur-md border border-slate-200/90 shadow-xl p-1 z-50">
           <button type="button" data-theme-val="light" class="theme-opt-btn is-active">
             <span>
               <span class="opt-swatch opt-swatch-light"></span>
@@ -603,13 +606,13 @@
 
       <!-- Top-Right Sample Dropdown ("加载示例") -->
       <div class="relative" id="sampleDropdownWrapper">
-        <button id="btnSampleDropdown" type="button" class="tb-pill" title="加载示例 / Samples">
+        <button id="btnSampleDropdown" type="button" class="tb-pill" title="加载示例 / Samples" aria-haspopup="menu" aria-expanded="false" aria-controls="sampleDropdownMenu">
           <span id="lblLoadSampleBtn" class="leading-none">加载示例</span>
           <svg class="w-3 h-3 text-slate-500 block shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
           </svg>
         </button>
-        <div id="sampleDropdownMenu" class="hidden absolute right-0 mt-1.5 w-80 max-h-[70dvh] overflow-y-auto rounded-2xl bg-white/95 backdrop-blur-md border border-slate-200/90 shadow-xl p-1 z-50 space-y-0.5">
+        <div id="sampleDropdownMenu" role="menu" class="hidden absolute right-0 mt-1.5 w-80 max-h-[70dvh] overflow-y-auto rounded-2xl bg-white/95 backdrop-blur-md border border-slate-200/90 shadow-xl p-1 z-50 space-y-0.5">
           <button type="button" data-preset="gearbox_2d" class="sample-opt-btn is-active">
             <span class="truncate" id="lblSample1">行星齿轮减速器总成图 (2D 机械/嵌套块)</span>
             <span class="sample-check text-[11px] text-blue-600 shrink-0">✓</span>
@@ -661,7 +664,7 @@
   </header>
 
   <!-- Minimalist Toast -->
-  <div id="toastBanner" class="fixed bottom-10 left-1/2 -translate-x-1/2 z-50 hidden px-4 py-1.5 rounded-full bg-slate-900/90 text-white text-xs font-medium shadow-md">
+  <div id="toastBanner" role="status" aria-live="polite" class="fixed bottom-10 left-1/2 -translate-x-1/2 z-50 hidden px-4 py-1.5 rounded-full bg-slate-900/90 text-white text-xs font-medium shadow-md">
     已加载
   </div>
 
@@ -719,10 +722,10 @@
           </div>
 
           <div class="flex items-center gap-1 text-[11px]">
-            <button type="button" data-search-cat="all" class="search-cat-btn is-active">全部</button>
-            <button type="button" data-search-cat="text" class="search-cat-btn">文本</button>
-            <button type="button" data-search-cat="prop" class="search-cat-btn">属性/块/图层</button>
-            <button type="button" data-search-cat="dim" class="search-cat-btn">标注</button>
+            <button type="button" data-search-cat="all" class="search-cat-btn is-active" aria-pressed="true">全部</button>
+            <button type="button" data-search-cat="text" class="search-cat-btn" aria-pressed="false">文本</button>
+            <button type="button" data-search-cat="prop" class="search-cat-btn" aria-pressed="false">属性/块/图层</button>
+            <button type="button" data-search-cat="dim" class="search-cat-btn" aria-pressed="false">标注</button>
           </div>
         </div>
 
@@ -778,11 +781,11 @@
     </aside>
 
     <!-- Mobile Portrait: bottom sheet that hosts the layer and property panels (moved by JS) -->
-    <div id="mobileSheet" class="mobile-sheet" aria-hidden="true">
+    <div id="mobileSheet" class="mobile-sheet" role="dialog" aria-modal="false" aria-label="图层与对象属性" aria-hidden="true">
       <div class="mobile-sheet-handle"></div>
       <div class="mobile-sheet-tabs" role="tablist" aria-label="图层与对象属性">
-        <button id="sheetTabLayers" type="button" class="sheet-tab is-active" data-sheet-tab="layers" role="tab" aria-selected="true">图层</button>
-        <button id="sheetTabProps" type="button" class="sheet-tab" data-sheet-tab="props" role="tab" aria-selected="false">对象属性</button>
+        <button id="sheetTabLayers" type="button" class="sheet-tab is-active" data-sheet-tab="layers" role="tab" aria-selected="true" aria-controls="sheetLayersPanel">图层</button>
+        <button id="sheetTabProps" type="button" class="sheet-tab" data-sheet-tab="props" role="tab" aria-selected="false" aria-controls="sheetPropsPanel">对象属性</button>
       </div>
       <div class="mobile-sheet-body">
         <div id="sheetLayersPanel" class="sheet-panel is-active"></div>
@@ -7863,6 +7866,11 @@
 
 
 
+
+
+
+
+
   </script>
 
   <!-- Minimalist Application Controller -->
@@ -7875,8 +7883,6 @@
         allOn: '全显',
         allOff: '全隐',
         layerSearchPlaceholder: '检索图层...',
-        modeSelect: '点选',
-        modeBox: '框选',
         fitView: '适应',
         searchBtn: '搜索',
         bgLight: '白底',
@@ -7884,7 +7890,6 @@
         bgBw: '黑白',
         openDxf: '打开 DXF',
         loadSample: '加载示例',
-        propPanelBtn: '属性',
         searchPanelTitle: '文件与图元模糊检索',
         searchPlaceholder: '模糊检索文本、属性、图层、块名、#句柄...',
         catAll: '全部',
@@ -7915,8 +7920,6 @@
         allOn: 'All On',
         allOff: 'All Off',
         layerSearchPlaceholder: 'Filter layers...',
-        modeSelect: 'Pick',
-        modeBox: 'Box',
         fitView: 'Fit',
         searchBtn: 'Search',
         bgLight: 'White',
@@ -7924,7 +7927,6 @@
         bgBw: 'B&W',
         openDxf: 'Open DXF',
         loadSample: 'Samples',
-        propPanelBtn: 'Props',
         searchPanelTitle: 'Fuzzy Entity & Text Search',
         searchPlaceholder: 'Fuzzy search text, props, layer, block, #handle...',
         catAll: 'All',
@@ -7965,7 +7967,17 @@
           dxf: text
         };
       })
-      .catch(() => {});
+      .catch((err) => {
+        // Keep the item visible but make it honest: the payload is not there.
+        console.warn('[dxfviewer] huge sample unavailable:', err && err.message);
+        PRESETS.huge_2d = null;
+        const btn = document.querySelector('[data-preset="huge_2d"]');
+        if (btn) {
+          btn.disabled = true;
+          btn.classList.add('opacity-40');
+          btn.title = '示例资源未加载 / Sample unavailable';
+        }
+      });
 
     // Return the drawing payload for a preset in the active language.
     function getPresetDxf(key, lang) {
@@ -7987,22 +7999,36 @@
       currentPresetKey: 'gearbox_2d',
       currentFileName: 'planetary_gearbox_2d.dxf',
       currentInput: PRESETS.gearbox_2d.dxf,
-      bgTheme: 'light', // 'light' | 'dark' | 'bw'
+      bgTheme: (function () {
+        try {
+          const v = localStorage.getItem('dxfviewer.bgTheme');
+          if (v === 'light' || v === 'dark' || v === 'bw') return v;
+        } catch (_) {}
+        return 'light';
+      })(), // 'light' | 'dark' | 'bw'
       viewMode: 'top',  // 'top' (2D, rotation locked) | 'iso' (3D)
       interactionMode: 'unified', // AutoCAD: click=pick, drag=box; no mode toggle
       parsedResult: null,
-      drawerOpen: true,
-      propDrawerOpen: true,
+      drawerOpen: (function () {
+        try { return localStorage.getItem('dxfviewer.drawerOpen') !== '0'; } catch (_) {}
+        return true;
+      })(),
+      propDrawerOpen: (function () {
+        try { return localStorage.getItem('dxfviewer.propDrawerOpen') !== '0'; } catch (_) {}
+        return true;
+      })(),
       searchPanelOpen: false,
       layerFilterQuery: '',
       entitySearchQuery: '',
       entitySearchCategory: 'all',
       searchMatches: [],
+      searchTruncated: false,
       activeSearchMatchIdx: -1,
       selectedRecords: [],
       multiSelectBackup: null,
       multiTypeFilter: 'ALL',
       parseJobId: 0,
+      lastParseFailed: false,
       // 三端响应式外壳（桌面 / 手机竖屏 / 手机横屏）
       viewportMode: 'desktop', // 'desktop' | 'portrait' | 'landscape'
       sheetOpen: false,
@@ -8071,6 +8097,19 @@
         tabProps.classList.toggle('is-active', !isLayers);
         tabProps.setAttribute('aria-selected', String(!isLayers));
       }
+      requestAnimationFrame(updateMobileDockOffset);
+    }
+
+    // Keep the portrait dock above the bottom sheet instead of letting the
+    // sheet cover it (both were competing for the same bottom edge).
+    function updateMobileDockOffset() {
+      const dock = layoutRefs.mobileDock;
+      if (!dock) return;
+      const open = appState.viewportMode === 'portrait' && appState.sheetOpen;
+      if (!open) { dock.style.bottom = ''; return; }
+      const sheet = layoutRefs.mobileSheet;
+      const sheetH = sheet ? Math.ceil(sheet.getBoundingClientRect().height) : 0;
+      if (sheetH > 0) dock.style.bottom = `${24 + sheetH + 10}px`;
     }
 
     function setSheetOpen(open, tab) {
@@ -8253,11 +8292,9 @@
       controls.update();
     }
 
-    function zoomTowardPointer(deltaY, clientX, clientY) {
+    function zoomTowardPointer(factor, clientX, clientY) {
       if (!activeCamera || !controls || !renderer) return;
-      // Slightly higher sensitivity than the previous 1.09: fewer wheel ticks
-      // per zoom step, closer to AutoCAD's scroll feel.
-      const factor = Math.pow(1.14, deltaY > 0 ? 1 : -1);
+      if (!Number.isFinite(factor) || factor <= 0) return;
       const pivot = pickPivotUnderPointer(clientX, clientY);
       if (!pivot) return;
 
@@ -8282,7 +8319,12 @@
     function onViewportWheel(e) {
       if (!renderer || e.target !== renderer.domElement && !renderer.domElement.contains(e.target)) return;
       e.preventDefault();
-      zoomTowardPointer(e.deltaY, e.clientX, e.clientY);
+      // Normalise the wheel delta so a trackpad's tiny deltas do not zoom as
+      // hard as one mouse-wheel notch; 100px maps to the old ~1.14 step.
+      const unit = e.deltaMode === 1 ? 16 : (e.deltaMode === 2 ? 100 : 1);
+      const delta = THREE.MathUtils.clamp(e.deltaY * unit, -400, 400);
+      if (Math.abs(delta) < 0.5) return;
+      zoomTowardPointer(Math.pow(1.0018, delta), e.clientX, e.clientY);
     }
 
     function disposeSelectionOutlines() {
@@ -8623,6 +8665,18 @@
     function computeSelectionWorldBox(selectedIdSet, records) {
       const box = new THREE.Box3();
       let found = false;
+      let missingBox = false;
+      // Fast path: every pick record already carries its world-space box, so a
+      // selection does not need to walk every vertex in the drawing.
+      if (records && records.length) {
+        records.forEach(r => {
+          if (r && r.box && !r.box.isEmpty()) { box.union(r.box); found = true; }
+          else missingBox = true;
+        });
+      }
+      if (found && !missingBox) return box;
+      // Fallback (or partial records without boxes): derive from geometry, and
+      // union with the boxes already collected so nothing is dropped.
       if (dxfRootGroup && selectedIdSet && selectedIdSet.size > 0) {
         const va = new THREE.Vector3();
         dxfRootGroup.updateMatrixWorld(true);
@@ -8641,12 +8695,6 @@
             found = true;
           }
         });
-      }
-      if (!found && records && records.length) {
-        records.forEach(r => {
-          if (r && r.box && !r.box.isEmpty()) box.union(r.box);
-        });
-        found = !box.isEmpty();
       }
       return found ? box : null;
     }
@@ -8721,6 +8769,21 @@
       }
     }
 
+    // A local file is not one of the presets; drop the check mark so the menu
+    // does not keep highlighting the previously loaded sample.
+    function markSamplePresetActive(key) {
+      document.querySelectorAll('.sample-opt-btn').forEach(b => {
+        const isAct = !!key && b.getAttribute('data-preset') === key;
+        b.classList.toggle('is-active', isAct);
+        const c = b.querySelector('.sample-check');
+        if (c) c.classList.toggle('hidden', !isAct);
+      });
+    }
+
+    function clearSampleSelectionUI() {
+      markSamplePresetActive(null);
+    }
+
     function updateLoadingProgressUI(visible, percent = 0, stage = '', detail = '') {
       const card = document.getElementById('loadingOverlayCard');
       const topTrack = document.getElementById('topProgressTrack');
@@ -8760,15 +8823,23 @@
       controls.rotateSpeed = 0.85;
 
       const is2D = (appState.viewMode === 'top');
+      // Touch-only devices get native OrbitControls pinch-zoom / two-finger pan;
+      // desktop keeps the custom wheel zoom that stays under the cursor.
+      const isTouchOnly = !!(window.matchMedia &&
+        window.matchMedia('(pointer: coarse)').matches &&
+        !window.matchMedia('(pointer: fine)').matches);
       controls.enableRotate = !is2D;
-      // Wheel zoom is handled by zoomTowardPointer so it stays under the cursor.
-      controls.enableZoom = false;
+      controls.enableZoom = isTouchOnly;
+      controls.enablePan = true;
+      controls.touches.ONE = is2D ? THREE.TOUCH.PAN : THREE.TOUCH.ROTATE;
+      controls.touches.TWO = THREE.TOUCH.DOLLY_PAN;
       // Left: pick / box; middle: pan; right: 2D pan, 3D custom orbit around cursor.
       controls.mouseButtons = {
         LEFT: -1,
         MIDDLE: THREE.MOUSE.PAN,
         RIGHT: is2D ? THREE.MOUSE.PAN : -1
       };
+      controls.addEventListener('change', requestRender);
 
       controls.enabled = true;
       if (targetVec) {
@@ -8789,7 +8860,7 @@
       const h = container.clientHeight || 600;
 
       scene = new THREE.Scene();
-      scene.background = new THREE.Color(0xFFFFFF);
+      scene.background = new THREE.Color(appState.bgTheme === 'light' ? 0xFFFFFF : 0x000000);
 
       const hemiLight = new THREE.HemisphereLight(0xffffff, 0x94a3b8, 0.82);
       hemiLight.position.set(0, 0, 300);
@@ -8852,7 +8923,29 @@
       renderer.domElement.addEventListener('pointerdown', onPointerDown);
       renderer.domElement.addEventListener('pointermove', onPointerMove);
       window.addEventListener('pointerup', onPointerUp);
+      renderer.domElement.addEventListener('pointercancel', onPointerCancel);
       renderer.domElement.addEventListener('click', onViewportClick);
+
+      // Touch devices: OrbitControls owns pan/pinch; a short, still tap selects.
+      let touchTap = null;
+      renderer.domElement.addEventListener('pointerdown', (e) => {
+        if (e.pointerType !== 'touch') return;
+        if (!e.isPrimary) { touchTap = null; return; }
+        touchTap = { x: e.clientX, y: e.clientY, t: performance.now(), id: e.pointerId };
+      });
+      renderer.domElement.addEventListener('pointerup', (e) => {
+        if (e.pointerType !== 'touch') return;
+        if (!touchTap || touchTap.id !== e.pointerId) { touchTap = null; return; }
+        const tap = touchTap;
+        touchTap = null;
+        const dist = Math.hypot(e.clientX - tap.x, e.clientY - tap.y);
+        if (dist <= 8 && performance.now() - tap.t <= 600) {
+          pickAtClientPoint(e.clientX, e.clientY);
+        }
+      });
+      renderer.domElement.addEventListener('pointercancel', (e) => {
+        if (e.pointerType === 'touch') touchTap = null;
+      });
       renderer.domElement.addEventListener('wheel', onViewportWheel, { passive: false });
       renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
       window.addEventListener('resize', onWindowResize);
@@ -8861,23 +8954,55 @@
       window.addEventListener('drop', (e) => {
         e.preventDefault();
         const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-        if (file) loadUploadedFile(file);
+        if (!file) return;
+        if (!/\.(dxf|txt)$/i.test(file.name)) {
+          showToast(appState.lang === 'zh' ? '请拖入 .dxf 或 .txt 文件' : 'Drop a .dxf or .txt file');
+          return;
+        }
+        if (file.size > 200 * 1024 * 1024) {
+          showToast(appState.lang === 'zh' ? '文件超过 200 MB，请先拆分' : 'File is larger than 200 MB');
+          return;
+        }
+        loadUploadedFile(file);
       });
 
-      animateLoop();
+      requestRender();
     }
 
-    function animateLoop() {
-      requestAnimationFrame(animateLoop);
-      if (selectionOutlineGroup && _fatOutlineEdges) {
-        refreshFatOutlineWidths(false);
-      }
-      if (renderer && scene && activeCamera) {
-        renderer.render(scene, activeCamera);
-      }
+    // ---------------------------------------------------------------------
+    // Render on demand: the scene is static between interactions, so drawing
+    // every animation frame just burns GPU/battery. Anything that changes the
+    // scene or camera calls requestRender(); outline widths refresh only while
+    // a selection is visible.
+    // ---------------------------------------------------------------------
+    let _renderPending = false;
+
+    function requestRender() {
+      if (_renderPending) return;
+      _renderPending = true;
+      requestAnimationFrame(() => {
+        _renderPending = false;
+        if (selectionOutlineGroup && _fatOutlineEdges) {
+          refreshFatOutlineWidths(false);
+        }
+        if (renderer && scene && activeCamera) {
+          renderer.render(scene, activeCamera);
+        }
+      });
     }
 
+    // One resize pass per frame even though the mode handler and the resizer
+    // both call onWindowResize().
+    let _canvasResizeFrame = 0;
     function onWindowResize() {
+      if (_canvasResizeFrame) return;
+      _canvasResizeFrame = requestAnimationFrame(() => {
+        _canvasResizeFrame = 0;
+        applyCanvasSizeToViewport();
+      });
+    }
+
+    function applyCanvasSizeToViewport() {
       const container = document.getElementById('threeCanvasContainer');
       if (!container || !renderer) return;
       const w = container.clientWidth;
@@ -8893,13 +9018,23 @@
       orthoCamera.right = (frustumH * aspect) / 2;
       orthoCamera.updateProjectionMatrix();
 
+      // Keep the backing store in sync when the window moves between displays
+      // with different devicePixelRatio (otherwise the canvas turns blurry).
+      if ('setPixelRatio' in renderer && 'getPixelRatio' in renderer) {
+        const dpr = Math.min(window.devicePixelRatio || 1, 3);
+        if (renderer.getPixelRatio() !== dpr) renderer.setPixelRatio(dpr);
+      }
       renderer.setSize(w, h);
+      requestRender();
     }
 
     // =========================================================================
     // Pointer & AutoCAD Window / Crossing Box Selection
     // =========================================================================
     function onPointerDown(e) {
+      // Touch navigation (pan / pinch-zoom) is owned by OrbitControls; the
+      // custom marquee gesture stays mouse/pen only so the two never fight.
+      if (e.pointerType === 'touch') return;
       if (e.button === 2 && controls && controls.enableRotate && appState.viewMode === 'iso') {
         e.preventDefault();
         const pivot = pickPivotUnderPointer(e.clientX, e.clientY);
@@ -8951,6 +9086,7 @@
     }
 
     function onPointerMove(e) {
+      if (e.pointerType === 'touch') return;
       lastPointerEvent = e;
       if (cadOrbit.active) {
         const dx = e.clientX - cadOrbit.lastX;
@@ -9000,6 +9136,7 @@
     }
 
     function onPointerUp(e) {
+      if (e.pointerType === 'touch') return;
       if (cadOrbit.active) {
         cadOrbit.active = false;
         if (renderer && renderer.domElement.releasePointerCapture) {
@@ -9035,6 +9172,23 @@
         setTimeout(() => { pointerDragState.suppressNextClick = false; }, 60);
       }
       // Small movement: leave click event for point pick
+    }
+
+    // A cancelled touch/pen gesture must not leave the marquee overlay or the
+    // "pointer is down" state stuck.
+    function onPointerCancel(e) {
+      if (cadOrbit.active) {
+        cadOrbit.active = false;
+        if (renderer && renderer.domElement.releasePointerCapture) {
+          try { renderer.domElement.releasePointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+        }
+      }
+      if (!pointerDragState.isDown) return;
+      pointerDragState.isDown = false;
+      pointerDragState.boxActive = false;
+      pointerDragState.pendingBox = false;
+      const overlay = document.getElementById('selectionBoxOverlay');
+      if (overlay) overlay.classList.add('hidden');
     }
 
     // =========================================================================
@@ -9400,13 +9554,17 @@
     }
     function onViewportClick(e) {
       if (pointerDragState.suppressNextClick) return;
+      pickAtClientPoint(e.clientX, e.clientY);
+    }
+
+    function pickAtClientPoint(clientX, clientY) {
       if (!appState.parsedResult || !appState.parsedResult.pickRecords || !renderer || !dxfRootGroup) return;
 
       const rect = renderer.domElement.getBoundingClientRect();
       const width = rect.width || 800;
       const height = rect.height || 600;
-      const clickPxX = e.clientX - rect.left;
-      const clickPxY = e.clientY - rect.top;
+      const clickPxX = clientX - rect.left;
+      const clickPxY = clientY - rect.top;
 
       mouse.x = (clickPxX / width) * 2 - 1;
       mouse.y = -(clickPxY / height) * 2 + 1;
@@ -9731,6 +9889,7 @@
       updateSelectionOutlines(selectedIdSet);
 
       renderPropertyPanel();
+      requestRender();
     }
 
     /**
@@ -9747,6 +9906,23 @@
         return;
       }
       setSelectedRecords([]);
+    }
+
+    // Keeping a hidden layer's entities selected leaves outlines and property
+    // rows floating over invisible geometry; drop them when their layer hides.
+    function pruneSelectionToVisibleLayers() {
+      const res = appState.parsedResult;
+      const sel = appState.selectedRecords || [];
+      if (!res || sel.length === 0) return;
+      const remain = sel.filter(r => {
+        const key = (r && (r.layer || (r.entity && r.entity.layer))) || null;
+        const lg = key ? res.layers[key] : null;
+        return !lg || lg.visible !== false;
+      });
+      if (remain.length !== sel.length) {
+        appState.multiSelectBackup = null;
+        setSelectedRecords(remain);
+      }
     }
 
     function zoomToBox(box) {
@@ -9807,13 +9983,11 @@
     /**
      * Multi-token & subsequence fuzzy matcher
      */
-    function fuzzyMatch(haystack, query) {
-      if (!query) return true;
-      const hay = String(haystack || '').toLowerCase();
-      const tokens = query.toLowerCase().split(/\s+/).filter(Boolean);
+    // Hot path: the haystack and the query tokens are prepared once per search
+    // instead of being lowercased/split for every one of 10k+ records.
+    function fuzzyMatchLower(hay, tokens) {
       for (const tok of tokens) {
         if (hay.includes(tok)) continue;
-        // Subsequence fallback for abbreviations
         let hIdx = 0;
         let matchedAll = true;
         for (let c = 0; c < tok.length; c++) {
@@ -9826,6 +10000,31 @@
       return true;
     }
 
+    function fuzzyMatch(haystack, query) {
+      if (!query) return true;
+      return fuzzyMatchLower(String(haystack || '').toLowerCase(),
+        query.toLowerCase().split(/\s+/).filter(Boolean));
+    }
+
+    // Typing rebuilds the whole result list; debounce so a fast typist on a
+    // 100k-entity drawing does not re-scan the drawing on every key.
+    let searchRebuildTimer = 0;
+    function scheduleSearchRebuild(delay = 150) {
+      clearTimeout(searchRebuildTimer);
+      searchRebuildTimer = setTimeout(() => {
+        searchRebuildTimer = 0;
+        rebuildSearchMatches();
+      }, delay);
+    }
+
+    // Enter / next / previous must not act on results from the previous query.
+    function flushSearchRebuild() {
+      if (!searchRebuildTimer) return;
+      clearTimeout(searchRebuildTimer);
+      searchRebuildTimer = 0;
+      rebuildSearchMatches();
+    }
+
     function rebuildSearchMatches() {
       if (!appState.parsedResult) {
         appState.searchMatches = [];
@@ -9836,6 +10035,7 @@
 
       const q = (appState.entitySearchQuery || '').trim();
       const cat = appState.entitySearchCategory || 'all';
+      const tokens = q ? q.toLowerCase().split(/\s+/).filter(Boolean) : [];
       const matches = [];
       const seenKeys = new Set();
 
@@ -9847,8 +10047,10 @@
           if (cat === 'text' && tr.type === 'DIMENSION') continue;
           if (cat === 'dim' && tr.type !== 'DIMENSION' && tr.type !== 'LEADER' && tr.type !== 'MLEADER' && tr.type !== 'TOLERANCE') continue;
 
-          const hay = `${tr.plainText} ${tr.type} ${tr.displayLayer || tr.layer} ${tr.parentBlock || ''} #${tr.handle || ''}`;
-          if (fuzzyMatch(hay, q)) {
+          if (!tr._searchHay) {
+            tr._searchHay = `${tr.plainText} ${tr.type} ${tr.displayLayer || tr.layer} ${tr.parentBlock || ''} #${tr.handle || ''}`.toLowerCase();
+          }
+          if (tokens.length === 0 || fuzzyMatchLower(tr._searchHay, tokens)) {
             const key = `T_${tr.id}`;
             if (!seenKeys.has(key)) {
               seenKeys.add(key);
@@ -9877,12 +10079,18 @@
           if (cat === 'dim' && ent.type !== 'DIMENSION' && ent.type !== 'LEADER' && ent.type !== 'MLEADER') continue;
           if (cat === 'prop' && (ent.type === 'TEXT' || ent.type === 'MTEXT')) continue;
 
-          const plain = extractEntityPlainText(ent);
-          const attrPairs = (ent.attribs || []).map(a => `${a.tag}=${a.text}`).join(' ');
-          const handleStr = ent.handle ? `#${ent.handle}` : '';
-          const propSummary = `${ent.type} ${plain} ${ent.name || ''} ${attrPairs} ${pr.displayLayer} ${ent.linetype || ''} ${ent.patternName || ''} ${handleStr}`;
+          if (!pr._searchHay) {
+            const plain = extractEntityPlainText(ent);
+            const attrPairs = (ent.attribs || []).map(a => `${a.tag}=${a.text}`).join(' ');
+            const handleStr = ent.handle ? `#${ent.handle}` : '';
+            pr._searchHay = `${ent.type} ${plain} ${ent.name || ''} ${attrPairs} ${pr.displayLayer} ${ent.linetype || ''} ${ent.patternName || ''} ${handleStr}`.toLowerCase();
+            pr._searchPlain = plain;
+          }
 
-          if (fuzzyMatch(propSummary, q)) {
+          if (tokens.length === 0 || fuzzyMatchLower(pr._searchHay, tokens)) {
+            const plain = pr._searchPlain || '';
+            const attrPairs = (ent.attribs || []).map(a => `${a.tag}=${a.text}`).join(' ');
+            const handleStr = ent.handle ? `#${ent.handle}` : '';
             const label = plain || (ent.name ? `${ent.name} (${attrPairs || '块参照'})` : `${ent.type} ${handleStr}`);
             const key = `E_${pr.id}`;
             if (!seenKeys.has(key)) {
@@ -9901,13 +10109,23 @@
       }
 
       appState.searchMatches = matches;
+      appState.searchTruncated = matches.length >= 200;
       appState.activeSearchMatchIdx = matches.length > 0 ? 0 : -1;
       renderSearchResultsUI();
     }
 
     function findPickRecordForEntity(ent, fallbackBox, tr) {
-      if (appState.parsedResult && appState.parsedResult.pickRecords && ent) {
-        const found = appState.parsedResult.pickRecords.find(r => r.entity === ent);
+      const res = appState.parsedResult;
+      if (res && res.pickRecords && ent) {
+        // O(1) reverse lookup instead of a linear .find() per text record.
+        if (!res._entityPickMap) {
+          const map = new Map();
+          for (const r of res.pickRecords) {
+            if (r && r.entity && !map.has(r.entity)) map.set(r.entity, r);
+          }
+          res._entityPickMap = map;
+        }
+        const found = res._entityPickMap.get(ent);
         if (found) return found;
       }
       return {
@@ -9976,6 +10194,7 @@
         row.className = isActive
           ? 'flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-blue-50 border border-blue-200 text-xs transition'
           : 'flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg hover:bg-slate-100 text-xs transition';
+        if (isActive) row.setAttribute('data-active-search', '1');
 
         row.innerHTML = `
           <div class="min-w-0 flex-1">
@@ -9991,6 +10210,23 @@
         frag.appendChild(row);
       });
       listEl.appendChild(frag);
+
+      // Keep the active row visible when navigating with the ↑/↓ buttons.
+      const activeRow = listEl.querySelector('[data-active-search="1"]');
+      if (activeRow) {
+        const lr = listEl.getBoundingClientRect();
+        const ar = activeRow.getBoundingClientRect();
+        if (ar.top < lr.top) listEl.scrollTop -= (lr.top - ar.top);
+        else if (ar.bottom > lr.bottom) listEl.scrollTop += (ar.bottom - lr.bottom);
+      }
+
+      // Be explicit about the cap instead of silently ending at 200.
+      if (appState.searchTruncated) {
+        const note = document.createElement('div');
+        note.className = 'px-2.5 py-1.5 text-[11px] text-slate-500 text-center';
+        note.textContent = appState.lang === 'zh' ? '仅显示前 200 条匹配' : 'Showing the first 200 matches';
+        listEl.appendChild(note);
+      }
     }
 
     // =========================================================================
@@ -10130,7 +10366,12 @@
               <span class="text-[11px] text-blue-600 shrink-0">${escapeHtml(t('locateShort'))}</span>
             </button>
           `;
-        }).join('');
+        }).join('')
+          + (filteredSel.length > 100
+            ? `<div class="px-3 py-1.5 text-[11px] text-slate-500">${appState.lang === 'zh'
+              ? `仅显示前 100 / 共 ${filteredSel.length} 条`
+              : `Showing the first 100 of ${filteredSel.length}`}</div>`
+            : '');
 
         const secList = buildPropSectionHTML(t('secMultiList'), itemRows);
         bodyEl.innerHTML = filterBarHtml + secSummary + secList;
@@ -10357,9 +10598,9 @@
       lblSample2: { zh: "科研办公楼标准层平面图 (2D 建筑/属性块)", en: "Research Office Floor Plan (2D Architecture / Attribute Blocks)" },
       lblSample3: { zh: "五轴加工中心电主轴头 (3D 完整实体总成)", en: "5-Axis CNC Spindle Head (3D Solid Assembly)" },
       lblSample4: { zh: "六轴工业机器人工作站 (3D 工业装备)", en: "6-Axis Industrial Robot Cell (3D Solid)" },
-      lblSample5: { zh: "高压液压集成阀块剖面 (多岛填充/全对齐文字)", en: "Hydraulic Manifold (Multi-Island / Text Align)" },lblSample6: { zh: "全元素案例 (线/弧/样条/文字/标注/填充/块属性)", en: "All Element Types (Lines, Curves, Text, Dimensions, Hatches, Block Attributes)" },lblSample7: { zh: "3D 元素案例 (实体/网格/螺旋线/空间文字)", en: "3D Element Types (Solids, Mesh, Helix, Text in Space)" },
-
-
+      lblSample5: { zh: "高压液压集成阀块剖面 (多岛填充/全对齐文字)", en: "Hydraulic Manifold (Multi-Island / Text Align)" },
+      lblSample6: { zh: "全元素案例 (线/弧/样条/文字/标注/填充/块属性)", en: "All Element Types (Lines, Curves, Text, Dimensions, Hatches, Block Attributes)" },
+      lblSample7: { zh: "3D 元素案例 (实体/网格/螺旋线/空间文字)", en: "3D Element Types (Solids, Mesh, Helix, Text in Space)" },
       lblSample8: { zh: "工厂管廊总平面 (超大图纸测试)", en: "Plant Layout (Huge Drawing Test)" }
     };
     function applyLanguageUI() {
@@ -10437,8 +10678,14 @@
       appState.viewMode = mode;
       const btnTop = document.getElementById('btnViewTop');
       const btnIso = document.getElementById('btnViewIso');
-      if (btnTop) btnTop.classList.toggle('is-active', mode !== 'iso');
-      if (btnIso) btnIso.classList.toggle('is-active', mode === 'iso');
+      if (btnTop) {
+        btnTop.classList.toggle('is-active', mode !== 'iso');
+        btnTop.setAttribute('aria-pressed', String(mode !== 'iso'));
+      }
+      if (btnIso) {
+        btnIso.classList.toggle('is-active', mode === 'iso');
+        btnIso.setAttribute('aria-pressed', String(mode === 'iso'));
+      }
     }
 
     /**
@@ -10468,6 +10715,7 @@
     function applyThemeInstant(bgTheme) {
       if (bgTheme !== 'light' && bgTheme !== 'dark' && bgTheme !== 'bw') bgTheme = 'dark';
       appState.bgTheme = bgTheme;
+      try { localStorage.setItem('dxfviewer.bgTheme', bgTheme); } catch (_) {}
       updateThemeDropdownUI(bgTheme);
       if (!scene) return;
       const isLight = bgTheme === 'light';
@@ -10484,6 +10732,7 @@
           renderPropertyPanel();
         }
       }
+      requestRender();
     }
 
     async function parseAndRenderCurrentDXFAsync(fitCamera = true) {
@@ -10508,6 +10757,19 @@
 
         if (jobId !== appState.parseJobId) return;
 
+        // Garbage input often parses into an empty scene instead of throwing;
+        // keep the previous drawing and surface the problem instead of silently
+        // replacing it with a blank canvas.
+        if (!result || !result.stats || result.stats.totalEntities === 0) {
+          appState.lastParseFailed = true;
+          if (jobId === appState.parseJobId) {
+            showToast(appState.lang === 'zh'
+              ? '未在该文件中找到可显示的图元'
+              : 'No drawable entities were found in this file');
+          }
+          return;
+        }
+
         if (dxfRootGroup) {
           scene.remove(dxfRootGroup);
           disposeSceneGroup(dxfRootGroup);
@@ -10516,6 +10778,7 @@
         disposeSelectionOutlines();
 
         appState.parsedResult = result;
+        appState.lastParseFailed = false;
         appState.selectedRecords = [];
         appState.multiSelectBackup = null;
         dxfRootGroup = result.scene;
@@ -10537,7 +10800,17 @@
         }
 
         if (renderer && scene && activeCamera) {
-          renderer.render(scene, activeCamera);
+          requestRender();
+        }
+      } catch (err) {
+        // Keep the previous drawing on screen and tell the user what happened;
+        // an unhandled rejection used to close the overlay silently.
+        console.error('[dxfviewer] DXF parse failed:', err);
+        if (jobId === appState.parseJobId) {
+          appState.lastParseFailed = true;
+          showToast(appState.lang === 'zh'
+            ? '图纸解析失败，请检查 DXF 文件是否完整'
+            : 'Failed to parse this DXF file');
         }
       } finally {
         if (jobId === appState.parseJobId) {
@@ -10592,6 +10865,7 @@
       }
 
       createCleanOrbitControls(activeCamera, renderer.domElement, center);
+      requestRender();
     }
 
     // =========================================================================
@@ -10633,10 +10907,13 @@
 
         const chk = document.createElement('button');
         chk.type = 'button';
+        chk.setAttribute('role', 'checkbox');
+        chk.setAttribute('aria-label', layerInfo.displayName || layerInfo.name);
         const setChkVisual = (vis) => {
           chk.className = vis
             ? 'w-4 h-4 rounded-[5px] bg-blue-600 text-white flex items-center justify-center shrink-0 transition shadow-2xs'
             : 'w-4 h-4 rounded-[5px] bg-white border border-slate-300 text-transparent flex items-center justify-center shrink-0 transition hover:border-slate-400';
+          chk.setAttribute('aria-checked', String(!!vis));
           chk.innerHTML = '<svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>';
         };
         setChkVisual(layerInfo.visible);
@@ -10647,6 +10924,8 @@
           setChkVisual(layerInfo.visible);
           const lg = result.layers[layerInfo.name];
           if (lg) lg.visible = layerInfo.visible;
+          pruneSelectionToVisibleLayers();
+          requestRender();
         });
 
         const swatch = document.createElement('span');
@@ -10702,18 +10981,44 @@
           updateLoadingProgressUI(true, pct, appState.lang === 'zh' ? '正在读取本地文件...' : 'Reading file...', `${Math.round((ev.loaded / ev.total) * 100)}%`);
         }
       };
+      reader.onerror = () => {
+        updateLoadingProgressUI(false);
+        showToast(appState.lang === 'zh' ? '读取本地文件失败' : 'Could not read the local file');
+      };
       reader.onload = async (ev) => {
         const buffer = ev.target.result;
-        const decoded = window.DXFLoader.decodeDXFArrayBuffer(buffer);
+        const prevState = {
+          key: appState.currentPresetKey,
+          name: appState.currentFileName,
+          input: appState.currentInput
+        };
+        let decoded;
+        try {
+          decoded = window.DXFLoader.decodeDXFArrayBuffer(buffer);
+        } catch (err) {
+          console.error('[dxfviewer] decode failed:', err);
+          updateLoadingProgressUI(false);
+          showToast(appState.lang === 'zh' ? '无法识别该文件格式' : 'Unrecognised file format');
+          return;
+        }
         if (decoded.isBinary) {
           updateLoadingProgressUI(false);
           showToast(appState.lang === 'zh' ? '检测到二进制 DXF，请另存为 ASCII DXF' : 'Binary DXF detected; save as ASCII DXF');
           return;
         }
         appState.currentPresetKey = 'custom';
+        clearSampleSelectionUI();
         setFileNameDisplay(file.name);
         appState.currentInput = buffer;
         await parseAndRenderCurrentDXFAsync(true);
+        if (appState.lastParseFailed || !appState.parsedResult) {
+          // A bad file must not rename the drawing that is still on screen.
+          appState.currentPresetKey = prevState.key;
+          appState.currentInput = prevState.input;
+          setFileNameDisplay(prevState.name);
+          markSamplePresetActive(prevState.key === 'custom' ? null : prevState.key);
+          return;
+        }
         const st = appState.parsedResult.stats;
         showToast(appState.lang === 'zh'
           ? `已加载 ${file.name} (${st.totalEntities} 图元)`
@@ -10738,6 +11043,7 @@
         }
         const drawer = document.getElementById('layerDrawer');
         appState.drawerOpen = !appState.drawerOpen;
+        try { localStorage.setItem('dxfviewer.drawerOpen', appState.drawerOpen ? '1' : '0'); } catch (_) {}
         drawer.style.display = appState.drawerOpen ? 'flex' : 'none';
         syncDrawerResizers();
         setTimeout(onWindowResize, 20);
@@ -10752,6 +11058,7 @@
         }
         const propDrawer = document.getElementById('propertyDrawer');
         appState.propDrawerOpen = !appState.propDrawerOpen;
+        try { localStorage.setItem('dxfviewer.propDrawerOpen', appState.propDrawerOpen ? '1' : '0'); } catch (_) {}
         propDrawer.style.display = appState.propDrawerOpen ? 'flex' : 'none';
         syncDrawerResizers();
         setTimeout(onWindowResize, 20);
@@ -10795,6 +11102,7 @@
       document.getElementById('btnToggleSearchPanel').addEventListener('click', () => {
         appState.searchPanelOpen = !appState.searchPanelOpen;
         searchPanel.classList.toggle('hidden', !appState.searchPanelOpen);
+        document.getElementById('btnToggleSearchPanel').setAttribute('aria-expanded', String(appState.searchPanelOpen));
         if (appState.searchPanelOpen) {
           rebuildSearchMatches();
           document.getElementById('entitySearchInput').focus();
@@ -10803,34 +11111,49 @@
       document.getElementById('btnCloseSearchPanel').addEventListener('click', () => {
         appState.searchPanelOpen = false;
         searchPanel.classList.add('hidden');
+        document.getElementById('btnToggleSearchPanel').setAttribute('aria-expanded', 'false');
       });
 
       // Top-Right Sample Dropdown Toggle & Selection
       const sampleMenu = document.getElementById('sampleDropdownMenu');
       document.getElementById('btnSampleDropdown').addEventListener('click', (e) => {
         e.stopPropagation();
-        sampleMenu.classList.toggle('hidden');
+        const open = sampleMenu.classList.toggle('hidden') === false;
+        syncMenuExpanded('btnSampleDropdown', open);
       });
-      window.addEventListener('click', () => sampleMenu.classList.add('hidden'));
+      window.addEventListener('click', () => {
+        sampleMenu.classList.add('hidden');
+        syncMenuExpanded('btnSampleDropdown', false);
+      });
 
       sampleMenu.querySelectorAll('[data-preset]').forEach(btn => {
         btn.addEventListener('click', async () => {
           const key = btn.getAttribute('data-preset');
           sampleMenu.classList.add('hidden');
-          sampleMenu.querySelectorAll('.sample-opt-btn').forEach(b => {
-            const isAct = b.getAttribute('data-preset') === key;
-            b.classList.toggle('is-active', isAct);
-            const c = b.querySelector('.sample-check');
-            if (c) c.classList.toggle('hidden', !isAct);
-          });
-          if (PRESETS[key]) {
-            appState.currentPresetKey = key;
-            setFileNameDisplay(PRESETS[key].file);
-            appState.currentInput = getPresetDxf(key, appState.lang);
-            await parseAndRenderCurrentDXFAsync(true);
-            const title = appState.lang === 'zh' ? PRESETS[key].title_zh : PRESETS[key].title_en;
-            showToast(title);
+          syncMenuExpanded('btnSampleDropdown', false);
+          if (!PRESETS[key]) {
+            showToast(appState.lang === 'zh' ? '该示例暂不可用' : 'This sample is not available');
+            return;
           }
+          const prevState = {
+            key: appState.currentPresetKey,
+            name: appState.currentFileName,
+            input: appState.currentInput
+          };
+          markSamplePresetActive(key);
+          appState.currentPresetKey = key;
+          setFileNameDisplay(PRESETS[key].file);
+          appState.currentInput = getPresetDxf(key, appState.lang);
+          await parseAndRenderCurrentDXFAsync(true);
+          if (appState.lastParseFailed) {
+            appState.currentPresetKey = prevState.key;
+            appState.currentInput = prevState.input;
+            setFileNameDisplay(prevState.name);
+            markSamplePresetActive(prevState.key === 'custom' ? null : prevState.key);
+            return;
+          }
+          const title = appState.lang === 'zh' ? PRESETS[key].title_zh : PRESETS[key].title_en;
+          showToast(title);
         });
       });
 
@@ -10853,17 +11176,21 @@
       document.getElementById('btnThemeDropdown').addEventListener('click', (e) => {
         e.stopPropagation();
         sampleMenu.classList.add('hidden');
-        themeMenu.classList.toggle('hidden');
+        syncMenuExpanded('btnSampleDropdown', false);
+        const open = themeMenu.classList.toggle('hidden') === false;
+        syncMenuExpanded('btnThemeDropdown', open);
       });
       themeMenu.querySelectorAll('[data-theme-val]').forEach(btn => {
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
           themeMenu.classList.add('hidden');
+          syncMenuExpanded('btnThemeDropdown', false);
           applyThemeInstant(btn.getAttribute('data-theme-val'));
         });
       });
       window.addEventListener('click', () => {
         themeMenu.classList.add('hidden');
+        syncMenuExpanded('btnThemeDropdown', false);
         const mMenu = document.getElementById('multiTypeDropdownMenu');
         if (mMenu) mMenu.classList.add('hidden');
       });
@@ -10888,6 +11215,7 @@
           if (lg) lg.visible = true;
         });
         updateLayerManagerUI(appState.parsedResult);
+        requestRender();
       });
 
       document.getElementById('btnLayersAllOff').addEventListener('click', () => {
@@ -10898,17 +11226,21 @@
           if (lg) lg.visible = false;
         });
         updateLayerManagerUI(appState.parsedResult);
+        pruneSelectionToVisibleLayers();
+        requestRender();
       });
 
       // Fuzzy Search Input & Category Tabs
       const entSearchInput = document.getElementById('entitySearchInput');
       entSearchInput.addEventListener('input', (e) => {
         appState.entitySearchQuery = e.target.value || '';
-        rebuildSearchMatches();
+        scheduleSearchRebuild();
       });
       entSearchInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && appState.searchMatches.length > 0) {
-          e.preventDefault();
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        flushSearchRebuild();
+        if (appState.searchMatches.length > 0) {
           const nextIdx = e.shiftKey ? (appState.activeSearchMatchIdx - 1) : (appState.activeSearchMatchIdx + 1);
           activateSearchMatch(nextIdx);
         }
@@ -10924,15 +11256,18 @@
           appState.entitySearchCategory = btn.getAttribute('data-search-cat');
           document.querySelectorAll('.search-cat-btn').forEach(b => {
             b.classList.toggle('is-active', b === btn);
+            b.setAttribute('aria-pressed', String(b === btn));
           });
           rebuildSearchMatches();
         });
       });
 
       document.getElementById('btnSearchPrev').addEventListener('click', () => {
+        flushSearchRebuild();
         activateSearchMatch(appState.activeSearchMatchIdx - 1);
       });
       document.getElementById('btnSearchNext').addEventListener('click', () => {
+        flushSearchRebuild();
         activateSearchMatch(appState.activeSearchMatchIdx + 1);
       });
 
@@ -10940,15 +11275,99 @@
       document.getElementById('btnZoomSelected').addEventListener('click', () => zoomToSelectedRecords());
       document.getElementById('btnClearSelection').addEventListener('click', () => clearSelection());
 
-      // ESC clears the current selection (ignored while typing in a search box).
+      // ESC unwinds the topmost surface first: menus → search → sheet → selection.
       document.addEventListener('keydown', (e) => {
-        if (e.key !== 'Escape' && e.key !== 'Esc') return;
         const el = document.activeElement;
-        if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
-        if ((appState.selectedRecords || []).length === 0) return;
-        e.preventDefault();
-        clearSelection();
+        const typing = !!(el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable));
+        const mod = e.ctrlKey || e.metaKey;
+
+        // Ctrl/Cmd+F opens the entity search; plain F fits; Delete clears.
+        if (mod && (e.key === 'f' || e.key === 'F')) {
+          e.preventDefault();
+          if (!appState.searchPanelOpen) {
+            appState.searchPanelOpen = true;
+            document.getElementById('searchFloatingPanel').classList.remove('hidden');
+            document.getElementById('btnToggleSearchPanel').setAttribute('aria-expanded', 'true');
+            rebuildSearchMatches();
+          }
+          document.getElementById('entitySearchInput').focus();
+          return;
+        }
+        if (!typing && !mod && (e.key === 'f' || e.key === 'F')) {
+          e.preventDefault();
+          fitViewToScene(appState.viewMode || 'top');
+          return;
+        }
+        if (!typing && (e.key === 'Delete' || e.key === 'Backspace')) {
+          if ((appState.selectedRecords || []).length > 0) {
+            e.preventDefault();
+            clearSelection();
+          }
+          return;
+        }
+
+        if (e.key !== 'Escape' && e.key !== 'Esc') return;
+        if (typing) {
+          // In the entity search box ESC closes the panel; in the layer filter
+          // it clears the query first, otherwise it just leaves the field.
+          if (el.id === 'entitySearchInput') {
+            appState.searchPanelOpen = false;
+            document.getElementById('searchFloatingPanel').classList.add('hidden');
+            const searchBtn = document.getElementById('btnToggleSearchPanel');
+            if (searchBtn) searchBtn.setAttribute('aria-expanded', 'false');
+            el.blur();
+            return;
+          }
+          if (el.id === 'layerSearchInput' && el.value) {
+            el.value = '';
+            appState.layerFilterQuery = '';
+            if (appState.parsedResult) updateLayerManagerUI(appState.parsedResult);
+            return;
+          }
+          el.blur();
+          return;
+        }
+        const themeMenu = document.getElementById('themeDropdownMenu');
+        if (themeMenu && !themeMenu.classList.contains('hidden')) {
+          themeMenu.classList.add('hidden');
+          syncMenuExpanded('btnThemeDropdown', false);
+          return;
+        }
+        const sampleMenuEl = document.getElementById('sampleDropdownMenu');
+        if (sampleMenuEl && !sampleMenuEl.classList.contains('hidden')) {
+          sampleMenuEl.classList.add('hidden');
+          syncMenuExpanded('btnSampleDropdown', false);
+          return;
+        }
+        const multiMenu = document.getElementById('multiTypeDropdownMenu');
+        if (multiMenu && !multiMenu.classList.contains('hidden')) {
+          multiMenu.classList.add('hidden');
+          return;
+        }
+        if (appState.searchPanelOpen) {
+          appState.searchPanelOpen = false;
+          document.getElementById('searchFloatingPanel').classList.add('hidden');
+          const searchBtn = document.getElementById('btnToggleSearchPanel');
+          if (searchBtn) searchBtn.setAttribute('aria-expanded', 'false');
+          return;
+        }
+        if (appState.viewportMode === 'portrait' && appState.sheetOpen) {
+          setSheetOpen(false);
+          return;
+        }
+        if ((appState.selectedRecords || []).length > 0) {
+          e.preventDefault();
+          clearSelection();
+        }
       });
+
+      // Keep the trigger's aria-expanded in sync with the menu it owns.
+      function syncMenuExpanded(btnId, open) {
+        const btn = document.getElementById(btnId);
+        if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      }
+      syncMenuExpanded('btnThemeDropdown', false);
+      syncMenuExpanded('btnSampleDropdown', false);
 
       document.getElementById('btnViewTop').addEventListener('click', () => fitViewToScene('top'));
       document.getElementById('btnViewIso').addEventListener('click', () => fitViewToScene('iso'));
@@ -10956,7 +11375,19 @@
 
       document.getElementById('dxfFileInput').addEventListener('change', (e) => {
         const file = e.target.files && e.target.files[0];
-        if (file) loadUploadedFile(file);
+        // Clear so choosing the same file again still fires `change`.
+        e.target.value = '';
+        if (!file) return;
+        if (!/\.(dxf|txt)$/i.test(file.name)) {
+          showToast(appState.lang === 'zh' ? '请选择 .dxf 或 .txt 文件' : 'Choose a .dxf or .txt file');
+          return;
+        }
+        loadUploadedFile(file);
+      });
+
+      // Never let a rejected promise disappear without a trace in the console.
+      window.addEventListener('unhandledrejection', (ev) => {
+        console.error('[dxfviewer] unhandled rejection:', ev.reason);
       });
     });
 
