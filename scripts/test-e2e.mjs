@@ -136,10 +136,10 @@ try {
   console.log('[e2e] zoom');
   const zoomBase = await page.evaluate(() => {
     const src = Array.from(document.querySelectorAll('script')).map(s => s.textContent).join('\n');
-    const m = /Math\.pow\(([0-9.]+),\s*deltaY/.exec(src);
+    const m = /Math\.pow\(([0-9.]+),\s*delta\)/.exec(src);
     return m ? Number(m[1]) : null;
   });
-  ok(zoomBase !== null && zoomBase > 1.09, 'the wheel zoom step is more sensitive');
+  ok(zoomBase !== null && Math.pow(zoomBase, 100) > 1.09, 'the wheel zoom step scales with the wheel delta');
 
   ok(errors.length === 0, 'no runtime errors were raised' + (errors.length ? ': ' + errors.slice(0, 3).join(' | ') : ''));
 } finally {
