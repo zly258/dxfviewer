@@ -109,7 +109,7 @@ if (fs.existsSync(examplesHtmlPath)) {
   // string replacement would treat $&, $1, $' etc. as special and corrupt HTML.
   const replaced = html.replace(
     /(<!--\s*Inline DXFLoader[\s\S]*?<script>\r?\n)[\s\S]*?(\r?\n\s*<\/script>)/,
-    (_match, open, close) => open + umdMin.replace(/<\/script/gi, '<\\/script') + close
+    (_match, open, close) => open + umdMin.replace(/<\/script/gi, '<\\/script').replace(/\s+$/, '') + close
   );
   if (replaced === html) {
     console.warn('[build] Warning: could not locate inline DXFLoader script block in examples/index.html');
