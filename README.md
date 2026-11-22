@@ -6,7 +6,7 @@
 [![Three.js](https://img.shields.io/badge/Three.js-%3E%3D0.128.0-black.svg)](https://threejs.org/)
 [![GitHub](https://img.shields.io/badge/GitHub-zly258%2Fdxfviewer-181717?logo=github)](https://github.com/zly258/dxfviewer)
 
-A production-grade **AutoCAD DXF parser and Three.js renderer** that handles both 2D engineering drawings and full 3D solid assemblies, paired with a **bilingual (EN / 中文) CAD viewer** (`examples/index.html`).
+A production-grade **AutoCAD DXF parser and Three.js renderer** for 2D engineering drawings and 3D solid assemblies, plus a bilingual (EN / 中文) single-file CAD viewer (`examples/index.html`).
 
 **Live demo:** <https://zly258.github.io/dxfviewer/>
 
@@ -15,58 +15,91 @@ A production-grade **AutoCAD DXF parser and Three.js renderer** that handles bot
 ## Table of Contents
 
 1. [Features](#features)
-2. [Installation](#installation)
-3. [Quick Start](#quick-start)
-4. [API Reference](#api-reference)
-5. [Options](#options)
-6. [Supported Entities](#supported-entities)
-7. [Example Viewer](#example-viewer)
-8. [Scripts](#scripts)
-9. [Architecture](#architecture)
+2. [Architecture](#architecture)
+3. [Installation](#installation)
+4. [Quick Start](#quick-start)
+5. [API Reference](#api-reference)
+6. [Options](#options)
+7. [Supported Entities](#supported-entities)
+8. [Example Viewer](#example-viewer)
+9. [Scripts](#scripts)
 10. [License](#license)
 
 ---
 
 ## Features
 
-### Parsing & Rendering
+### Parsing & rendering
+
 - **Full 2D geometry** — `LINE`, `CIRCLE`, `ARC`, `ELLIPSE`, `SPLINE` (rational NURBS), `LWPOLYLINE`, `POLYLINE`, `MLINE`, `SOLID`, `TRACE`, `XLINE`, `RAY`, `POINT`, `HELIX`, `WIPEOUT`.
 - **Filled hatches** — `HATCH` / `MPOLYGON` with solid fills, standard ANSI/ISO patterns, gradient fills, and multi-island hole clipping.
 - **3D solids & smooth shading** — `3DSOLID` via ACIS SAT/SAB reconstruction (planar, cone, sphere, torus, revolution-spline surfaces), `MESH` (`AcDbSubDMesh`), `3DFACE`, `POLYLINE` 3D mesh / polyface, closed-contour extrusion (`thickness`) with 44° crease-angle smooth normals.
 - **Text** — `TEXT` (all six alignments including Fit/Aligned), `MTEXT` with full inline codes (`\P \H \W \Q \C \c \F \L \O \K \S \T \A \p \U`), `ATTRIB`, `ATTDEF`.
 - **Annotation** — `DIMENSION` (all types), `LEADER`, `MLEADER`, `TOLERANCE`, `ACAD_TABLE`.
-- **Blocks** — multi-level nested `INSERT` with rotation, scale, and array; `ATTRIB` values indexed for search.
+- **Blocks** — multi-level nested `INSERT` with rotation, scale and array; `ATTRIB` values indexed for search.
+- **Encoding** — auto-detects UTF-8 vs GB18030/GBK; decodes `\M+nXXXX` escapes.
 
 ### Performance
-- **O(candidates) point picking** — world-space grid index for the broad phase; segment inverse index for the narrow phase. Picking stays below 100 ms on drawings with 160 000+ entities.
-- **Unlimited pick records** — every entity, regardless of drawing size, gets a pick record (previous 50 k cap removed).
-- **Async parsing** — yielding render loop so the browser stays responsive.
-- **Instant theme switch** — `<1 ms` vertex-colour swap with no re-parse.
 
-### Viewer (`examples/index.html`)
-- Opens in English; one-click switch to Chinese (choice remembered across sessions).
-- **Bilingual sample drawings** — showcase and plant-layout samples exist in both languages; switching the UI language re-renders the current sample.
-- AutoCAD-style unified pick/box selection (click = point pick, drag = box, left→right = window, right→left = crossing).
-- Layer panel, fuzzy entity search, property panel with block attribute display.
+- **Adaptive curve tessellation** — circle/arc segment counts scale with radius relative to the model size, so thousands of small holes no longer spend the full segment budget. On a synthetic 160 000-circle drawing this cuts vertices by ~75% (30.6M → 7.6M) and build time from ~11 s to ~2.3 s.
+- **Spatial picking (`PickIndex`)** — a world-space grid plus a screen-space projected-AABB grid keep point picking and marquee selection at O(candidates) on 100k+ entities. The bundled viewer adds a segment-level narrow phase and block-reference resolution on top.
+- **Batched geometry** — one line/mesh per layer and per theme colour buffer; the loader returns one `PickRecord` per entity with a world-space box.
+- **Instant theme switch** — precomputed light/dark vertex-colour buffers swap in `< 1 ms`, no re-parse.
+- **Async parsing** — time-sliced pipeline that yields to the event loop between stages.
+- **Memory-conscious text atlas** — pages are allocated lazily (a line-only drawing never reserves one) and overflow is reported in `stats.droppedText` instead of being dropped silently.
+
+---
+
+## Architecture
+
+```
+src/dxf/
+  index.js          Public ES module entry (named, tree-shakeable exports)
+  00-util.js        Growable buffers, ACI palette, sRGB/linear colour, font mapping, encoding
+  01-math.js        OCS→WCS, bulge arcs, NURBS evaluation, crease-angle normals
+  02-acis.js        ACIS SAT/SAB decoding + B-rep surface reconstruction
+  03-hatch.js       Hatch loop classification + line-type dash tessellation
+  04-text.js        MTEXT inline-code parser + multi-page text atlas
+  05-parser.js      Fault-tolerant DXF tokeniser and entity parser
+  06-batch.js       Batched per-layer geometry collector
+  07-loader.js      DXFLoader: scene building, emitters, theme switching
+  08-pick.js        PickIndex: world/screen-space picking index
+scripts/
+  build.mjs         esbuild ESM + UMD builds, type copy, example sync
+  test.mjs / test-renderer.mjs / test-pick.mjs / test-e2e.mjs / test-sample-language.mjs
+  make-showcase.mjs / make-huge-sample.mjs / sync-showcase.mjs
+examples/
+  index.html        Self-contained bilingual CAD viewer
+  samples/          Sample DXF drawings (fetched on demand)
+types/
+  DXFLoader.d.ts    Public TypeScript declarations
+```
 
 ---
 
 ## Installation
 
-The library has no runtime dependencies beyond Three.js (≥ r128) which is a peer dependency.
+Three.js (≥ r128) is the only peer dependency.
 
 ```bash
-# npm
-npm install threejs-dxf-loader three
+# From this repository (the package is not yet published to the public npm registry)
+npm install git+https://github.com/zly258/dxfviewer.git three
 ```
 
-Alternatively, copy `dist/threejs-dxf-loader.umd.js` and load it with a `<script>` tag alongside the Three.js CDN build.
+Or drop the prebuilt bundle straight into a page — no build step required:
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/zly258/dxfviewer@v2.0.0/dist/threejs-dxf-loader.umd.min.js"></script>
+```
+
+`npm run build` produces `dist/threejs-dxf-loader.umd.js`, `.umd.min.js`, `.esm.js`, `.esm.min.js`, their sourcemaps and `dist/DXFLoader.d.ts`.
 
 ---
 
 ## Quick Start
 
-### ES Module
+### ES module
 
 ```javascript
 import * as THREE from 'three';
@@ -93,19 +126,27 @@ scene.add(result.scene);
 </script>
 ```
 
+### Parser only
+
+```javascript
+import { DXFParser } from 'threejs-dxf-loader';
+const dxf = new DXFParser().parse(dxfString); // { header, tables, blocks, entities, objects }
+```
+
+`DXFParser` has no DOM or Three.js rendering dependency, so it can run in a Web Worker unchanged. Pass an `ArrayBuffer` to `parseAsync` to keep large parses off the main thread in your own worker.
+
 ### Theme switching
 
 ```javascript
-// Instant (<1 ms) switch — no re-parse, no re-render.
-// Themes: 'light' | 'dark' | 'bw_light' | 'bw_dark'
+// Instant (<1 ms) switch — no re-parse, no re-rasterise.
+// Themes: 'light' | 'dark' | 'bw'
 DXFLoader.applyBackgroundTheme(result.scene, 'dark');
 ```
 
-### Synchronous parse
+### Disposal
 
 ```javascript
-const result = loader.parse(dxfString);
-scene.add(result.scene);
+DXFLoader.dispose(result.scene); // release geometries, materials and atlas textures
 ```
 
 ---
@@ -118,58 +159,74 @@ Creates a loader instance.
 
 ### `loader.setOptions(opts)` → `this`
 
-Sets or merges options before parsing. See [Options](#options).
+Sets or merges options. See [Options](#options).
+
+### `loader.registerFont(name, threeFont)` → `this`
+
+Registers a Three.js `Font` under a CAD font name for text rendering.
 
 ### `loader.parseAsync(input, options?, onProgress?)` → `Promise<ParseResult>`
 
-Parses a DXF file asynchronously, yielding to the event loop between stages.
-
 | Parameter | Type | Description |
 |---|---|---|
-| `input` | `ArrayBuffer \| string` | DXF file data or URL |
-| `options` | `object?` | Loader options (merged with current options) |
-| `onProgress` | `(p: Progress) => void` | Optional progress callback: `{ percent, stage, detail }` |
-
-Returns a `ParseResult`:
+| `input` | `ArrayBuffer \| string` | DXF data or a URL |
+| `options` | `object?` | Loader options (merged with the current options) |
+| `onProgress` | `(p: Progress) => void` | `{ percent, stage, detail }` |
 
 ```typescript
 {
-  scene:        THREE.Group,        // ready to add to your scene
-  layers:       Record<string, LayerInfo>,
-  pickRecords:  PickRecord[],       // one record per entity, used by pickers
-  globalBBox:   THREE.Box3,
-  stats:        ParseStats
+  scene:           THREE.Group,                 // ready to add to your scene
+  dxf:             object,                      // raw parsed document
+  layers:          Record<string, THREE.Group>, // normalised layer name -> group
+  stats:           ParseStats,
+  boundingBox:     THREE.Box3,                  // outlier-filtered viewport box
+  fullBoundingBox: THREE.Box3,                  // full WCS box
+  pickRecords:     PickRecord[],                // one record per entity
+  textRecords:     TextRecord[],                // searchable text quads
+  originShift:     { x: number; y: number; z: number }
 }
 ```
 
 ### `loader.parse(input, options?)` → `ParseResult`
 
-Synchronous version of `parseAsync`. Blocks the thread; suitable for Node.js workers.
+Synchronous version of `parseAsync`.
 
 ### `DXFLoader.applyBackgroundTheme(rootGroup, theme, selectedIdSet?)` → `void`
 
-Instant vertex-colour theme swap on a scene returned by `parseAsync`.
+Instant vertex-colour theme swap. `theme` is `'light' | 'dark' | 'bw'`; the optional `selectedIdSet` keeps selected ids highlighted.
 
 | Theme | Background | Lines |
 |---|---|---|
 | `'light'` | White | ACI palette (colour on white) |
 | `'dark'` | Black | ACI palette (colour on black) |
-| `'bw_light'` | White | Black |
-| `'bw_dark'` | Black | White |
+| `'bw'` | Black | White (monochrome) |
+
+### `DXFLoader.dispose(rootGroup)` → `void`
+
+Recursively disposes geometries, materials and atlas textures held by a parsed scene.
 
 ### `DXFLoader.decodeAcisData(ent, dxf)` → `{ source, satLines } | { source, error }`
 
-Decodes the ACIS payload (SAT text or binary SAB) of a 3D solid entity into the raw SAT records. Useful for host applications that need to inspect or export B-rep data.
+Decodes the ACIS payload (SAT text or binary SAB) of a 3D-solid entity into raw SAT records.
+
+### `new PickIndex(pickRecords, options?)`
+
+Spatial index over a result's `pickRecords`:
+
+```javascript
+import { PickIndex } from 'threejs-dxf-loader';
+
+const index = new PickIndex(result.pickRecords);
+index.updateScreen(camera, canvas.clientWidth, canvas.clientHeight);
+
+const hit = index.pickAt(px, py);                       // nearest record or null
+const candidates = index.queryScreenBox(x0, y0, x1, y1); // marquee broad phase
+const nearRay = index.queryRay(raycaster.ray, 0.5);      // ray query (world space)
+```
 
 ### `DXFLoader.DXFParser`
 
-The underlying DXF tokeniser / parser class. Use it directly when you only need the parsed entity tree without geometry:
-
-```javascript
-const parser = new DXFLoader.DXFParser();
-const dxf = parser.parse(dxfString);
-console.log(dxf.entities.length);
-```
+The underlying parser class (also exported as `DXFParser`).
 
 ---
 
@@ -179,52 +236,61 @@ Pass to `setOptions()` or as the second argument of `parseAsync` / `parse`.
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `backgroundColor` | `'light' \| 'dark' \| 'bw_light' \| 'bw_dark'` | `'light'` | Initial theme |
-| `centerOrigin` | `boolean` | `true` | Shift the drawing so its geometric centre is at world origin |
+| `backgroundColor` | `'light' \| 'dark' \| 'bw'` | `'light'` | Initial theme |
+| `centerOrigin` | `boolean` | `true` | Shift the drawing so its geometric centre is at the world origin |
 | `includePaperSpace` | `boolean` | `false` | Render paper-space entities |
 | `curveSegments` | `number` | `96` | Segments for a full circle / closed spline |
 | `minCurveSegments` | `number` | `24` | Minimum segments for a partial arc |
 | `maxCurveSegments` | `number` | `192` | Maximum segments for any curve |
+| `adaptiveCurveSegments` | `boolean` | `true` | Scale circle/arc tessellation by radius relative to model size |
 | `creaseAngle` | `number` | `44` | Crease angle (degrees) for 3D smooth normals |
 | `extrudeThickness` | `boolean` | `true` | Render extruded (`thickness`) entities as 3D solids |
-| `dimensionMode` | `'auto' \| 'computed'` | `'auto'` | `auto` uses the DXF dimension block when it exists; `computed` always recalculates |
-| `textAtlasPx` | `number` | `96` | Nominal glyph size in the text atlas (increase for sharper text at high DPI) |
-| `fontFamily` | `string` | system default | CSS font-family for the text atlas; falls back to SimSun / Arial automatically |
+| `dimensionMode` | `'auto' \| 'computed'` | `'auto'` | `auto` uses the drawing's own dimension block when present; any other value recomputes |
+| `textAtlasPx` | `number` | `96` | Nominal glyph size in the text atlas |
+| `textAtlasPageSize` | `number` | `4096` | Side length (px) of each atlas page; lower to 1024–2048 on memory-constrained devices |
+| `textAtlasMaxPages` | `number` | `64` | Safety cap on atlas pages; overflow is reported in `stats.droppedText` |
+| `fontFamily` | `string` | system default | CSS font-family for the text atlas; falls back to SimSun / Arial |
 
 ---
 
 ## Supported Entities
 
-### 2D Geometry
+### 2D geometry
+
 `LINE` · `LWPOLYLINE` · `POLYLINE` · `CIRCLE` · `ARC` · `ELLIPSE` · `SPLINE` · `MLINE` · `SOLID` · `TRACE` · `POINT` · `XLINE` · `RAY` · `HELIX` · `WIPEOUT`
 
 ### Fills
-`HATCH` · `MPOLYGON` — solid, gradient, and standard pattern fills with multi-island holes
 
-### 3D Geometry
+`HATCH` · `MPOLYGON` — solid, gradient and standard pattern fills with multi-island holes
+
+### 3D geometry
+
 `3DSOLID` · `MESH` · `3DFACE` · `POLYLINE` (3D mesh / polyface) · extruded entities (code 39 `thickness`)
 
-### Text & Annotation
+### Text & annotation
+
 `TEXT` · `MTEXT` · `ATTRIB` · `ATTDEF` · `DIMENSION` · `LEADER` · `MLEADER` · `TOLERANCE` · `ACAD_TABLE`
 
 ### Structure
+
 `INSERT` (nested blocks, arrays) · `VIEWPORT` (skipped)
 
-### MTEXT Inline Codes
+### MTEXT inline codes
+
 | Code | Effect |
 |---|---|
 | `\P` | Paragraph break |
 | `\H<n>x` / `\H<n>` | Height relative to base / absolute |
 | `\W<n>` | Width factor |
 | `\Q<n>` | Oblique angle (degrees) |
-| `\T<n>` | Character tracking (letter spacing) |
+| `\T<n>` | Character tracking |
 | `\C<n>` / `\c<n>` | ACI colour / true colour |
 | `\F<name>` / `\f<name>` | Font (with `\|b1\|i1` bold/italic flags) |
 | `\L` / `\l` | Underline on / off |
 | `\O` / `\o` | Overline on / off |
 | `\K` / `\k` | Strikethrough on / off |
 | `\S<n>^<d>` | Stacked fraction (also `/` and `#`) |
-| `\A<n>` | Vertical alignment (0 = bottom, 1 = centre, 2 = top) |
+| `\A<n>` | Vertical alignment (0 bottom, 1 centre, 2 top) |
 | `\pq<l\|c\|r>` | Paragraph alignment |
 | `\U+XXXX` | Unicode code point |
 | `%%c` `%%d` `%%p` | ⌀ ° ± and other `%%` special characters |
@@ -234,7 +300,7 @@ Pass to `setOptions()` or as the second argument of `parseAsync` / `parse`.
 
 ## Example Viewer
 
-`examples/index.html` is a self-contained single-file CAD viewer. Run it locally with:
+`examples/index.html` is a self-contained bilingual CAD viewer (no build step). Sample drawings are fetched from `examples/samples/` on demand, so the page itself stays small.
 
 ```bash
 node scripts/serve.mjs        # http://localhost:3001/
@@ -253,7 +319,7 @@ node scripts/serve.mjs        # http://localhost:3001/
 | `elements_3d` | 3D Element Types showcase | 3D — solids, mesh, helix |
 | `huge_2d` | Plant layout (huge drawing test) | 2D — ~11 k entities |
 
-Each bilingual sample exists in English and Chinese; switching the UI language automatically re-renders the current sample.
+Samples with Chinese variants (`elements_2d`, `elements_3d`, `huge_2d`) re-render when the UI language changes.
 
 **Viewer keyboard / mouse shortcuts:**
 
@@ -266,6 +332,7 @@ Each bilingual sample exists in English and Chinese; switching the UI language a
 | Pan | Middle-button drag |
 | 3D orbit | Right-button drag |
 | Fit view | *Fit* button |
+| Export PNG | *Export* button or Ctrl/Cmd+S |
 
 ---
 
@@ -273,44 +340,15 @@ Each bilingual sample exists in English and Chinese; switching the UI language a
 
 | Command | Description |
 |---|---|
-| `npm run build` | Build `dist/` and sync `docs/` |
-| `npm run dev` | Start local dev server on port 3001 |
-| `npm test` | Run parser unit tests |
-| `npm run test:renderer` | Run renderer / precision assertions |
-| `npm run test:e2e` | End-to-end browser tests (requires `playwright-core`) |
-| `npm run test:lang` | Verify that bilingual samples switch with the UI language |
+| `npm run build` | Build `dist/` and sync `docs/` + the inline example bundle |
+| `npm run dev` | Start the local dev server on port 3001 |
+| `npm test` | Parser unit tests over the bundled samples |
+| `npm run test:renderer` | Renderer / precision assertions |
+| `npm run test:pick` | Functional `PickIndex` test (real Three.js) |
+| `npm run test:e2e` | End-to-end browser tests (requires `playwright-core` + Chrome) |
+| `npm run test:lang` | Verify bilingual samples switch with the UI language |
 | `npm run check` | Run all non-browser tests |
-| `npm run sync:samples` | Regenerate bilingual sample drawings |
-
----
-
-## Architecture
-
-```
-src/
-  DXFLoader.js          Single-file library (~7 000 lines)
-    ├─ DXFParser          DXF tokeniser + entity parser
-    ├─ DXFLoader          Scene builder + geometry emitters
-    │   ├─ emitEntity     Dispatches to per-type emitters
-    │   ├─ emitACISSolid  ACIS SAT/SAB reconstruction
-    │   └─ MultiPageTextAtlas  Canvas-based glyph atlas
-    └─ Helpers            OCS→WCS, NURBS, crease normals
-
-scripts/
-  build.mjs             Zero-dependency build & deploy
-  serve.mjs             Local HTTP server
-  test.mjs              Parser unit tests
-  test-renderer.mjs     Renderer assertions
-  test-e2e.mjs          Browser e2e tests
-  test-sample-language.mjs  Language-switch tests
-  make-showcase.mjs     Generate bilingual showcase DXFs
-  make-huge-sample.mjs  Generate the large plant-layout sample
-  sync-showcase.mjs     Sync sample DXF payloads into the HTML
-
-examples/
-  index.html            Self-contained CAD viewer
-  samples/              Bundled sample DXF drawings
-```
+| `npm run sync:samples` | Regenerate the bilingual sample drawings |
 
 ---
 

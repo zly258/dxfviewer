@@ -6,60 +6,88 @@
 [![Three.js](https://img.shields.io/badge/Three.js-%3E%3D0.128.0-black.svg)](https://threejs.org/)
 [![GitHub](https://img.shields.io/badge/GitHub-zly258%2Fdxfviewer-181717?logo=github)](https://github.com/zly258/dxfviewer)
 
-基于 **Three.js** 的高性能 **AutoCAD DXF 解析与 WebGL 渲染库**，同时支持 2D 工程图纸和完整的 3D 实体装配，内置一套**中英双语 CAD 查看器** (`examples/index.html`)。
+面向 2D 工程图与 3D 实体装配的 **AutoCAD DXF 解析器 + Three.js 渲染器**，并附带一个中英双语单文件 CAD 查看器（`examples/index.html`）。
 
-**在线演示：** <https://zly258.github.io/dxfviewer/>
+**在线示例：** <https://zly258.github.io/dxfviewer/>
 
 ---
 
 ## 目录
 
-1. [功能特性](#功能特性)
-2. [安装](#安装)
-3. [快速上手](#快速上手)
-4. [API 参考](#api-参考)
-5. [选项](#选项)
-6. [支持的实体类型](#支持的实体类型)
-7. [示例查看器](#示例查看器)
-8. [脚本命令](#脚本命令)
-9. [架构说明](#架构说明)
+1. [特性](#特性)
+2. [架构](#架构)
+3. [安装](#安装)
+4. [快速上手](#快速上手)
+5. [API 参考](#api-参考)
+6. [选项](#选项)
+7. [支持的图元](#支持的图元)
+8. [示例查看器](#示例查看器)
+9. [脚本](#脚本)
 10. [许可证](#许可证)
 
 ---
 
-## 功能特性
+## 特性
 
 ### 解析与渲染
+
 - **完整 2D 几何** — `LINE`、`CIRCLE`、`ARC`、`ELLIPSE`、`SPLINE`（有理 NURBS）、`LWPOLYLINE`、`POLYLINE`、`MLINE`、`SOLID`、`TRACE`、`XLINE`、`RAY`、`POINT`、`HELIX`、`WIPEOUT`。
-- **实心填充** — `HATCH` / `MPOLYGON`，支持实体填充、ANSI/ISO 标准线型填充、渐变色，以及多岛孔洞裁剪。
-- **3D 实体与曲面平滑** — `3DSOLID`（ACIS SAT/SAB 解密重建：平面/锥面/球面/圆环面/旋转样条曲面）、`MESH`（`AcDbSubDMesh`）、`3DFACE`、`POLYLINE` 三维网格/多面体，拉伸实体（`thickness`）封盖，**44° 折痕角法线平滑**。
-- **文字** — `TEXT`（全部 6 种对齐，含 Fit/Aligned 自适应）、`MTEXT`（全行内控制码）、`ATTRIB`、`ATTDEF`。
-- **标注** — `DIMENSION`（全类型）、`LEADER`、`MLEADER`、`TOLERANCE`、`ACAD_TABLE`。
-- **块引用** — 多层嵌套 `INSERT`（旋转/缩放/阵列），`ATTRIB` 属性值索引可搜索。
+- **填充图案** — `HATCH` / `MPOLYGON`，支持实体填充、ANSI/ISO 标准图案、渐变填充与多岛孔洞裁剪。
+- **3D 实体与平滑着色** — 通过 ACIS SAT/SAB 重建 `3DSOLID`（平面、圆锥、球、圆环、旋转样条曲面），支持 `MESH`（`AcDbSubDMesh`）、`3DFACE`、`POLYLINE` 3D 网格/多面网格，以及闭合轮廓按 `thickness` 挤出为实体（44° 折痕角平滑法线）。
+- **文字** — `TEXT`（六种对齐，含 Fit/Aligned）、`MTEXT` 全量内联码（`\P \H \W \Q \C \c \F \L \O \K \S \T \A \p \U`）、`ATTRIB`、`ATTDEF`。
+- **标注** — `DIMENSION`（全部类型）、`LEADER`、`MLEADER`、`TOLERANCE`、`ACAD_TABLE`。
+- **块** — 多级嵌套 `INSERT`（旋转/缩放/阵列）；`ATTRIB` 值可检索。
+- **编码** — 自动识别 UTF-8 与 GB18030/GBK，解码 `\M+nXXXX` 转义。
 
 ### 性能
-- **O(候选) 点选** — 世界坐标网格索引做宽相位，线段逆向索引做窄相位。160 000 实体图纸上点选延迟 < 100 ms（p50 约 66 ms）。
-- **无实体上限** — 每个实体无条件获得 pickRecord（原 50 k 上限已移除）。
-- **异步解析** — 分阶段让出事件循环，浏览器不卡顿。
-- **主题瞬间切换** — 顶点色 `< 1 ms` 切换，无需重新解析。
 
-### 查看器 (`examples/index.html`)
-- 默认英文界面，一键切换中文（选择跨会话记忆）。
-- **双语示例图纸** — 示例图纸有中英两版，切换界面语言时自动重渲染当前示例。
-- AutoCAD 式统一点选/框选（单击=点选，拖动=框选，左→右=窗口，右→左=交叉）。
-- 图层面板、模糊实体搜索、属性面板（含块属性显示）。
+- **自适应曲线细分** — 圆弧段数按半径相对模型尺寸缩放，成千上万个小孔不再占用满段数预算。在 16 万个圆的合成图纸上，顶点数减少约 75%（3057 万 → 764 万），构建耗时约 11 s → 2.3 s。
+- **空间拾取（`PickIndex`）** — 世界坐标网格 + 屏幕投影包围盒网格，10 万级图元的点选与框选保持 O(候选)。内置查看器另加线段级窄相位与块引用解析。
+- **合批几何** — 每图层每主题色缓冲一个 line/mesh；加载器为每个图元返回一条带世界包围盒的 `PickRecord`。
+- **主题瞬时切换** — 预计算明/暗两套顶点色缓冲，`< 1 ms` 切换，无需重新解析。
+- **异步解析** — 分阶段让出事件循环。
+- **省内存的文本图集** — 图集页惰性分配（纯线稿图纸不占页），超出上限的文字计入 `stats.droppedText` 而非静默丢失。
+
+---
+
+## 架构
+
+```
+src/dxf/
+  index.js          公开 ESM 入口（命名导出，可 tree-shaking）
+  00-util.js        可变长缓冲、ACI 色板、sRGB/线性色彩、字体映射、编码
+  01-math.js        OCS→WCS、凸度弧、NURBS 求值、折痕角法线
+  02-acis.js        ACIS SAT/SAB 解码 + B-rep 曲面重建
+  03-hatch.js       填充环分类 + 线型虚线细分
+  04-text.js        MTEXT 内联码解析 + 多页文本图集
+  05-parser.js      容错 DXF 词法/语法解析
+  06-batch.js       按图层合批的几何收集器
+  07-loader.js      DXFLoader：场景构建、几何发射器、主题切换
+  08-pick.js        PickIndex：世界/屏幕空间拾取索引
+scripts/            build / test / 示例生成
+examples/index.html 自包含双语 CAD 查看器
+types/DXFLoader.d.ts 公开 TypeScript 声明
+```
 
 ---
 
 ## 安装
 
-Three.js（≥ r128）是唯一同伴依赖，无其他运行时依赖。
+Three.js（≥ r128）是唯一同伴依赖。
 
 ```bash
-npm install threejs-dxf-loader three
+# 从本仓库安装（该包尚未发布到公共 npm registry）
+npm install git+https://github.com/zly258/dxfviewer.git three
 ```
 
-也可以直接使用 `dist/threejs-dxf-loader.umd.js`，配合 Three.js CDN 版本以 `<script>` 标签引入。
+或直接把预构建文件引入页面，无需构建：
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/zly258/dxfviewer@v2.0.0/dist/threejs-dxf-loader.umd.min.js"></script>
+```
+
+`npm run build` 生成 `dist/threejs-dxf-loader.umd.js`、`.umd.min.js`、`.esm.js`、`.esm.min.js` 及其 sourcemap 和 `dist/DXFLoader.d.ts`。
 
 ---
 
@@ -92,19 +120,27 @@ scene.add(result.scene);
 </script>
 ```
 
+### 仅解析
+
+```javascript
+import { DXFParser } from 'threejs-dxf-loader';
+const dxf = new DXFParser().parse(dxfString); // { header, tables, blocks, entities, objects }
+```
+
+`DXFParser` 不依赖 DOM 或 Three.js 渲染，可直接跑在 Web Worker 中；把 `ArrayBuffer` 交给 `parseAsync` 即可在自己的 Worker 里把大文件解析移出主线程。
+
 ### 主题切换
 
 ```javascript
-// 瞬间切换主题（< 1 ms），无需重新解析
-// 可选值：'light' | 'dark' | 'bw_light' | 'bw_dark'
+// 瞬间切换（< 1 ms），无需重新解析
+// 可选值：'light' | 'dark' | 'bw'
 DXFLoader.applyBackgroundTheme(result.scene, 'dark');
 ```
 
-### 同步解析
+### 资源释放
 
 ```javascript
-const result = loader.parse(dxfString);
-scene.add(result.scene);
+DXFLoader.dispose(result.scene); // 释放几何、材质与图集纹理
 ```
 
 ---
@@ -113,204 +149,200 @@ scene.add(result.scene);
 
 ### `new DXFLoader()`
 
-创建一个加载器实例。
+创建加载器实例。
 
 ### `loader.setOptions(opts)` → `this`
 
 设置或合并选项，详见 [选项](#选项)。
 
-### `loader.parseAsync(input, options?, onProgress?)` → `Promise<ParseResult>`
+### `loader.registerFont(name, threeFont)` → `this`
 
-异步解析 DXF，在各阶段间让出事件循环。
+把 Three.js `Font` 注册到某个 CAD 字体名下用于文字渲染。
+
+### `loader.parseAsync(input, options?, onProgress?)` → `Promise<ParseResult>`
 
 | 参数 | 类型 | 说明 |
 |---|---|---|
-| `input` | `ArrayBuffer \| string` | DXF 文件数据或 URL |
+| `input` | `ArrayBuffer \| string` | DXF 数据或 URL |
 | `options` | `object?` | 加载选项（与当前选项合并） |
-| `onProgress` | `(p: Progress) => void` | 进度回调：`{ percent, stage, detail }` |
-
-返回 `ParseResult`：
+| `onProgress` | `(p: Progress) => void` | `{ percent, stage, detail }` |
 
 ```typescript
 {
-  scene:        THREE.Group,        // 可直接 add 到场景
-  layers:       Record<string, LayerInfo>,
-  pickRecords:  PickRecord[],       // 每实体一条，供点选逻辑使用
-  globalBBox:   THREE.Box3,
-  stats:        ParseStats
+  scene:           THREE.Group,                 // 可直接 add 到场景
+  dxf:             object,                      // 原始解析文档
+  layers:          Record<string, THREE.Group>, // 归一化图层名 -> 分组
+  stats:           ParseStats,
+  boundingBox:     THREE.Box3,                  // 去离群后的视口包围盒
+  fullBoundingBox: THREE.Box3,                  // 完整 WCS 包围盒
+  pickRecords:     PickRecord[],                // 每实体一条
+  textRecords:     TextRecord[],                // 可检索的文字四边形
+  originShift:     { x: number; y: number; z: number }
 }
 ```
 
 ### `loader.parse(input, options?)` → `ParseResult`
 
-`parseAsync` 的同步版本，适用于 Node.js Worker 或简单脚本场景。
+`parseAsync` 的同步版本。
 
 ### `DXFLoader.applyBackgroundTheme(rootGroup, theme, selectedIdSet?)` → `void`
 
-对 `parseAsync` 返回的场景进行瞬时主题切换。
+瞬时顶点色主题切换。`theme` 为 `'light' | 'dark' | 'bw'`；可选 `selectedIdSet` 保留选中高亮。
 
 | 主题 | 背景 | 线条 |
 |---|---|---|
 | `'light'` | 白色 | ACI 色板（彩色线条） |
 | `'dark'` | 黑色 | ACI 色板（彩色线条） |
-| `'bw_light'` | 白色 | 纯黑 |
-| `'bw_dark'` | 黑色 | 纯白 |
+| `'bw'` | 黑色 | 纯白（单色） |
+
+### `DXFLoader.dispose(rootGroup)` → `void`
+
+递归释放已解析场景的几何、材质与图集纹理。
 
 ### `DXFLoader.decodeAcisData(ent, dxf)` → `{ source, satLines } | { source, error }`
 
-将 3D 实体的 ACIS 负载（SAT 文本或二进制 SAB）解码为原始 SAT 记录。适用于需要检查或导出 B-rep 数据的宿主应用。
+把 3D 实体的 ACIS 载荷（SAT 文本或 SAB 二进制）解码为原始 SAT 记录。
+
+### `new PickIndex(pickRecords, options?)`
+
+对解析结果的 `pickRecords` 建立空间索引：
+
+```javascript
+import { PickIndex } from 'threejs-dxf-loader';
+
+const index = new PickIndex(result.pickRecords);
+index.updateScreen(camera, canvas.clientWidth, canvas.clientHeight);
+
+const hit = index.pickAt(px, py);                        // 最近记录或 null
+const candidates = index.queryScreenBox(x0, y0, x1, y1); // 框选宽相位
+const nearRay = index.queryRay(raycaster.ray, 0.5);      // 世界空间射线查询
+```
 
 ### `DXFLoader.DXFParser`
 
-底层 DXF 词法分析 / 解析类。仅需实体树而无需几何时可单独使用：
-
-```javascript
-const parser = new DXFLoader.DXFParser();
-const dxf = parser.parse(dxfString);
-console.log(dxf.entities.length);
-```
+底层解析器类（同样以 `DXFParser` 命名导出）。
 
 ---
 
 ## 选项
 
-传递给 `setOptions()` 或 `parseAsync` / `parse` 的第二个参数。
+传给 `setOptions()` 或 `parseAsync` / `parse` 的第二个参数。
 
-| 选项 | 类型 | 默认值 | 说明 |
+| 选项 | 类型 | 默认 | 说明 |
 |---|---|---|---|
-| `backgroundColor` | `'light' \| 'dark' \| 'bw_light' \| 'bw_dark'` | `'light'` | 初始主题 |
+| `backgroundColor` | `'light' \| 'dark' \| 'bw'` | `'light'` | 初始主题 |
 | `centerOrigin` | `boolean` | `true` | 将图纸几何中心移到世界原点 |
 | `includePaperSpace` | `boolean` | `false` | 是否渲染图纸空间实体 |
-| `curveSegments` | `number` | `96` | 完整圆/闭合样条的分段数 |
-| `minCurveSegments` | `number` | `24` | 弧线的最小分段数 |
-| `maxCurveSegments` | `number` | `192` | 任何曲线的最大分段数 |
-| `creaseAngle` | `number` | `44` | 3D 曲面法线平滑的折痕角（度） |
-| `extrudeThickness` | `boolean` | `true` | 将有厚度（`thickness`）的实体渲染为三维实体 |
-| `dimensionMode` | `'auto' \| 'computed'` | `'auto'` | `auto` 优先使用 DXF 自带的标注块，`computed` 总是重新计算 |
-| `textAtlasPx` | `number` | `96` | 文字图集的标称字形像素大小（提高此值可在高 DPI 下获得更清晰文字） |
-| `fontFamily` | `string` | 系统默认 | 文字图集的 CSS 字体族，自动回退到宋体 / Arial |
+| `curveSegments` | `number` | `96` | 整圆/闭合曲线分段数 |
+| `minCurveSegments` | `number` | `24` | 圆弧最小分段数 |
+| `maxCurveSegments` | `number` | `192` | 曲线最大分段数 |
+| `adaptiveCurveSegments` | `boolean` | `true` | 按半径相对模型尺寸缩放圆弧细分 |
+| `creaseAngle` | `number` | `44` | 3D 平滑法线折痕角（度） |
+| `extrudeThickness` | `boolean` | `true` | 将带 `thickness` 的图元按 3D 实体渲染 |
+| `dimensionMode` | `'auto' \| 'computed'` | `'auto'` | `auto` 优先用图纸自带标注块；其他值一律重算 |
+| `textAtlasPx` | `number` | `96` | 文本图集名义字高（像素） |
+| `textAtlasPageSize` | `number` | `4096` | 每页图集边长（像素）；移动端可降到 1024–2048 |
+| `textAtlasMaxPages` | `number` | `64` | 图集页数上限；溢出计入 `stats.droppedText` |
+| `fontFamily` | `string` | 系统默认 | 图集 CSS 字体栈，缺省回退到 SimSun / Arial |
 
 ---
 
-## 支持的实体类型
+## 支持的图元
 
-### 二维几何
+### 2D 几何
+
 `LINE` · `LWPOLYLINE` · `POLYLINE` · `CIRCLE` · `ARC` · `ELLIPSE` · `SPLINE` · `MLINE` · `SOLID` · `TRACE` · `POINT` · `XLINE` · `RAY` · `HELIX` · `WIPEOUT`
 
 ### 填充
-`HATCH` · `MPOLYGON` — 实体填充、渐变色、标准图案，支持多岛孔洞
 
-### 三维几何
-`3DSOLID` · `MESH` · `3DFACE` · `POLYLINE`（三维网格/多面体） · 拉伸实体（组码 39 `thickness`）
+`HATCH` · `MPOLYGON` — 实体、渐变与标准图案填充，支持多岛孔洞
+
+### 3D 几何
+
+`3DSOLID` · `MESH` · `3DFACE` · `POLYLINE`（3D 网格/多面网格）· 带 `thickness` 的挤出图元
 
 ### 文字与标注
+
 `TEXT` · `MTEXT` · `ATTRIB` · `ATTDEF` · `DIMENSION` · `LEADER` · `MLEADER` · `TOLERANCE` · `ACAD_TABLE`
 
 ### 结构
-`INSERT`（嵌套块/阵列） · `VIEWPORT`（跳过）
 
-### MTEXT 行内控制码
+`INSERT`（嵌套块、阵列）· `VIEWPORT`（跳过）
 
-| 控制码 | 效果 |
+### MTEXT 内联码
+
+| 代码 | 效果 |
 |---|---|
 | `\P` | 段落换行 |
-| `\H<n>x` / `\H<n>` | 相对基准高度的倍数 / 绝对高度 |
+| `\H<n>x` / `\H<n>` | 相对/绝对字高 |
 | `\W<n>` | 宽度因子 |
-| `\Q<n>` | 斜体角（度） |
-| `\T<n>` | 字符间距（追踪）因子 |
+| `\Q<n>` | 倾斜角（度） |
+| `\T<n>` | 字间距 |
 | `\C<n>` / `\c<n>` | ACI 颜色 / 真彩色 |
-| `\F<name>` / `\f<name>` | 字体（`\|b1\|i1` 粗体/斜体标志） |
-| `\L` / `\l` | 下划线开/关 |
-| `\O` / `\o` | 上划线开/关 |
-| `\K` / `\k` | 删除线开/关 |
-| `\S<n>^<d>` | 堆叠分数（也支持 `/` 和 `#`） |
-| `\A<n>` | 垂直对齐（0=底，1=中，2=顶） |
+| `\F<name>` / `\f<name>` | 字体（可带 `\|b1\|i1` 粗/斜体） |
+| `\L` / `\l` | 下划线开 / 关 |
+| `\O` / `\o` | 上划线开 / 关 |
+| `\K` / `\k` | 删除线开 / 关 |
+| `\S<n>^<d>` | 堆叠分数（也支持 `/` 与 `#`） |
+| `\A<n>` | 垂直对齐（0 底 / 1 中 / 2 顶） |
 | `\pq<l\|c\|r>` | 段落对齐 |
 | `\U+XXXX` | Unicode 码点 |
-| `%%c` `%%d` `%%p` | ⌀ ° ± 及其他 `%%` 特殊符号 |
-| `{...}` | 样式组（继承并自动恢复） |
+| `%%c` `%%d` `%%p` | ⌀ ° ± 等 `%%` 特殊字符 |
+| `{...}` | 样式组（继承并恢复） |
 
 ---
 
 ## 示例查看器
 
-`examples/index.html` 是一个自包含的单文件 CAD 查看器，本地运行：
+`examples/index.html` 是自包含的中英双语 CAD 查看器（无需构建）。示例图纸从 `examples/samples/` 按需加载，因此页面本身很小。
 
 ```bash
 node scripts/serve.mjs        # http://localhost:3001/
 ```
 
-**内置示例**（通过 *Samples* 下拉菜单切换）：
+**内置示例**（用 *加载示例* 下拉切换）：
 
-| 键名 | 图纸 | 类型 |
+| Key | 图纸 | 类型 |
 |---|---|---|
-| `gearbox_2d` | 行星齿轮减速器总成图 | 2D 机械 |
+| `gearbox_2d` | 行星齿轮减速器总成 | 2D 机械 |
 | `arch_2d` | 科研办公楼标准层平面图 | 2D 建筑 |
-| `spindle_3d` | 五轴加工中心电主轴头 | 3D 实体装配 |
+| `spindle_3d` | 五轴加工中心电主轴头 | 3D 实体总成 |
 | `robot_3d` | 六轴工业机器人工作站 | 3D 实体 |
 | `manifold_2d` | 高压液压集成阀块剖面 | 2D 多岛填充 |
-| `elements_2d` | 全元素案例（所有图元类型） | 2D 展示 |
-| `elements_3d` | 3D 元素案例（实体/网格/螺旋线） | 3D 展示 |
-| `huge_2d` | 工厂管廊总平面（超大图纸测试） | 2D 约 11 k 实体 |
+| `elements_2d` | 全元素案例 | 2D 覆盖全部图元 |
+| `elements_3d` | 3D 元素案例 | 3D 实体/网格/螺旋线 |
+| `huge_2d` | 工厂管廊总平面（超大图纸测试） | 2D 约 1.1 万图元 |
 
-每个双语示例都有中英两版图纸；切换界面语言时自动重渲染当前示例。
+带中文版的示例（`elements_2d`、`elements_3d`、`huge_2d`）会随界面语言重新渲染。
 
-**查看器鼠标/键盘操作：**
+**查看器快捷键 / 鼠标：**
 
 | 操作 | 手势 |
 |---|---|
 | 点选 | 单击 |
-| 窗口框选 | 鼠标向右拖动 |
-| 交叉框选 | 鼠标向左拖动 |
-| 缩放到光标 | 滚轮 |
+| 窗口框选 | 左 → 右拖动 |
+| 交叉框选 | 右 → 左拖动 |
+| 指向缩放 | 滚轮 |
 | 平移 | 中键拖动 |
-| 三维旋转 | 右键拖动 |
-| 适应视图 | *Fit* 按钮 |
+| 3D 环绕 | 右键拖动 |
+| 适应视图 | *适应* 按钮 |
+| 导出 PNG | *导出* 按钮或 Ctrl/Cmd+S |
 
 ---
 
-## 脚本命令
+## 脚本
 
 | 命令 | 说明 |
 |---|---|
-| `npm run build` | 构建 `dist/` 并同步 `docs/` |
-| `npm run dev` | 在 3001 端口启动本地开发服务器 |
-| `npm test` | 运行解析器单元测试 |
-| `npm run test:renderer` | 运行渲染器/精度断言 |
-| `npm run test:e2e` | 端到端浏览器测试（需要 `playwright-core`） |
+| `npm run build` | 构建 `dist/` 并同步 `docs/` 与内联示例包 |
+| `npm run dev` | 本地开发服务器（端口 3001） |
+| `npm test` | 针对内置样本的解析单元测试 |
+| `npm run test:renderer` | 渲染器/精度断言 |
+| `npm run test:pick` | `PickIndex` 功能测试（真实 Three.js） |
+| `npm run test:e2e` | 浏览器端到端测试（需要 `playwright-core` + Chrome） |
 | `npm run test:lang` | 验证双语示例随界面语言切换 |
 | `npm run check` | 运行全部非浏览器测试 |
 | `npm run sync:samples` | 重新生成双语示例图纸 |
-
----
-
-## 架构说明
-
-```
-src/
-  DXFLoader.js          单文件库（约 7 000 行）
-    ├─ DXFParser          DXF 词法分析与实体解析
-    ├─ DXFLoader          场景构建与几何生成
-    │   ├─ emitEntity     按类型分发到各专用生成器
-    │   ├─ emitACISSolid  ACIS SAT/SAB 重建
-    │   └─ MultiPageTextAtlas  基于 Canvas 的字形图集
-    └─ 辅助函数           OCS→WCS、NURBS、折痕法线
-
-scripts/
-  build.mjs             零依赖构建与部署脚本
-  serve.mjs             本地 HTTP 服务器
-  test.mjs              解析器单元测试
-  test-renderer.mjs     渲染器断言
-  test-e2e.mjs          浏览器端到端测试
-  test-sample-language.mjs  语言切换测试
-  make-showcase.mjs     生成双语展示图纸
-  make-huge-sample.mjs  生成大型工厂平面布置图
-  sync-showcase.mjs     将示例图纸载荷同步到 HTML
-
-examples/
-  index.html            自包含的 CAD 查看器
-  samples/              内置示例 DXF 图纸
-```
 
 ---
 
