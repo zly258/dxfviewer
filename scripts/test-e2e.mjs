@@ -62,7 +62,14 @@ if (!await waitForServer()) {
   process.exit(1);
 }
 
-const browser = await chromium.launch({ channel: 'chrome', headless: true });
+let browser;
+try {
+  browser = await chromium.launch({ channel: process.env.E2E_CHANNEL || 'chrome', headless: true });
+} catch (err) {
+  console.log('[e2e] no Chrome/Chromium available — skipping browser checks (' + (err && err.message ? err.message.split('\n')[0] : err) + ')');
+  stopServer();
+  process.exit(0);
+}
 const page = await browser.newPage({ viewport: { width: 1500, height: 950 } });
 const errors = [];
 page.on('pageerror', e => errors.push(e.message));
