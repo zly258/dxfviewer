@@ -28,11 +28,23 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
       - name: Build library & GitHub Pages demo
         run: npm run build
 
-      - name: Run automated parser tests
-        run: npm test
+      - name: Run parser, renderer and pick tests
+        run: npm run check
+
+      - name: Run browser e2e (skips cleanly when no Chrome is present)
+        run: npm run test:e2e
+
+      - name: Run bilingual sample test (skips when no Chrome is present)
+        run: npm run test:lang
+
+      - name: Verify the npm package contents
+        run: npm pack --dry-run
 
       - name: Configure GitHub Pages
         if: github.event_name != 'pull_request'
