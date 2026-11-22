@@ -3,6 +3,16 @@
 All notable changes to this project are documented here.
 Format based on Keep a Changelog; versions follow Semantic Versioning.
 
+## [2.0.1] - 2026-11-22
+
+First tagged release of the 2.x line.
+
+- Version bumped to 2.0.1 and the bundles rebuilt so every file under `dist/`
+  reports the tagged version.
+- Repository history rewritten to English-only commit messages; no code change
+  (every tree is identical to the 2.0.0 state).
+- README CDN snippets now pin `v2.0.1`.
+
 ## [2.0.0] - 2026-11-22
 
 A structural release: the single-file core is now split into ES modules, the

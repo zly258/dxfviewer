@@ -84,7 +84,7 @@ npm install git+https://github.com/zly258/dxfviewer.git three
 
 ```html
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/gh/zly258/dxfviewer@v2.0.0/dist/threejs-dxf-loader.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/zly258/dxfviewer@v2.0.1/dist/threejs-dxf-loader.umd.min.js"></script>
 ```
 
 `npm run build` 生成 `dist/threejs-dxf-loader.umd.js`、`.umd.min.js`、`.esm.js`、`.esm.min.js` 及其 sourcemap 和 `dist/DXFLoader.d.ts`。

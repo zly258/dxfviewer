@@ -90,7 +90,7 @@ Or drop the prebuilt bundle straight into a page — no build step required:
 
 ```html
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/gh/zly258/dxfviewer@v2.0.0/dist/threejs-dxf-loader.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/zly258/dxfviewer@v2.0.1/dist/threejs-dxf-loader.umd.min.js"></script>
 ```
 
 `npm run build` produces `dist/threejs-dxf-loader.umd.js`, `.umd.min.js`, `.esm.js`, `.esm.min.js`, their sourcemaps and `dist/DXFLoader.d.ts`.

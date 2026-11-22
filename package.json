@@ -1,6 +1,6 @@
 {
   "name": "threejs-dxf-loader",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Production-grade 2D & 3D AutoCAD DXF parser and Three.js renderer: ACIS solid reconstruction, hatched fills, full MTEXT inline codes, 100k-entity picking, instant theme switching.",
   "keywords": [
     "threejs",
