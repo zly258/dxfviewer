@@ -54,5 +54,40 @@ sample drawings.
 
 ## [1.1.0] - 2026-11-17
 
-- Full MTEXT inline-code support, block attribute panel, bilingual samples,
-  fast selection on 100k+ entity drawings, English-first UI.
+### Rendering accuracy
+- Vertex colours are written in the linear-sRGB working space, so mid-tones
+  match AutoCAD instead of rendering one step too bright; the example enables
+  sRGB output and disables ACES tone mapping.
+- Normal welding uses an absolute CAD tolerance (0.01 mm), so neighbouring
+  facets always weld and large models show no seams.
+- Batched 2D / 3D / line geometries compute their bounding box and sphere so
+  frustum culling works and the first frame does not stall.
+
+### 3D parsing
+- ACIS SAT decoding follows the ezdxf XOR-159 rules (including the 0x5E filler
+  skip); SAB booleans are resolved per record context (sense vs sidedness).
+- Span-aware ACIS tessellation; bulge arcs use at least one segment per 90°
+  with a 128-segment full-circle baseline; the curve budget is configurable.
+- Revolution-spline caps (dished heads) tessellate correctly and cylinders are
+  emitted as a single quad row, roughly halving piping triangle counts.
+- Added `DXFLoader.decodeAcisData()`.
+
+### Accuracy independent of the drawing size
+- The curve segment budget no longer shrinks for large drawings; nested 3D
+  entities keep the same density; the text atlas resolution is constant
+  (`textAtlasPx`).
+
+### Selection and viewer
+- A screen-space pick index keeps point and box selection responsive on 100k+
+  drawings (~12 ms pick, ~185 ms for a 511-entity window selection).
+- Block references are selected as a whole; block attributes get their own
+  property-panel section.
+- English-first UI with a remembered EN / Chinese switch; crisper stroked glyphs.
+
+### Text, samples and tests
+- Full MTEXT inline-code support (`\L \O \K \T \H \p …`).
+- Generated bilingual showcase drawings and a ~11,100-entity plant-layout
+  sample; fixed zero-direction construction lines (XLINE / RAY / ELLIPSE).
+- Added `scripts/test-renderer.mjs`, `scripts/test-e2e.mjs`,
+  `scripts/test-sample-language.mjs` and `scripts/bench-real.mjs`.
+
