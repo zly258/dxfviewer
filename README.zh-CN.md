@@ -2,9 +2,10 @@
 
 [English](./README.md) | [简体中文](./README.zh-CN.md)
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
+[![License: GPL v3](https://img.shields.io/badge/License-GPL_v3-blue.svg)](./LICENSE)
 [![Three.js](https://img.shields.io/badge/Three.js-%3E%3D0.128.0-black.svg)](https://threejs.org/)
 [![GitHub](https://img.shields.io/badge/GitHub-zly258%2Fdxfviewer-181717?logo=github)](https://github.com/zly258/dxfviewer)
+[![爱发电](https://img.shields.io/badge/爱发电-支持作者-946CE6)](https://ifdian.net/order/create?user_id=3db8e630e6dc11f1b37452540025c377)
 
 面向 2D 工程图与 3D 实体装配的 **AutoCAD DXF 解析器 + Three.js 渲染器**，并附带一个中英双语单文件 CAD 查看器（`examples/index.html`）。
 
@@ -23,7 +24,8 @@
 7. [支持的图元](#支持的图元)
 8. [示例查看器](#示例查看器)
 9. [脚本](#脚本)
-10. [许可证](#许可证)
+10. [支持与打赏](#支持与打赏)
+11. [许可证](#许可证)
 
 ---
 
@@ -312,6 +314,7 @@ node scripts/serve.mjs        # http://localhost:3001/
 | `elements_2d` | 全元素案例 | 2D 覆盖全部图元 |
 | `elements_3d` | 3D 元素案例 | 3D 实体/网格/螺旋线 |
 | `huge_2d` | 工厂管廊总平面（超大图纸测试） | 2D 约 1.1 万图元 |
+| `million_2d` | 百万图元压力测试（极限吞吐测试） | 2D 100 万图元随机生成 |
 
 带中文版的示例（`elements_2d`、`elements_3d`、`huge_2d`）会随界面语言重新渲染。
 
@@ -346,6 +349,17 @@ node scripts/serve.mjs        # http://localhost:3001/
 
 ---
 
+## 支持与打赏
+
+如果本项目对你的日常工作与学习有所帮助，欢迎通过爱发电请作者喝一杯咖啡，你的支持将持续推动项目特性的迭代与优化：
+
+* **直达打赏页**：[点击直接打赏（爱发电）](https://ifdian.net/order/create?user_id=3db8e630e6dc11f1b37452540025c377)
+* **创作者主页**：[爱发电主页 · zhangly1403](https://ifdian.net/a/zhangly1403)
+
+---
+
 ## 许可证
 
-[MIT](./LICENSE) — © zhangly1403 (<zhangly1403@qq.com>)
+本项目基于 [GNU 通用公共许可证第 3 版 (GPL-3.0)](./LICENSE) 开源发布。
+
+Copyright (C) 2026 zhangly1403 (<zhangly1403@qq.com>)

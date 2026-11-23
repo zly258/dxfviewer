@@ -1,5 +1,5 @@
 /**
- * @license MIT
+ * @license GPL-3.0
  * threejs-dxf-loader - Mathematical helpers: OCS to WCS transform, bulge arcs, Cox-de Boor NURBS evaluation, crease-angle smooth normals.
  */
 import * as THREE from 'three';

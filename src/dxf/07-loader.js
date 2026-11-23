@@ -1,5 +1,5 @@
 /**
- * @license MIT
+ * @license GPL-3.0
  * threejs-dxf-loader - Main DXFLoader: scene building, per-entity geometry emitters, instant theme switching.
  */
 import * as THREE from 'three';

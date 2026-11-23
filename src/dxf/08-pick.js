@@ -1,5 +1,5 @@
 /**
- * @license MIT
+ * @license GPL-3.0
  * threejs-dxf-loader - Spatial pick index for DXF pick records.
  *
  * The loader returns one {@link DXFPickRecord} per entity with a world-space

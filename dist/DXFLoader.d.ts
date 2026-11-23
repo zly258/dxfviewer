@@ -1,7 +1,7 @@
 /**
  * TypeScript definitions for threejs-dxf-loader.
  * Author: zhangly1403 <zhangly1403@qq.com>
- * License: MIT
+ * License: GPL-3.0
  */
 import * as THREE from 'three';
 

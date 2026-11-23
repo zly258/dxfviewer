@@ -2,9 +2,10 @@
 
 [English](./README.md) | [简体中文](./README.zh-CN.md)
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
+[![License: GPL v3](https://img.shields.io/badge/License-GPL_v3-blue.svg)](./LICENSE)
 [![Three.js](https://img.shields.io/badge/Three.js-%3E%3D0.128.0-black.svg)](https://threejs.org/)
 [![GitHub](https://img.shields.io/badge/GitHub-zly258%2Fdxfviewer-181717?logo=github)](https://github.com/zly258/dxfviewer)
+[![Afdian](https://img.shields.io/badge/Afdian-Sponsor-946CE6)](https://ifdian.net/order/create?user_id=3db8e630e6dc11f1b37452540025c377)
 
 A production-grade **AutoCAD DXF parser and Three.js renderer** for 2D engineering drawings and 3D solid assemblies, plus a bilingual (EN / 中文) single-file CAD viewer (`examples/index.html`).
 
@@ -23,7 +24,8 @@ A production-grade **AutoCAD DXF parser and Three.js renderer** for 2D engineeri
 7. [Supported Entities](#supported-entities)
 8. [Example Viewer](#example-viewer)
 9. [Scripts](#scripts)
-10. [License](#license)
+10. [Sponsor & Support](#sponsor--support)
+11. [License](#license)
 
 ---
 
@@ -318,6 +320,7 @@ node scripts/serve.mjs        # http://localhost:3001/
 | `elements_2d` | All Element Types showcase | 2D — every entity type |
 | `elements_3d` | 3D Element Types showcase | 3D — solids, mesh, helix |
 | `huge_2d` | Plant layout (huge drawing test) | 2D — ~11 k entities |
+| `million_2d` | 1M elements stress test (throughput) | 2D — 1,000,000 entities |
 
 Samples with Chinese variants (`elements_2d`, `elements_3d`, `huge_2d`) re-render when the UI language changes.
 
@@ -352,6 +355,17 @@ Samples with Chinese variants (`elements_2d`, `elements_3d`, `huge_2d`) re-rende
 
 ---
 
+## Sponsor & Support
+
+If this project has helped your work or study, consider buying the author a coffee via Afdian to support continuous maintenance and development:
+
+* **Direct Sponsor Link**: [Sponsor on Afdian](https://ifdian.net/order/create?user_id=3db8e630e6dc11f1b37452540025c377)
+* **Creator Profile**: [Afdian Profile · zhangly1403](https://ifdian.net/a/zhangly1403)
+
+---
+
 ## License
 
-[MIT](./LICENSE) — © zhangly1403 (<zhangly1403@qq.com>)
+This project is licensed under the [GNU General Public License v3.0 (GPL-3.0)](./LICENSE).
+
+Copyright (C) 2026 zhangly1403 (<zhangly1403@qq.com>)

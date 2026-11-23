@@ -29,7 +29,7 @@ const tmpDir = path.join(rootDir, '.build-tmp');
 for (const d of [distDir, docsDir, tmpDir]) fs.mkdirSync(d, { recursive: true });
 
 const pkg = JSON.parse(fs.readFileSync(path.join(rootDir, 'package.json'), 'utf-8'));
-const banner = `/*! threejs-dxf-loader v${pkg.version} | MIT | ${pkg.author.name} <${pkg.author.email}> */`;
+const banner = `/*! threejs-dxf-loader v${pkg.version} | GPL-3.0 | ${pkg.author.name} <${pkg.author.email}> */`;
 const common = {
   entryPoints: [entry],
   bundle: true,
@@ -107,14 +107,14 @@ if (fs.existsSync(examplesHtmlPath)) {
   let html = fs.readFileSync(examplesHtmlPath, 'utf-8');
   // Use a function replacer: the bundle contains many "$" (ACIS pointers); a
   // string replacement would treat $&, $1, $' etc. as special and corrupt HTML.
-  const replaced = html.replace(
-    /(<!--\s*Inline DXFLoader[\s\S]*?<script>\r?\n)[\s\S]*?(\r?\n\s*<\/script>)/,
-    (_match, open, close) => open + umdMin.replace(/<\/script/gi, '<\\/script').replace(/\s+$/, '') + close
-  );
-  if (replaced === html) {
+  const inlineRe = /(<!--\s*Inline DXFLoader[\s\S]*?<script>\r?\n)[\s\S]*?(\r?\n\s*<\/script>)/;
+  if (!inlineRe.test(html)) {
     console.warn('[build] Warning: could not locate inline DXFLoader script block in examples/index.html');
   } else {
-    html = replaced;
+    html = html.replace(
+      inlineRe,
+      (_match, open, close) => open + umdMin.replace(/<\/script/gi, '<\\/script').replace(/\s+$/, '') + close
+    );
     fs.writeFileSync(examplesHtmlPath, html, 'utf-8');
   }
   fs.writeFileSync(path.join(docsDir, 'index.html'), html, 'utf-8');

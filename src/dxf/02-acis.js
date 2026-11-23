@@ -1,5 +1,5 @@
 /**
- * @license MIT
+ * @license GPL-3.0
  * threejs-dxf-loader - ACIS SAT/SAB decoding and B-rep surface reconstruction (plane, cone, sphere, torus, revolution spline).
  */
 import * as THREE from 'three';

@@ -1,4 +1,4 @@
-/*! threejs-dxf-loader v2.0.1 | MIT | zhangly1403 <zhangly1403@qq.com> */
+/*! threejs-dxf-loader v2.0.1 | GPL-3.0 | zhangly1403 <zhangly1403@qq.com> */
 
 // src/dxf/07-loader.js
 import * as THREE5 from "three";

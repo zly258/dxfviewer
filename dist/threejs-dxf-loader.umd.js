@@ -1,4 +1,4 @@
-/*! threejs-dxf-loader v2.0.1 | MIT | zhangly1403 <zhangly1403@qq.com> */
+/*! threejs-dxf-loader v2.0.1 | GPL-3.0 | zhangly1403 <zhangly1403@qq.com> */
 (function (root, factory) {
   if (typeof exports === 'object' && typeof module !== 'undefined') {
     var _three = null;
@@ -20,7 +20,7 @@
     if (name === 'three') return THREE;
     throw new Error('threejs-dxf-loader: cannot resolve module "' + name + '"');
   };
-/*! threejs-dxf-loader v2.0.1 | MIT | zhangly1403 <zhangly1403@qq.com> */
+/*! threejs-dxf-loader v2.0.1 | GPL-3.0 | zhangly1403 <zhangly1403@qq.com> */
 var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;

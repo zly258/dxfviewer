@@ -1,5 +1,5 @@
 /**
- * @license MIT
+ * @license GPL-3.0
  * threejs-dxf-loader - Hatch loop classification (outer/hole) and polyline line-type dash tessellation.
  */
 function polygonSignedArea2D(ring) {

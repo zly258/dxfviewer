@@ -1,5 +1,5 @@
 /**
- * @license MIT
+ * @license GPL-3.0
  * threejs-dxf-loader - Fault-tolerant DXF tokeniser, section parser and per-entity parsers.
  */
 import { normKey } from './00-util.js';

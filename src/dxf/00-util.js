@@ -1,5 +1,5 @@
 /**
- * @license MIT
+ * @license GPL-3.0
  * threejs-dxf-loader - Shared utilities: growable float buffer, ACI palette, sRGB/linear colour management, CAD font mapping, DXF encoding detection.
  */
 class Float32GrowableBuffer {

@@ -1,5 +1,5 @@
 /**
- * @license MIT
+ * @license GPL-3.0
  * threejs-dxf-loader - Batched per-layer geometry collector with dual light/dark colour buffers.
  */
 import * as THREE from 'three';

@@ -1,5 +1,5 @@
 /**
- * @license MIT
+ * @license GPL-3.0
  * threejs-dxf-loader - public ES module entry point.
  *
  * Named exports are tree-shakeable: importing only the parser does not pull in

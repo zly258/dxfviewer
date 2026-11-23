@@ -1,5 +1,5 @@
 /**
- * @license MIT
+ * @license GPL-3.0
  * threejs-dxf-loader - Rich MTEXT inline-code parser and the multi-page filled text atlas.
  */
 import * as THREE from 'three';
